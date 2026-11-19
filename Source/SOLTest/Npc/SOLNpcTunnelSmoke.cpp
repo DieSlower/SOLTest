@@ -57,11 +57,13 @@ namespace
     // Script values
     constexpr int32 TUNNELSMOKE_SHIPS = 1000000;             // Population (SDD 49 section 8: 1M NPCs)
     const TCHAR* const TUNNELSMOKE_VIEW_NAMES[] = { TEXT("T1"), TEXT("T2"), TEXT("T3"), TEXT("T4"), TEXT("T4b"),
-        TEXT("T5"), TEXT("T5b"), TEXT("T6") };
-    constexpr int32 TUNNELSMOKE_FIRST_VIEWS = 7;             // T1 .. T5b with T4b before T7; T6 comes last
+        TEXT("T5"), TEXT("T5b"), TEXT("F300"), TEXT("F1000"), TEXT("F3000"), TEXT("T6") };
+    constexpr int32 TUNNELSMOKE_FIRST_VIEWS = 10;            // T1 .. T5b and the far views before T7; T6 comes last
     constexpr int32 TUNNELSMOKE_VIEW_T5 = 5;                 // The start above Earth facing the Moon
     constexpr int32 TUNNELSMOKE_VIEW_T5B = 6;                // Facing Earth from beyond it (end rings, Earth in front)
-    constexpr int32 TUNNELSMOKE_VIEW_T6 = 7;                 // The T2 point with every lane empty
+    constexpr int32 TUNNELSMOKE_VIEW_FAR = 7;                // First far view (SDD 52 section 7): beside the lane...
+    constexpr double TUNNELSMOKE_FAR_RADII[] = { 300.0, 1000.0, 3000.0 };    // ...this many tunnel radii off its axis
+    constexpr int32 TUNNELSMOKE_VIEW_T6 = 10;                // The T2 point with every lane empty
     constexpr double TUNNELSMOKE_T5B_DISTANCE_M = 4.0e7;     // T5b: the camera this far from Earth's centre...
     constexpr double TUNNELSMOKE_T5B_OFF_AXIS_DEG = 15.0;    // ...this far off the Earth-Mars axis behind Earth
     constexpr int32 TUNNELSMOKE_T5B_RING_SAMPLES = 32;       // T5b: samples per ring tested against Earth...
@@ -498,15 +500,15 @@ void FSOLNpcTunnelSmoke::TickPhase(const ESOLTunnelPhase phase)
         mCaptureTimeS = mPhaseTimeS;
     }
 
-    // Per frame: the phase's unwrapped advance, and in the approach the lane-fixed ring's move inside the constant zone
+    // Per frame: the phase's unwrapped advance, and in the approach the lane-fixed ring's move (the flat lattice is
+    // fixed to the lane at every distance, SDD 52 D2)
     else if (mPhaseFrames > TUNNELSMOKE_CAPTURE_FRAME && ReadLanePhase(phaseNow, footArcM, footRadialM))
     {
         const double previousPhase = mPrevPhase;
         mUnwrappedPhase += TunnelSmokePhaseDelta(previousPhase, phaseNow);
         mPrevPhase = phaseNow;
-        const double s0 = SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII * rt;
-        const double d0 = s0 / SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE;
-        if (phase == ESOLTunnelPhase::Approach && footRadialM * footRadialM <= d0 * d0 - s0 * s0)
+        const double s0 = SOLNpcTunnel::RingLatticeSpacingM(rt);
+        if (phase == ESOLTunnelPhase::Approach)
         {
             // Ring slot 0 sits at footArc + (1 - phase) S0 there; modulo S0 it must not move
             const double moveM = FMath::Abs(TunnelSmokePhaseDelta(previousPhase, phaseNow)) * s0;
@@ -556,6 +558,10 @@ void FSOLNpcTunnelSmoke::ExitPhase(const ESOLTunnelPhase phase, ASOLShipPawn& pa
         {
             CheckEarthEnds(TEXT("T5b-earth"));
         }
+        if (mView >= TUNNELSMOKE_VIEW_FAR && mView < TUNNELSMOKE_VIEW_T6)
+        {
+            CheckFarView(*FString::Printf(TEXT("%s-far"), GetViewName()));
+        }
         break;
     }
     case ESOLTunnelPhase::RestHold:
@@ -566,7 +572,7 @@ void FSOLNpcTunnelSmoke::ExitPhase(const ESOLTunnelPhase phase, ASOLShipPawn& pa
         double footArcM = 0.0;
         double radialM = 0.0;
         const bool bRead = ReadLanePhase(phaseNow, footArcM, radialM);
-        const double spacingM = SOLNpcTunnel::RingSpacingM(0.0, radialM, rt);
+        const double spacingM = SOLNpcTunnel::RingLatticeSpacingM(rt);
         const double arcMoveM = footArcM - mStartFootArcM;
         if (phase == ESOLTunnelPhase::RestHold)
         {
@@ -587,7 +593,7 @@ void FSOLNpcTunnelSmoke::ExitPhase(const ESOLTunnelPhase phase, ASOLShipPawn& pa
     }
     case ESOLTunnelPhase::Approach:
         Check(TEXT("T7-approach"), mApproachMaxStepM <= TUNNELSMOKE_FIXED_RING_TOLERANCE_RADII * rt, FString::Printf(
-            TEXT("lane-fixed ring moved at most %.3f m per frame inside the constant zone (Rt %.4g m)"),
+            TEXT("lane-fixed ring moved at most %.3f m per frame on the flat lattice, 50 to 1 Rt (Rt %.4g m)"),
             mApproachMaxStepM, rt));
         break;
     case ESOLTunnelPhase::GlowSet:
@@ -835,6 +841,13 @@ void FSOLNpcTunnelSmoke::SetupView()
             forward = basis.Axis * FMath::Cos(yaw) + basis.Right * FMath::Sin(yaw);
             break;
         }
+        case TUNNELSMOKE_VIEW_FAR:
+        case TUNNELSMOKE_VIEW_FAR + 1:
+        case TUNNELSMOKE_VIEW_FAR + 2:
+            // The far views (SDD 52 section 7): beside the quarter point, looking straight down at the lane
+            positionM = quarterM + basis.Up * (TUNNELSMOKE_FAR_RADII[mView - TUNNELSMOKE_VIEW_FAR] * rt);
+            forward = -basis.Up;
+            break;
         default:
         {
             // T5: the start above Earth, facing the Moon (Venus-Earth, Earth-Mars and Earth-Moon meet at Earth);
@@ -878,9 +891,10 @@ void FSOLNpcTunnelSmoke::CheckFeed(const TCHAR* label)
     const TConstArrayView<int32> instances = tunnels->GetInstanceLanes();
     const TConstArrayView<FVector4f> texels = tunnels->GetLastTexels();
 
-    // Instances = the lanes with a fade above 0 (index order), visible while one draws
+    // Instances = the drawn lanes (index order), visible while one draws; the lane line is gone in the flight view
+    // (SDD 52 D1)
     bool bInstances = instances.Num() == shown.Num() && tunnels->GetInstanceCount() == shown.Num()
-        && tunnels->IsInstanceComponentVisible() == (shown.Num() > 0);
+        && tunnels->IsInstanceComponentVisible() == (shown.Num() > 0) && !mVisuals->IsLaneComponentVisible();
     for (int32 index = 0; bInstances && index < shown.Num(); ++index)
     {
         bInstances = instances[index] == shown[index].Lane;
@@ -912,20 +926,20 @@ void FSOLNpcTunnelSmoke::CheckFeed(const TCHAR* label)
             && pure.Up.Equals(data.Up, 1.0e-9) && FMath::Abs(pure.Fade - data.Fade) <= TUNNELSMOKE_FADE_TOLERANCE
             && pure.FootRelM.Equals(data.FootRelM, footToleranceM);
 
-        // Q5: the fade the lane and point materials read back from the uploaded texels, and the crossfade sum at
-        // sampled lane points. The sum uses the C++ mirrors of the lane and point shaders, so it proves the texel
-        // round trip and the formulas, not the GPU output (the screenshots cover that)
+        // Q5 with SDD 52 D6 / D7: the label strength the lane and point materials read back from the uploaded texels
+        // and the draw fade the tunnel shader reads (1 at every distance); a lane ship far from the camera is a point
+        // only as strongly as its lane's strength (0 beyond the old 100 lane radii band: far lane ships stay hidden).
+        // The C++ mirrors of the point shader prove the texel round trip and the formulas, not the GPU output
         const double readBack = SOLNpcTunnel::ReadTunnelFadeTexel(texels, data.Lane);
+        const double drawBack = SOLNpcTunnel::ReadTunnelDrawFadeTexel(texels, data.Lane);
         const double laneRadiusM = mVisuals->GetLaneFrame().Lanes[data.Lane].RadiusM;
-        bPure &= readBack == static_cast<double>(static_cast<float>(data.Fade));
-        for (const double radii : { 10.0, 75.0, 150.0, 1000.0 })
-        {
-            const double d = radii * laneRadiusM;
-            bPure &= FMath::IsNearlyEqual(SOLNpcLane::LaneLineFadeWithTunnel(d, laneRadiusM, readBack)
-                + SOLNpcLane::LaneShipPointAlpha(d, laneRadiusM, true, readBack), 1.0, 1.0e-9);
-        }
-        detail += FString::Printf(TEXT(" [lane %d: fade %.4f, Rt %.4g m, h %.4g m, phase %.4f, ends %.4g / %.4g m]"),
-            data.Lane, data.Fade, data.TunnelRadiusM, data.FootRelM.Size(), data.Phase, data.EndArcAM, data.EndArcBM);
+        bPure &= readBack == static_cast<double>(static_cast<float>(data.Fade)) && drawBack == 1.0
+            && data.DrawFade == 1.0;
+        bPure &= FMath::IsNearlyEqual(SOLNpcLane::LaneShipPointAlpha(1.0e3 * laneRadiusM, laneRadiusM, true, readBack),
+            readBack, 1.0e-9);
+        detail += FString::Printf(TEXT(" [lane %d: strength %.4f, draw %.1f, Rt %.4g m, h %.4g m, phase %.4f, ends "
+            "%.4g / %.4g m]"), data.Lane, data.Fade, data.DrawFade, data.TunnelRadiusM, data.FootRelM.Size(),
+            data.Phase, data.EndArcAM, data.EndArcBM);
     }
     Check(label, bInstances && bTexels && bPure, FString::Printf(TEXT("instances %s, texels %s, pure frame %s:%s"),
         bInstances ? TEXT("ok") : TEXT("BAD"), bTexels ? TEXT("ok") : TEXT("BAD"), bPure ? TEXT("ok") : TEXT("BAD"),
@@ -1127,6 +1141,18 @@ void FSOLNpcTunnelSmoke::CheckSides(const TCHAR* label, const bool bLookingTowar
     double axialM = 0.0;
     bool bFound = false;
     const double lookSign = bLookingTowardB ? 1.0 : -1.0;
+
+    // Each wall's chevron centre and tip on screen (directions from the camera, projected a short way out); the slot
+    // input's focal length from the camera's field of view and the viewport (SDD 52 D8)
+    const FVector3d viewpointM = mAnchor->GetViewpointM();
+    const FVector cameraCm = mController->PlayerCameraManager->GetCameraLocation();
+    FVector2D viewSize(0.0, 0.0);
+    if (mVisuals->GetWorld()->GetGameViewport() != nullptr)
+    {
+        mVisuals->GetWorld()->GetGameViewport()->GetViewportSize(viewSize);
+    }
+    input.FocalRefPx = SOLNpcTunnel::FocalLengthRefPx(mController->PlayerCameraManager->GetFOVAngle(), viewSize.X,
+        viewSize.Y);
     for (int32 slot = 0; slot < SOLNpcTunnel::DetailSlotCount(); ++slot)
     {
         for (int32 index = 0; index < SOL::NPC_TUNNEL_CHEVRONS_PER_GAP; ++index)
@@ -1139,15 +1165,6 @@ void FSOLNpcTunnelSmoke::CheckSides(const TCHAR* label, const bool bLookingTowar
                 bFound = true;
             }
         }
-    }
-
-    // Each wall's chevron centre and tip on screen (directions from the camera, projected a short way out)
-    const FVector3d viewpointM = mAnchor->GetViewpointM();
-    const FVector cameraCm = mController->PlayerCameraManager->GetCameraLocation();
-    FVector2D viewSize(0.0, 0.0);
-    if (mVisuals->GetWorld()->GetGameViewport() != nullptr)
-    {
-        mVisuals->GetWorld()->GetGameViewport()->GetViewportSize(viewSize);
     }
     const FVector2D centerPx = 0.5 * viewSize;
     const auto project = [&](const FVector3d& relM, FVector2D& outScreen)
@@ -1270,6 +1287,85 @@ void FSOLNpcTunnelSmoke::CheckEarthEnds(const TCHAR* label)
         FString::Printf(TEXT("Earth among the shared occluders %s, %d lane-only occluder writes in the view; tunnel "
         "samples near Earth: %d hidden behind it, %d in front (C++ sphere test)"), bEarthOccluder ? TEXT("yes")
         : TEXT("no"), writes, occluded, visible));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks a far view (SDD 52 section 7, D1, D7, D17): the Earth-Mars tunnel is still drawn (draw fade 1) but has no
+// label strength and no label; the rings the C++ slots light now (logged, no minimum asserted, D17) never include the
+// window's outermost slots above the knee alpha (the window cuts only rings below 1 px); the end rings' alphas logged
+void FSOLNpcTunnelSmoke::CheckFarView(const TCHAR* label)
+{
+    int32 lane = INDEX_NONE;
+    FSOLNpcTunnelBasis basis;
+    double lengthM = 0.0;
+    double rt = 0.0;
+    const FSOLNpcTunnelLaneData* data = nullptr;
+    if (FindLane(lane, basis, lengthM, rt))
+    {
+        data = mVisuals->GetTunnels()->GetShownLanes().FindByPredicate([lane](const FSOLNpcTunnelLaneData& shown)
+        {
+            return shown.Lane == lane;
+        });
+    }
+    const USOLHudEventSubsystem* hudEvents = USOLHudEventSubsystem::Get(mVisuals.Get());
+    if (data == nullptr || hudEvents == nullptr || !mController.IsValid()
+        || mController->PlayerCameraManager == nullptr)
+    {
+        Check(label, false, TEXT("Earth-Mars tunnel not drawn, no HUD bus or no camera"));
+        return;
+    }
+
+    // The slot input of this frame's feed with the camera's focal length in reference px (SDD 52 D8)
+    FVector2D viewSize(0.0, 0.0);
+    if (mVisuals->GetWorld()->GetGameViewport() != nullptr)
+    {
+        mVisuals->GetWorld()->GetGameViewport()->GetViewportSize(viewSize);
+    }
+    FSOLNpcTunnelSlotInput input;
+    input.RadialM = data->FootRelM.Size();
+    input.TunnelRadiusM = data->TunnelRadiusM;
+    input.Phase = data->Phase;
+    input.EndArcAM = data->EndArcAM;
+    input.EndArcBM = data->EndArcBM;
+    input.FocalRefPx = SOLNpcTunnel::FocalLengthRefPx(mController->PlayerCameraManager->GetFOVAngle(), viewSize.X,
+        viewSize.Y);
+
+    // The lit rings and the window's edge: the last slot on each side carries at most the knee alpha
+    int32 lit = 0;
+    double edgeAlpha = 0.0;
+    const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
+    for (int32 slot = 0; slot < SOLNpcTunnel::RingSlotCount(); ++slot)
+    {
+        FSOLNpcTunnelRing ring;
+        if (SOLNpcTunnel::RingSlot(slot, input, ring))
+        {
+            ++lit;
+            if (slot == perSide - 1 || slot == 2 * perSide - 1)
+            {
+                edgeAlpha = FMath::Max(edgeAlpha, ring.Alpha);
+            }
+        }
+    }
+    double endAlphas[2] = { 0.0, 0.0 };
+    for (int32 end = 0; end < 2; ++end)
+    {
+        FSOLNpcTunnelRing ring;
+        endAlphas[end] = SOLNpcTunnel::EndRingSlot(end, input, ring) ? ring.Alpha : 0.0;
+    }
+
+    // No label for this lane (its strength is 0 this far out, D7)
+    const FSOLHudLaneTunnelLabels& snapshot = hudEvents->GetBus().GetLaneTunnelLabels();
+    bool bLabelled = false;
+    for (int32 index = 0; index < snapshot.Count; ++index)
+    {
+        bLabelled |= snapshot.Labels[index].Lane == lane;
+    }
+    const bool bOk = data->DrawFade == 1.0 && data->Fade == 0.0 && !bLabelled && input.FocalRefPx > 0.0
+        && edgeAlpha <= SOL::NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA + 1.0e-9 && !mVisuals->IsLaneComponentVisible();
+    Check(label, bOk, FString::Printf(TEXT("h %.0f Rt, draw fade %.1f, label strength %.3f, labelled %s, focal %.1f "
+        "ref px, %d lit rings (D17: none required), window edge alpha %.4f, end rings %.3f / %.3f, lane line %s"),
+        input.RadialM / rt, data->DrawFade, data->Fade, bLabelled ? TEXT("YES") : TEXT("no"), input.FocalRefPx, lit,
+        edgeAlpha, endAlphas[0], endAlphas[1], mVisuals->IsLaneComponentVisible() ? TEXT("VISIBLE") : TEXT("hidden")));
 }
 
 //////////////////////////////////////////////////////////////////////////

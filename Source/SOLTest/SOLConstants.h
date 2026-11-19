@@ -2349,21 +2349,25 @@ namespace SOL
         inline constexpr const TCHAR* STYLE1 = TEXT("NpcTunnelStyle1");          // (emissive, chevron alpha, glow pad
                                                                                   //  px, dot radius scale)
         inline constexpr const TCHAR* SHAPE = TEXT("NpcTunnelShape");            // (chevron radius scale, half width,
-                                                                                  //  half length, end ring min alpha)
+                                                                                  //  half length, radius fade gone px)
         inline constexpr const TCHAR* STYLE2 = TEXT("NpcTunnelStyle2");          // (chevron notch fraction, detail
                                                                                   //  near fade start and full radii,
                                                                                   //  dot world diameter radii)
-        inline constexpr const TCHAR* STYLE3 = TEXT("NpcTunnelStyle3");          // (screen fade half extents,
+        inline constexpr const TCHAR* STYLE3 = TEXT("NpcTunnelStyle3");          // (ring gap fade gone px,
                                                                                   //  chevron fade start and end
                                                                                   //  radii, chevrons per gap)
-        inline constexpr const TCHAR* LAYOUT0 = TEXT("NpcTunnelLayout0");        // (base spacing radii, rho, ring
-                                                                                  //  and gap slots per side)
-        inline constexpr const TCHAR* LAYOUT1 = TEXT("NpcTunnelLayout1");        // (end fade spacings, depth start
-                                                                                  //  radii, depth end radii, floor)
+        inline constexpr const TCHAR* LAYOUT0 = TEXT("NpcTunnelLayout0");        // (base spacing radii, ring gap
+                                                                                  //  fade full px, ring and gap
+                                                                                  //  slots per side)
+        inline constexpr const TCHAR* LAYOUT1 = TEXT("NpcTunnelLayout1");        // (end fade spacings, radius fade
+                                                                                  //  solid px, knee px, knee alpha)
         inline constexpr const TCHAR* LAYOUT2 = TEXT("NpcTunnelLayout2");        // (near start, near full, radial full,
                                                                                   //  radial none; tunnel radii)
-        inline constexpr const TCHAR* LAYOUT3 = TEXT("NpcTunnelLayout3");        // (detail start radii, detail end
-                                                                                  //  radii, dots per gap, dot rows)
+        inline constexpr const TCHAR* LAYOUT3 = TEXT("NpcTunnelLayout3");        // (detail gap fade gone px and
+                                                                                  //  full px, dots per gap, dot rows)
+        inline constexpr const TCHAR* LAYOUT4 = TEXT("NpcTunnelLayout4");        // (end ring min drawn px, ribbon
+                                                                                  //  inner max fraction of the ring
+                                                                                  //  radius, 0, 0; SDD 52 D16)
         inline constexpr const TCHAR* GLOW0 = TEXT("NpcTunnelGlow0");            // As NpcLaneMaterialParams::GLOW0
         inline constexpr const TCHAR* GLOW1 = TEXT("NpcTunnelGlow1");            // As NpcLaneMaterialParams::GLOW1
         inline constexpr const TCHAR* RING_COLOR = TEXT("NpcTunnelRingColor");   // Linear colours
@@ -2375,7 +2379,7 @@ namespace SOL
         // Every name by kind (the material test walks these lists)
         inline constexpr const TCHAR* SCALAR_NAMES[] = { GLOW_SCALE };
         inline constexpr const TCHAR* VECTOR_NAMES[] = { FRAME, STYLE0, STYLE1, SHAPE, STYLE2, STYLE3, LAYOUT0,
-            LAYOUT1, LAYOUT2, LAYOUT3, GLOW0, GLOW1, RING_COLOR, DOT_OUTBOUND_COLOR, DOT_INBOUND_COLOR,
+            LAYOUT1, LAYOUT2, LAYOUT3, LAYOUT4, GLOW0, GLOW1, RING_COLOR, DOT_OUTBOUND_COLOR, DOT_INBOUND_COLOR,
             CHEVRON_OUTBOUND_COLOR, CHEVRON_INBOUND_COLOR };
         inline constexpr const TCHAR* TEXTURE_NAMES[] = { TUNNEL_TEXTURE };
     }
@@ -2673,51 +2677,63 @@ namespace SOL
     static_assert(NPC_LANE_DASH_MIN_LEVEL <= 0 && (NPC_LANE_DASH_BASE_COUNT >> -NPC_LANE_DASH_MIN_LEVEL) >= 1,
         "the coarsest dash level keeps at least one whole dash per lane");
 
-    // NPC lane guidance tunnel (SDD 49 sections 4.2-4.9, issue #49): near a lane its #38 line hands over to a tube of
-    // cyan rings with guide dots and wall chevrons, laid out by the continuous "accordion" ring spacing.
-    // SOLNpcTunnelMath is the CPU reference of the tunnel material; a change here must change the shader too
+    // NPC lane guidance tunnel (SDD 49 sections 4.2-4.9, issue #49; far field SDD 52): a tube of cyan rings with guide
+    // dots and wall chevrons on a flat lattice of one ring every 12 tunnel radii, faded by on-screen pixel sizes in
+    // 1080p-reference pixels (SDD 52 D2, D8-D14). SOLNpcTunnelMath is the CPU reference of the tunnel material
+    // (Shaders/Private/SOLNpcTunnel.ush, its float copy Npc/SOLNpcTunnelMirror.h); the shader keeps no copy of these
+    // values, they reach it as material parameters (SOLNpcTunnel::TunnelMaterialVectors)
     inline constexpr double NPC_TUNNEL_FADE_START_RADII = 100.0;       // Tunnel fade 0 at and beyond this many lane
-                                                                       // radii (meets the line's near fade)...
+                                                                       // radii (meets the line's near fade; the label
+                                                                       // strength only since SDD 52 D7)...
     inline constexpr double NPC_TUNNEL_FADE_FULL_RADII = 50.0;         // ...1 at and inside this many (log-linear)
     inline constexpr double NPC_TUNNEL_RADIUS_MIN_SCALE = 1.0;         // Tunnel radius in lane radii at traffic
     inline constexpr double NPC_TUNNEL_RADIUS_MAX_SCALE = 3.0;         // weight 0 (also an empty lane) and 1
     inline constexpr int32 NPC_TUNNEL_RING_KEEP_EVERY = 6;             // Guide thinning (user 2026-11-17): every 6th
-                                                                       // ring of the first-built lattice (2 Rt, 0.25)
-                                                                       // is kept, so both spacing terms are 6 times it
-    inline constexpr double NPC_TUNNEL_RING_BASE_SPACING_RADII = 12.0; // Ring spacing near the camera, tunnel radii
-    inline constexpr double NPC_TUNNEL_RING_SPACING_PER_DISTANCE = 1.5;    // Ring spacing per metre of distance
-                                                                       // beyond the constant zone (rho; D0 = 8 Rt)
-    inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 12;        // Ring slots ahead and behind the foot point
-                                                                       // (the longest default lane needs 8.3; the
-                                                                       // float warp inverse overflows past ~22)
-    inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 6;       // Dot and chevron gap slots per side (512 Rt
-                                                                       // is w 3.44, inside DETAIL_SLOTS - 2)
+                                                                       // ring of the first-built 2 Rt lattice is kept
+    inline constexpr double NPC_TUNNEL_RING_BASE_SPACING_RADII = 12.0; // Flat ring spacing S0 everywhere, tunnel radii
+                                                                       // (SDD 52 D2: KEEP_EVERY x 2 Rt)
+    inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 80;        // Ring slots ahead and behind the foot point:
+                                                                       // the window covers every ring of 1 px or more
+                                                                       // at the reference focal (SDD 52 section 4.3)
+    inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 33;      // Dot and chevron gap slots per side: the gap
+                                                                       // gate is shut beyond DETAIL_SLOTS - 3 spacings
+                                                                       // at the reference focal (assert below)
+    inline constexpr double NPC_TUNNEL_REFERENCE_FOCAL_PX = 960.0;     // Focal length in reference px of a 16:9 view
+                                                                       // at SHIP_CAMERA_BASE_FOV_DEG (SDD 52 D8)
+    inline constexpr double NPC_TUNNEL_RADIUS_FADE_SOLID_PX = 6.0;     // Ring radius fade (SDD 52 D9, reference px):
+                                                                       // alpha 1 from this radius...
+    inline constexpr double NPC_TUNNEL_RADIUS_FADE_KNEE_PX = 1.0;      // ...KNEE_ALPHA at this one (log-linear)...
+    inline constexpr double NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA = 0.1;   // ...(90% transparent)...
+    inline constexpr double NPC_TUNNEL_RADIUS_FADE_GONE_PX = 0.5;      // ...and 0 at and below this one (log-linear)
+    inline constexpr double NPC_TUNNEL_RING_GAP_FADE_FULL_PX = 3.0;    // Rings full while the on-screen gap to the
+    inline constexpr double NPC_TUNNEL_RING_GAP_FADE_GONE_PX = 2.0;    // next ring is this wide, gone at this (D11)
+    inline constexpr double NPC_TUNNEL_DETAIL_GAP_PX = 20.0;           // Dots and chevrons need about this ring gap
+                                                                       // (D11), faded in over the band below
+    inline constexpr double NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX = 16.0; // Detail gap gate 0 at and below this gap...
+    inline constexpr double NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX = 25.0; // ...1 from this one (log-linear; start values,
+                                                                       // tuned in game, 20 px the log midpoint)
+    inline constexpr double NPC_TUNNEL_END_RING_MIN_DRAWN_PX = 1.0;    // End rings never drawn below this radius in
+                                                                       // reference px (D14; their alpha still fades)
+    inline constexpr double NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION = 0.9; // A ring ribbon's inner half reaches
+                                                                       // at most this fraction of the ring's on-screen
+                                                                       // radius, so a ring smaller than its glow never
+                                                                       // folds its quads over the centre
+    inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET = 80000;           // Slot-mesh vertices for VERTEX_BUDGET_LANES
+                                                                       // tunnels (D15, interim: issue #53 revisits)
+    inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET_LANES = 8;         // The lane count the budget is for
     inline constexpr double NPC_TUNNEL_END_FADE_SPACINGS = 0.5;        // A ring fades to 0 over this many spacings
                                                                        // before an end ring
-    inline constexpr double NPC_TUNNEL_DEPTH_FADE_START_RADII = 8.0;   // Ring alpha 1 inside this many tunnel radii...
-    inline constexpr double NPC_TUNNEL_DEPTH_FADE_END_RADII = 65536.0; // ...falling log-linearly to the floor here
-    inline constexpr double NPC_TUNNEL_DEPTH_FADE_FLOOR = 0.2;         // Far rings never dim below this
     inline constexpr double NPC_TUNNEL_NEAR_FADE_START_RADII = 0.5;    // A ring this close to the foot point is 0...
     inline constexpr double NPC_TUNNEL_NEAR_FADE_FULL_RADII = 1.5;     // ...and full from here (smoothstep)
     inline constexpr double NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII = 1.5;  // The near fade acts fully while the camera
     inline constexpr double NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII = 3.0;  // is this close to the axis, not at all
                                                                        // from here (smoothstep; outside the tube the
                                                                        // nearest ring stays, user 2026-11-12)
-    inline constexpr double NPC_TUNNEL_DETAIL_FADE_START_RADII = 256.0;    // Dots and chevrons full inside this many
-    inline constexpr double NPC_TUNNEL_DETAIL_FADE_END_RADII = 512.0;  // tunnel radii, gone from here (Q11; the
-                                                                       // chevron far fade below ends them sooner)
     inline constexpr double NPC_TUNNEL_CHEVRON_FADE_START_RADII = 13.0;    // Chevrons also fade like the mock-up:
     inline constexpr double NPC_TUNNEL_CHEVRON_FADE_END_RADII = 30.0;  // full inside, gone from here (D22, smoothstep)
-    inline constexpr double NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS = 10.0; // A repeating ring or dot row fades out while
-                                                                       // its projected radius is below this many ribbon
-                                                                       // half extents (no white vanishing point; the
-                                                                       // end rings are exempt, user 2026-11-13)
     inline constexpr double NPC_TUNNEL_END_MARGIN_RADII = 3.0;         // End ring this many tunnel radii outside the
                                                                        // body's surface (Q10; 3 since #50 D14, so the
                                                                        // 2-radius lane U-turn clears the planet)
-    inline constexpr double NPC_TUNNEL_END_RING_MIN_ALPHA = 0.5;       // End rings' depth fade never goes below this
-                                                                       // (no screen-size fade; only the near fade can
-                                                                       // dim one further, beside the camera)
     inline constexpr int32 NPC_TUNNEL_DOT_ROWS = 8;                    // Guide-dot rows round the tube
     inline constexpr int32 NPC_TUNNEL_DOTS_PER_GAP = 2;                // Dots per row in each ring gap (at the ring
                                                                        // and halfway to the next)
@@ -2764,9 +2780,11 @@ namespace SOL
     inline constexpr int32 NPC_TUNNEL_RING_NEAREST_SLOTS = 2;          // and of the end rings (they fill the view)...
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_NEAR = 48;         // ...of slots NEAREST_SLOTS .. NEAR_SLOTS - 1...
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_MID = 24;          // ...of slots NEAR_SLOTS .. MID_SLOTS - 1...
-    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_FAR = 12;          // ...and beyond (per side; level of detail)
-    inline constexpr int32 NPC_TUNNEL_RING_NEAR_SLOTS = 3;             // (slot 1 reaches about 59 Rt, 2 about 265 Rt,
-    inline constexpr int32 NPC_TUNNEL_RING_MID_SLOTS = 5;              // 4 about 5,300 Rt on the axis)
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_FAR = 12;          // ...of slots MID_SLOTS .. FAR_SLOTS - 1...
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_FARTHEST = 8;      // ...and beyond (per side; level of detail)
+    inline constexpr int32 NPC_TUNNEL_RING_NEAR_SLOTS = 3;             // (slot k is at least k x 12 Rt from the
+    inline constexpr int32 NPC_TUNNEL_RING_MID_SLOTS = 5;              // camera; SDD 52 section 4.3 bands)
+    inline constexpr int32 NPC_TUNNEL_RING_FAR_SLOTS = 10;             // (the FAR band ends, FARTHEST starts, here)
     inline constexpr int32 NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY = 2;  // Above the lanes in the after-motion-blur pass
     inline constexpr double NPC_TUNNEL_LABEL_DOT_MARGIN_PX = 6.0;      // Label box clearance from a dot row (scaled,
                                                                        // plus the row's largest projected dot radius)
@@ -2781,21 +2799,44 @@ namespace SOL
     inline constexpr const TCHAR* NPC_TUNNEL_CVAR = TEXT("sol.NpcTunnel"); // 0 hides the tunnels (A/B profiling)
     static_assert(NPC_TUNNEL_RING_NEAREST_SLOTS < NPC_TUNNEL_RING_NEAR_SLOTS
         && NPC_TUNNEL_RING_NEAR_SLOTS < NPC_TUNNEL_RING_MID_SLOTS
-        && NPC_TUNNEL_RING_MID_SLOTS <= NPC_TUNNEL_RING_SLOTS_PER_SIDE, "the ring level-of-detail bands are ordered");
+        && NPC_TUNNEL_RING_MID_SLOTS < NPC_TUNNEL_RING_FAR_SLOTS
+        && NPC_TUNNEL_RING_FAR_SLOTS <= NPC_TUNNEL_RING_SLOTS_PER_SIDE, "the ring level-of-detail bands are ordered");
+    static_assert(NPC_TUNNEL_RING_SEGMENTS_NEAREST >= NPC_TUNNEL_RING_SEGMENTS_NEAR
+        && NPC_TUNNEL_RING_SEGMENTS_NEAR >= NPC_TUNNEL_RING_SEGMENTS_MID
+        && NPC_TUNNEL_RING_SEGMENTS_MID >= NPC_TUNNEL_RING_SEGMENTS_FAR
+        && NPC_TUNNEL_RING_SEGMENTS_FAR >= NPC_TUNNEL_RING_SEGMENTS_FARTHEST && NPC_TUNNEL_RING_SEGMENTS_FARTHEST > 0,
+        "ring segments fall with the slot");
+    static_assert(NPC_TUNNEL_RING_SLOTS_PER_SIDE * NPC_TUNNEL_RING_BASE_SPACING_RADII
+        >= NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_TUNNEL_RADIUS_FADE_KNEE_PX,
+        "the ring window reaches every ring of at least the knee radius at the reference focal (SDD 52 section 4.3)");
+    static_assert(NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE >= 4
+        && NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE <= NPC_TUNNEL_RING_SLOTS_PER_SIDE
+        && (NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE - 3) * NPC_TUNNEL_RING_BASE_SPACING_RADII
+            >= NPC_TUNNEL_REFERENCE_FOCAL_PX * NPC_TUNNEL_RING_BASE_SPACING_RADII
+                / (2.0 * NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX),
+        "the detail window covers the side-on reach of the gap gate at the reference focal (52a contract)");
+    static_assert(NPC_TUNNEL_RADIUS_FADE_SOLID_PX > NPC_TUNNEL_RADIUS_FADE_KNEE_PX
+        && NPC_TUNNEL_RADIUS_FADE_KNEE_PX > NPC_TUNNEL_RADIUS_FADE_GONE_PX && NPC_TUNNEL_RADIUS_FADE_GONE_PX > 0.0
+        && NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA > 0.0 && NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA < 1.0,
+        "the radius fade's knots are ordered");
+    static_assert(NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION > 0.0 && NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION < 1.0,
+        "a ring ribbon's inner half stops short of the ring's centre");
+    static_assert(NPC_TUNNEL_RING_GAP_FADE_FULL_PX > NPC_TUNNEL_RING_GAP_FADE_GONE_PX
+        && NPC_TUNNEL_RING_GAP_FADE_GONE_PX > 0.0
+        && NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX > NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX
+        && NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX <= NPC_TUNNEL_DETAIL_GAP_PX
+        && NPC_TUNNEL_DETAIL_GAP_PX <= NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX,
+        "the gap fades have a width round their gap");
     static_assert(NPC_TUNNEL_FADE_START_RADII > NPC_TUNNEL_FADE_FULL_RADII && NPC_TUNNEL_FADE_FULL_RADII > 1.0,
         "the tunnel fade band runs inward from the start radii");
     static_assert(NPC_TUNNEL_FADE_START_RADII == NPC_LANE_FADE_NEAR_RADII,
         "the tunnel fades in where the lane line's close-up fade has removed it (D1)");
     static_assert(NPC_TUNNEL_RING_KEEP_EVERY >= 1 && NPC_TUNNEL_CHEVRONS_PER_GAP >= 1,
         "at least every ring is kept and every gap has a chevron");
-    static_assert(NPC_TUNNEL_RING_BASE_SPACING_RADII == NPC_TUNNEL_RING_KEEP_EVERY * 2.0
-        && NPC_TUNNEL_RING_SPACING_PER_DISTANCE == NPC_TUNNEL_RING_KEEP_EVERY * 0.25,
-        "both ring spacing terms are KEEP_EVERY times the first-built lattice's (2 Rt, 0.25)");
-    static_assert(NPC_TUNNEL_RING_BASE_SPACING_RADII > 0.0 && NPC_TUNNEL_RING_SPACING_PER_DISTANCE > 0.0,
-        "the ring warp divides by the base spacing and by rho");
-    static_assert(NPC_TUNNEL_DEPTH_FADE_END_RADII > NPC_TUNNEL_DEPTH_FADE_START_RADII
-        && NPC_TUNNEL_DETAIL_FADE_END_RADII > NPC_TUNNEL_DETAIL_FADE_START_RADII
-        && NPC_TUNNEL_NEAR_FADE_FULL_RADII > NPC_TUNNEL_NEAR_FADE_START_RADII
+    static_assert(NPC_TUNNEL_RING_BASE_SPACING_RADII == NPC_TUNNEL_RING_KEEP_EVERY * 2.0,
+        "the flat ring spacing is KEEP_EVERY times the first-built 2 Rt lattice (SDD 52 D2)");
+    static_assert(NPC_TUNNEL_RING_BASE_SPACING_RADII > 0.0, "the lattice divides by the base spacing");
+    static_assert(NPC_TUNNEL_NEAR_FADE_FULL_RADII > NPC_TUNNEL_NEAR_FADE_START_RADII
         && NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII > NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII
         && NPC_TUNNEL_CHEVRON_FADE_END_RADII > NPC_TUNNEL_CHEVRON_FADE_START_RADII
         && NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII > NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII

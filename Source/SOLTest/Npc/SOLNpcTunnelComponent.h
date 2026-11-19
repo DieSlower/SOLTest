@@ -23,13 +23,15 @@ class USOLNpcHullInstances;
 struct FSOLNpcGroupTable;
 
 /**
- * The NPC lane guidance tunnels (SDD 49 sections 4.2-4.9, issue #49): for every lane within 100 lane radii of the
- * viewpoint a tube of cyan rings, keep-right guide dots, wall chevrons and end rings, laid out by the continuous
- * "accordion" spacing and placed entirely on the GPU by M_SOLNpcTunnel (Shaders/Private/SOLNpcTunnel.ush) from a
- * small per-lane texture. It never ticks: ASOLNpcVisuals::UpdateLanes calls UpdateTunnels once per redraw. Owns a slot
- * mesh built once (one fixed-bounds ISM instance per lane in range, rewritten only when that set changes), the tunnel
- * material, the tunnel texture and its upload ring (whose fade is also read by the lane and point materials, Q5), the
- * per-lane ring phases, and publishes the wall labels on the HUD event bus. Per frame O(lanes), no allocation.
+ * The NPC lane guidance tunnels (SDD 49 sections 4.2-4.9, issue #49; far field SDD 52, issue #52): for every drawable
+ * lane, at every distance in the flight view, a tube of cyan rings, keep-right guide dots, wall chevrons and end rings
+ * on a flat 12 tunnel-radii lattice, a window of it placed entirely on the GPU by M_SOLNpcTunnel
+ * (Shaders/Private/SOLNpcTunnel.ush) from a small per-lane texture and faded by on-screen size and ring gap. It never
+ * ticks: ASOLNpcVisuals::UpdateLanes calls UpdateTunnels once per redraw. Owns a slot mesh built once (one fixed-bounds
+ * ISM instance per drawn lane, rewritten only when that set changes), the tunnel material, the tunnel texture and its
+ * upload ring (row 1 .w carries each lane's label strength, the old 100 -> 50 lane radii band, also read by the lane
+ * and point materials, Q5 / SDD 52 D6-D7), the per-lane ring phases, and publishes the wall labels (by label strength)
+ * on the HUD event bus. Per frame O(lanes), no allocation.
  */
 UCLASS()
 class SOLTEST_API USOLNpcTunnelComponent : public USceneComponent
@@ -60,7 +62,7 @@ public:
     void SetGlowScale(float glowScale);
 
     // Verification runs: the tunnels are shown or hidden as given, the player's settings ignored; bForceAllLanes sets
-    // every lane's fade to 1 (the all-lanes budget case, D14)
+    // every lane's label strength to 1 (labels and lane-ship points on every lane: the all-lanes budget case, D14)
     void SetVerificationOverride(bool bShown, bool bForceAllLanes);
 
     // Returns whether a tunnel drew last update
@@ -69,7 +71,7 @@ public:
     // Returns whether the tunnels were shown last update (the shown rule, before any fade; verification)
     bool AreTunnelsShown() const { return mAreTunnelsShown; }
 
-    // Returns the lanes with an instance (the lanes with a fade above 0, index order; verification)
+    // Returns the lanes with an instance (the drawn lanes, index order; verification)
     TConstArrayView<int32> GetInstanceLanes() const { return mInstanceLanes; }
 
     // Returns the shown lanes' renderer feed of the last update (verification)
@@ -126,15 +128,13 @@ private:
     TArray<FVector4f> mTexels[3];                       // Ring of tunnel-texture upload buffers (render thread lag)
     FUpdateTextureRegion2D mRegions[3];                 // Upload regions, one per ring slot
     int32 mUploadRing = 0;
-    TArray<FSOLNpcTunnelLaneData> mShownLanes;          // This update's lanes with a fade above 0 (reserved once)
+    TArray<FSOLNpcTunnelLaneData> mShownLanes;          // This update's drawn lanes (reserved once)
     TArray<int32> mInstanceLanes;                       // Lanes with an instance (reserved once)
     TArray<FTransform> mIdentityTransforms;             // Scratch for WriteInstances (reserved once)
     FSOLNpcTunnelFoot mFeet[LANE_CAPACITY];             // This update's foot per lane
-    double mFades[LANE_CAPACITY] = {};                  // This update's effective fade per lane
+    double mFades[LANE_CAPACITY] = {};                  // This update's label strength per lane (old band, D7)
+    double mDrawFades[LANE_CAPACITY] = {};              // This update's draw fade per lane (TunnelDrawFade)
     double mDistanceRadii[LANE_CAPACITY] = {};          // This update's distance in lane radii per lane
-    double mPhases[LANE_CAPACITY] = {};                 // Ring phase per lane (held while in range)
-    double mLastFootArcs[LANE_CAPACITY] = {};           // Foot arc of the last update per lane
-    bool mIsInRange[LANE_CAPACITY] = {};                // Fade above 0 last update per lane
     int32 mLabelSigns[LANE_CAPACITY] = {};              // Label side of the foot point per lane (0 = none yet)
     int32 mSlotMeshVertexCount = 0;
     float mGlowScale = SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL;
@@ -144,6 +144,6 @@ private:
     bool mHasLabels = false;                            // A label snapshot is published
     bool mIsOverride = false;                           // Verification: the player's settings are not read
     bool mIsOverrideShown = true;                       // ...and the tunnels are shown as this says
-    bool mIsForceAllLanes = false;                      // ...with every lane's fade forced to 1
+    bool mIsForceAllLanes = false;                      // ...with every lane's label strength forced to 1
     FSOLHudLaneTunnelLabels mLabels;                    // Scratch label snapshot (fixed capacity)
 };

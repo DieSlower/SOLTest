@@ -686,7 +686,8 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
         : Settings != nullptr && Settings->IsOverlayShown(SOLOverlay::EOverlay::Lanes);
     mAreLanesShown = SOLNpcLane::AreLanesShown(bHasSettings, bRowShown, CVarSOLNpcLanes.GetValueOnGameThread() != 0);
 
-    // The far points' crossfade (D9, D10): only while lines can be drawn, so a lane is never left empty
+    // The far points' crossfade (D9, D10): while the lanes are shown; in the flight view the line is gone (SDD 52 D1)
+    // and the crossfade keeps far lane ships hidden, the rings standing for the lane (D6)
     const bool bCrossfade = mAreLanesShown && LaneMaterial != nullptr && mLaneMeshVertexCount > 0;
     if (bCrossfade != mIsPointCrossfadeOn || !mHasPushedPointCrossfade)
     {
@@ -695,22 +696,24 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
         FarMaterial->SetVectorParameterValue(PARAM_POINT_LANES, SOLNpcLane::PointLaneParams(bCrossfade));
     }
 
-    // The component: shown with a drawn lane
-    const bool bDraw = bCrossfade && SOLNpcLane::ShouldDrawLaneLines(mAreLanesShown, mLaneFrame);
+    // The component: shown with a drawn lane, on the jump map only (SDD 52 D1)
+    const APlayerController* controller = GetWorld()->GetFirstPlayerController();
+    const ASOLShipPawn* pawn = controller != nullptr ? Cast<ASOLShipPawn>(controller->GetPawn()) : nullptr;
+    const bool bMapOpen = pawn != nullptr && pawn->IsMapOpen();
+    const bool bDraw = bCrossfade && SOLNpcLane::ShouldDrawLaneLines(mAreLanesShown, bMapOpen, mLaneFrame);
     if (bDraw != mAreLaneLinesDrawn)
     {
         mAreLaneLinesDrawn = bDraw;
         LaneLines->SetVisibility(bDraw);
     }
 
-    // The tunnels near the viewpoint (SDD 49): hidden on the jump map (Q6), oriented by the camera for their labels
-    const APlayerController* controller = GetWorld()->GetFirstPlayerController();
-    const ASOLShipPawn* pawn = controller != nullptr ? Cast<ASOLShipPawn>(controller->GetPawn()) : nullptr;
+    // The tunnels at every distance in the flight view (SDD 49, SDD 52 D1): hidden on the jump map (Q6), oriented by
+    // the camera for their labels
     const FVector forwardUnreal = controller != nullptr && controller->PlayerCameraManager != nullptr
         ? controller->PlayerCameraManager->GetCameraRotation().Vector() : FVector::ForwardVector;
     Tunnels->UpdateTunnels(mLaneFrame, Npcs->GetGroups(), Anchor->GetViewpointM(),
-        FVector3d(forwardUnreal.X, -forwardUnreal.Y, forwardUnreal.Z), mAreLanesShown,
-        pawn != nullptr && pawn->IsMapOpen(), frameParams, GFrameCounter);
+        FVector3d(forwardUnreal.X, -forwardUnreal.Y, forwardUnreal.Z), mAreLanesShown, bMapOpen, frameParams,
+        GFrameCounter);
 
     // The orbit lines keep the shared occluders current while lane lines or tunnels draw (SDD 38 D24, SDD 49 D12)
     const bool bOverlayDrawn = SOLNpcTunnel::IsLaneOverlayDrawn(bDraw, Tunnels->AreTunnelsDrawn());

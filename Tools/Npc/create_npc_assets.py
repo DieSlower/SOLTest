@@ -36,7 +36,9 @@
 #       SOL::NpcLaneMaterialParams (set by ASOLNpcVisuals; their defaults here are read from SOLConstants.h).
 #       Issue #49 (SDD 49 Q5): the pixel stage multiplies the line's close-up fade by 1 - F, F = the lane's tunnel fade
 #       from the texture parameter NpcTunnelTex (row 1 .w, the column of the lane); the point material's lane branch
-#       does the same, so the line and its ships' points still sum to 1.
+#       does the same, so the line and its ships' points still sum to 1. Since issue #52 (SDD 52 D6, D7) row 1 .w is
+#       the lane's label strength (the old 100 -> 50 lane radii band), the tunnel's own draw fade is row 3 .z, and the
+#       lane line draws only on the jump map, so far lane ships stay hidden in flight.
 #   /Game/SOL/Npc/M_SOLNpcTunnel
 #       Issue #49 (SDD 49 section 4.7): the lane guidance tunnels. Unlit, additive, two-sided, depth test off, after
 #       motion blur, used with instanced static meshes. Drawn on USOLNpcTunnelComponent's slot mesh (vertices at zero,
@@ -44,6 +46,7 @@
 #       quads, chevron quads and end rings from NpcTunnelTex, the pixel stage draws the glow profile or the chevron
 #       shape and the shared occlusion (Shaders/Private/SOLNpcTunnel.ush, the mirror of SOLNpcTunnelMath.cpp). It reads
 #       the orbit lines' collection (OrbitLineStyle2, OrbitLineOccluder0..7) and SOL::NpcTunnelMaterialParams.
+#       Issue #52 (SDD 52 D16): the vertex node gained the Layout4 input (rebuilt once, user-approved).
 # Parameter names must match SOLNpcVisuals.cpp, SOL::NpcLaneMaterialParams and SOL::NpcTunnelMaterialParams; asset
 # paths SOL::Paths::NPC_POINTS_MATERIAL / NPC_HULL_MATERIAL / NPC_LANES_MATERIAL / NPC_TUNNEL_MATERIAL. The lane and
 # tunnel materials and the point material's vertex node include SOLNpcLane.ush / SOLNpcTunnel.ush (the vertex node
@@ -51,7 +54,9 @@
 # there needs no rebuild; a graph or parameter change does.
 # Run (editor closed):
 #   UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/Npc/create_npc_assets.py"
-#       -unattended [-SOLRebuild]
+#       -unattended [-SOLRebuild] [-SOLOnly=M_SOLNpcTunnel]
+# -SOLOnly=<name>[,<name>] limits the run to those materials (the others are left untouched, so a rebuild of one
+# material does not rewrite the rest).
 import os
 import re
 
@@ -68,7 +73,10 @@ LANE_INCLUDE = "/Project/SOLTest/Private/SOLNpcLane.ush"   # SOL::SHADER_VIRTUAL
 TRAFFIC_INCLUDE = "/Project/SOLTest/Private/SOLNpcTraffic.ush"
 CONSTANTS_FILE = os.path.join(unreal.Paths.project_dir(), "Source", "SOLTest", "SOLConstants.h")
 DEFAULT_TEXTURE_NAME = "T_SOLNpcFloatDefault"
-REBUILD = ("-solrebuild" in unreal.SystemLibrary.get_command_line().lower()) or bool(globals().get("SOL_REBUILD"))
+COMMAND_LINE = unreal.SystemLibrary.get_command_line()
+REBUILD = ("-solrebuild" in COMMAND_LINE.lower()) or bool(globals().get("SOL_REBUILD"))
+ONLY_MATCH = re.search(r"-SOLOnly=([A-Za-z0-9_,]+)", COMMAND_LINE, re.IGNORECASE)
+ONLY = {name.lower() for name in ONLY_MATCH.group(1).split(",")} if ONLY_MATCH else None
 
 MEL = unreal.MaterialEditingLibrary
 EAL = unreal.EditorAssetLibrary
@@ -220,8 +228,9 @@ float4 interp0;
 float4 interp1;
 const float3 target = SOLNT_Vertex(float3(UV0.xy, 0.0), UV1.xy, UV2.xy, t0, t1, t2, t3,
     WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Shape, Style2, Style3, Layout0, Layout1,
-    Layout2, Layout3, Glow0, ResolvedView.ViewToTranslatedWorld[0].xyz, ResolvedView.ViewToTranslatedWorld[1].xyz,
-    ResolvedView.ViewForward, ResolvedView.ViewToClip[0][0], ResolvedView.ViewSizeAndInvSize.xy, interp0, interp1);
+    Layout2, Layout3, Layout4, Glow0, ResolvedView.ViewToTranslatedWorld[0].xyz,
+    ResolvedView.ViewToTranslatedWorld[1].xyz, ResolvedView.ViewForward, ResolvedView.ViewToClip[0][0],
+    ResolvedView.ViewSizeAndInvSize.xy, interp0, interp1);
 Interp0 = interp0;
 Interp1 = interp1;
 return target;"""
@@ -307,9 +316,13 @@ def clear_material(material):
             MEL.delete_material_expression(material, expression)
 
 
-# Returns the material at a path for (re)building, or None when it exists and no rebuild is requested
+# Returns the material at a path for (re)building, or None when it exists and no rebuild is requested, or when
+# -SOLOnly names other materials
 def material_for_build(name):
     path = NPC_DIR + "/" + name
+    if ONLY is not None and name.lower() not in ONLY:
+        unreal.log("create_npc_assets: %s skipped (not in -SOLOnly)" % path)
+        return None
     if EAL.does_asset_exist(path):
         if not REBUILD:
             unreal.log("create_npc_assets: %s exists (pass -SOLRebuild to rebuild)" % path)
@@ -506,7 +519,10 @@ def build_lanes(material, default_texture):
 
 
 # Returns the tunnel material's vector parameters and their defaults (SOL::NpcTunnelMaterialParams; the component
-# writes every one at BeginPlay or per frame, the colours included)
+# writes every one at BeginPlay or per frame, the colours included). Since issue #52 (SDD 52 D16) the far-field
+# constants ride the components the #49 accordion and fades freed (Layout0.y, Style3.x, Shape.w, Layout1.yzw,
+# Layout3.xy) and the new Layout4 (end-ring minimum drawn radius, ribbon inner fraction; added by the rebuild the user
+# approved), all set at runtime; these defaults name the same constants, so the asset matches the C++
 def tunnel_vector_defaults():
     return [
         ("NpcTunnelFrame", unreal.LinearColor(0.0, 0.0, 0.0, constant("DEFAULT_MAX_RENDER_DISTANCE_CM"))),
@@ -517,25 +533,27 @@ def tunnel_vector_defaults():
             constant("NPC_LANE_GLOW_PAD_PX"), constant("NPC_TUNNEL_DOT_RADIUS_SCALE"))),
         ("NpcTunnelShape", unreal.LinearColor(constant("NPC_TUNNEL_CHEVRON_RADIUS_SCALE"),
             constant("NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII"), constant("NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII"),
-            constant("NPC_TUNNEL_END_RING_MIN_ALPHA"))),
+            constant("NPC_TUNNEL_RADIUS_FADE_GONE_PX"))),
         ("NpcTunnelStyle2", unreal.LinearColor(constant("NPC_TUNNEL_CHEVRON_NOTCH_FRACTION"),
             constant("NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII"), constant("NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII"),
             constant("NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII"))),
-        ("NpcTunnelStyle3", unreal.LinearColor(constant("NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS"),
+        ("NpcTunnelStyle3", unreal.LinearColor(constant("NPC_TUNNEL_RING_GAP_FADE_GONE_PX"),
             constant("NPC_TUNNEL_CHEVRON_FADE_START_RADII"), constant("NPC_TUNNEL_CHEVRON_FADE_END_RADII"),
             constant("NPC_TUNNEL_CHEVRONS_PER_GAP"))),
         ("NpcTunnelLayout0", unreal.LinearColor(constant("NPC_TUNNEL_RING_BASE_SPACING_RADII"),
-            constant("NPC_TUNNEL_RING_SPACING_PER_DISTANCE"), constant("NPC_TUNNEL_RING_SLOTS_PER_SIDE"),
+            constant("NPC_TUNNEL_RING_GAP_FADE_FULL_PX"), constant("NPC_TUNNEL_RING_SLOTS_PER_SIDE"),
             constant("NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE"))),
         ("NpcTunnelLayout1", unreal.LinearColor(constant("NPC_TUNNEL_END_FADE_SPACINGS"),
-            constant("NPC_TUNNEL_DEPTH_FADE_START_RADII"), constant("NPC_TUNNEL_DEPTH_FADE_END_RADII"),
-            constant("NPC_TUNNEL_DEPTH_FADE_FLOOR"))),
+            constant("NPC_TUNNEL_RADIUS_FADE_SOLID_PX"), constant("NPC_TUNNEL_RADIUS_FADE_KNEE_PX"),
+            constant("NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA"))),
         ("NpcTunnelLayout2", unreal.LinearColor(constant("NPC_TUNNEL_NEAR_FADE_START_RADII"),
             constant("NPC_TUNNEL_NEAR_FADE_FULL_RADII"), constant("NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII"),
             constant("NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII"))),
-        ("NpcTunnelLayout3", unreal.LinearColor(constant("NPC_TUNNEL_DETAIL_FADE_START_RADII"),
-            constant("NPC_TUNNEL_DETAIL_FADE_END_RADII"), constant("NPC_TUNNEL_DOTS_PER_GAP"),
+        ("NpcTunnelLayout3", unreal.LinearColor(constant("NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX"),
+            constant("NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX"), constant("NPC_TUNNEL_DOTS_PER_GAP"),
             constant("NPC_TUNNEL_DOT_ROWS"))),
+        ("NpcTunnelLayout4", unreal.LinearColor(constant("NPC_TUNNEL_END_RING_MIN_DRAWN_PX"),
+            constant("NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION"), 0.0, 0.0)),
         ("NpcTunnelGlow0", unreal.LinearColor(constant("HUD_GLOW_CORE_HALF_PX"), constant("HUD_GLOW_CORE_FALLOFF"),
             constant("HUD_GLOW_CORE_FALLOFF_MAX"), constant("HUD_GLOW_HALO_WEIGHT"))),
         ("NpcTunnelGlow1", unreal.LinearColor(constant("HUD_GLOW_HALO_SCALE"), constant("HUD_GLOW_HALO_POWER"),
@@ -590,7 +608,7 @@ def build_tunnel(material, default_texture):
     vertex_pins = [("Frame", "NpcTunnelFrame"), ("Style0", "NpcTunnelStyle0"), ("Style1", "NpcTunnelStyle1"),
                    ("Shape", "NpcTunnelShape"), ("Style2", "NpcTunnelStyle2"), ("Style3", "NpcTunnelStyle3"),
                    ("Layout0", "NpcTunnelLayout0"), ("Layout1", "NpcTunnelLayout1"), ("Layout2", "NpcTunnelLayout2"),
-                   ("Layout3", "NpcTunnelLayout3"), ("Glow0", "NpcTunnelGlow0")]
+                   ("Layout3", "NpcTunnelLayout3"), ("Layout4", "NpcTunnelLayout4"), ("Glow0", "NpcTunnelGlow0")]
     vertex = add_custom(material, -1100, -300, "SOLNpcTunnelVertex", TUNNEL_VERTEX_HLSL,
         unreal.CustomMaterialOutputType.CMOT_FLOAT3,
         ["Lane", "UV0", "UV1", "UV2", "TunnelTex"] + [pin for pin, _ in vertex_pins])

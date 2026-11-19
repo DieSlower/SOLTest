@@ -349,6 +349,17 @@ bool FSOLNpcLaneMathShipPointAlphaTest::RunTest(const FString& /*parameters*/)
         0.0, NPCLANE_TOL);
     TestEqual(TEXT("not shown, bad radius: 1"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, false, 0.0), 1.0,
         NPCLANE_TOL);
+
+    // SDD 52 D6 (case 12): in the flight view a lane far from the camera has label strength 0 (row 1 .w, the old
+    // 100 -> 50 band), so its ships beyond the close-up band (NPC_LANE_FADE_FAR_RADII) are hidden; the rings stand
+    // for the lane
+    for (const double inRadii : { SOL::NPC_LANE_FADE_FAR_RADII, 1.0e3, 1.0e6 })
+    {
+        TestEqual(FString::Printf(TEXT("D6: far lane (strength 0), ship at %.0f R: hidden"), inRadii),
+            LaneShipPointAlpha(inRadii * radiusM, radiusM, true, 0.0), 0.0, NPCLANE_TOL);
+    }
+    TestEqual(TEXT("D6: a ship close to the camera still shows"), LaneShipPointAlpha(10.0 * radiusM, radiusM, true,
+        0.0), 1.0, NPCLANE_TOL);
     return true;
 }
 
@@ -1991,29 +2002,35 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDrawLaneLinesTest, "SOLTest.NpcL
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 26 (38b, section 4.8): ShouldDrawLaneLines(bLanesShown, frame), the lane component's visibility, is true only
-// while the lanes are shown and at least one lane of the frame is drawn; with no population (an empty frame) nothing
-// is drawn
+// Case 26 (38b, section 4.8; SDD 52 D1 and case 12): ShouldDrawLaneLines(bLanesShown, bMapOpen, frame), the lane
+// component's visibility, is true only while the lanes are shown, the jump map is open (the flight view draws the
+// tunnels instead: the line's flight alpha is 0) and at least one lane of the frame is drawn; with no population (an
+// empty frame) nothing is drawn
 bool FSOLNpcLaneMathDrawLaneLinesTest::RunTest(const FString& /*parameters*/)
 {
     using SOLNpcLane::ShouldDrawLaneLines;
 
     const FSOLNpcLaneFrame empty{};
-    TestFalse(TEXT("no population: hidden"), ShouldDrawLaneLines(true, empty));
+    TestFalse(TEXT("no population: hidden"), ShouldDrawLaneLines(true, true, empty));
 
     // Lanes exist but none is drawn: one with no ships, one with an unresolved body
     FSOLNpcLaneFrame noneDrawn;
     noneDrawn.Lanes = { NpcLaneFeedEntry(2.0e5, 0), NpcLaneFeedEntry(1.0e7, 5000, false) };
     TestFalse(TEXT("precondition: lane 0 not drawn"), noneDrawn.Lanes[0].bDrawn);
     TestFalse(TEXT("precondition: lane 1 not drawn"), noneDrawn.Lanes[1].bDrawn);
-    TestFalse(TEXT("no drawn lane: hidden"), ShouldDrawLaneLines(true, noneDrawn));
+    TestFalse(TEXT("no drawn lane: hidden"), ShouldDrawLaneLines(true, true, noneDrawn));
 
     // One drawn lane (a single ship is enough) makes the component visible while the lanes are shown
     FSOLNpcLaneFrame oneDrawn = noneDrawn;
     oneDrawn.Lanes.Add(NpcLaneFeedEntry(1.0e7, 1));
-    TestTrue(TEXT("one drawn lane, shown: visible"), ShouldDrawLaneLines(true, oneDrawn));
-    TestFalse(TEXT("one drawn lane, lanes hidden: hidden"), ShouldDrawLaneLines(false, oneDrawn));
-    TestFalse(TEXT("empty, lanes hidden: hidden"), ShouldDrawLaneLines(false, empty));
+    TestTrue(TEXT("one drawn lane, shown, map open: visible"), ShouldDrawLaneLines(true, true, oneDrawn));
+    TestFalse(TEXT("one drawn lane, lanes hidden: hidden"), ShouldDrawLaneLines(false, true, oneDrawn));
+    TestFalse(TEXT("empty, lanes hidden: hidden"), ShouldDrawLaneLines(false, true, empty));
+
+    // SDD 52 D1: the flight view (map closed) never draws the lane lines, whatever else holds
+    TestFalse(TEXT("flight view, one drawn lane, shown: hidden (D1)"), ShouldDrawLaneLines(true, false, oneDrawn));
+    TestFalse(TEXT("flight view, lanes hidden: hidden"), ShouldDrawLaneLines(false, false, oneDrawn));
+    TestFalse(TEXT("flight view, empty: hidden"), ShouldDrawLaneLines(true, false, empty));
     return true;
 }
 

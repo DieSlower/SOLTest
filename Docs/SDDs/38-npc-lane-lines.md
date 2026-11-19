@@ -56,8 +56,14 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
   the tunnel texture `NpcTunnelTex`, [SDD 49](49-lane-guidance-tunnel.md) section 4.2): line alpha
   `LaneLineFade x (1 - F)`, lane-ship point alpha `1 - LaneLineFade x (1 - F)`; the sum is still 1 at every lane
   point, and `F` = 0 (no tunnel, Lanes off, the map, `sol.NpcTunnel 0`) gives exactly the values above.
+  *Amended by SDD 52 (issue #52, part 52b), D1 / D6 / D7:* in the flight view the dashed line is gone (it draws only on
+  the jump map) and the tunnel draws at every distance, so the "a lane is never empty" crossfade is dropped there. The
+  tunnel texture's row 1 `.w` now carries the **label strength** (the old 100 -> 50 lane radii band, still read by the
+  lane-line and point materials), not the draw fade. In flight the point alpha is 1 - LaneLineFade(d) x (1 - strength) per ship at distance d from the camera, so with strength 0 (the camera beyond 100 lane radii of the lane) a lane ship shows inside 100 lane radii of the camera, fades out between 100 and 400 lane radii (`NPC_LANE_FADE_NEAR_RADII` / `NPC_LANE_FADE_FAR_RADII`) and is hidden beyond; a lane with strength above 0 (the camera within the old band) draws every one of its ships at least at that strength at any distance, as since #49. On the
+  map the line and its #38 fade are unchanged (`F` = 0 there).
 - **D10 (was Q4): Lanes off** (the row unchecked) restores the lane ship points exactly as today (every tunnel fade is
-  0 then too, so #49 does not change this).
+  0 then too, so #49 does not change this). *Amended by SDD 52 (issue #52): unchanged for Lanes off. With Lanes on, the
+  flight view no longer shows far lane ships (SDD 52 D6, see D9 above).*
 - **D11 (was Q5): The master O turns Lanes off too,** like every row.
 - **D12 (was Q6): Fade:** line full beyond 400 lane radii, gone inside 100, linear in log distance between.
 - **D13 (was Q7): Ship counts** by a histogram once per population, folded into the existing rail-fill `ParallelFor`;
@@ -130,7 +136,8 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
 - **D17 (was Q11): Overlay row** label "Lanes" (id `"Lanes"`), top level, between "Ships on Radar" and "Darkening"
   (Darkening moves to index 15 and stays last).
 - **D18 (was Q12): Map:** the lanes show on the hologram map too, under the route overlay, following the same row
-  (section 5).
+  (section 5). *Amended by SDD 52 (issue #52) D1: the map keeps the lines, the flight view does not. The lane line
+  component draws only while the jump map is open (`SOLNpcLane::ShouldDrawLaneLines(..., bMapOpen)`).*
 - **D19 (was Q13): Wording** as in section 7; no Help glossary entry.
 - **D20 (was Q14): Tooling:** a new `-SOLSmokeNpcLanes` flag and a developer cvar `sol.NpcLanes 0|1` (default 1),
   both documented in `ARCHITECTURE.md`.
@@ -238,6 +245,13 @@ that distance; the close-up part, where float error would matter, is faded out (
   (2e6 m), so every lane ship close enough to be CPU-simulated already shows as a point or hull, as today.
 - **Lanes off** (the row unchecked or the master O off): the line is not drawn and every lane ship point draws exactly
   as today (D10).
+
+*Amended by SDD 52 (issue #52, part 52b):* the close-up fade and the line / point complement above now apply to the
+**map view only**. In the flight view there is no lane line and far lane ships are hidden (SDD 52 D6): the point alpha is
+`1 - LaneLineFade(d) x (1 - strength)`, `d` the ship's own distance from the camera and `strength` the lane's label
+strength (1 near the lane on the old 100 -> 50 lane radii band, 0 far from it). With strength 0 a lane ship shows inside
+100 lane radii of the camera, fades out between 100 and 400 and is hidden beyond; with strength above 0 every ship of
+that lane draws at least at that strength.
 
 ### 4.6 Dashes and their flow (D2, D15)
 
@@ -891,3 +905,5 @@ separate occluder set for the lanes (D24).
   angle once (two `atan2` per pixel); re-profiled at 1080p (section 4.13). No schema change.
 - 2026-11-12: the user confirmed amendment D's angle-based dash spacing (the dashes spaced by angle at the camera);
   the "pending user confirmation" note in D15 now reads confirmed. No code or schema change.
+- 2026-11-18: amended in place by SDD 52 (issue #52, part 52b): D9 / D10 / section 4.5 (no flight-view line, far lane
+  ships hidden), D18 (map only lines). See the "Amended by SDD 52" notes.

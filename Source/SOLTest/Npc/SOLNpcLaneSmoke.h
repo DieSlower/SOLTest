@@ -106,8 +106,9 @@ private:
     // Sets the pending HUD glow (never applied); nothing without a settings subsystem
     void SetPendingGlow(float hudGlow) const;
 
-    // Checks the lane component, the points' crossfade flag and the pushed glow against the expected lanes state
-    void CheckLaneState(const TCHAR* label, bool bExpectShown, float expectedHudGlow);
+    // Checks the lane component (drawn on the map only, SDD 52 D1), the points' crossfade flag and the pushed glow
+    // against the expected lanes state
+    void CheckLaneState(const TCHAR* label, bool bExpectShown, float expectedHudGlow, bool bMapOpen);
 
     // Checks every lane's group-texel .w values against a fresh histogram and BuildLaneFrame
     void CheckGroupTexels();

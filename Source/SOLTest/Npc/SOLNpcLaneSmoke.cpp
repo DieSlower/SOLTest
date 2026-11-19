@@ -212,7 +212,7 @@ bool FSOLNpcLaneSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
     if (mPhase == ESOLLanePhase::WaitPopulation)
     {
         const bool bReady = mNpcs->GetRails().Num() >= LANESMOKE_SHIPS && mVisuals->GetLaneMeshVertexCount() > 0
-            && mVisuals->IsLaneComponentVisible();
+            && SOLNpcLane::ShouldDrawLaneLines(true, true, mVisuals->GetLaneFrame());
         if (!bReady && mPhaseTimeS < LANESMOKE_WAIT_TIMEOUT_S)
         {
             return false;
@@ -422,18 +422,22 @@ void FSOLNpcLaneSmoke::ExitPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
     case ESOLLanePhase::VariantSet:
     {
         const FSOLLaneSmokeVariant& variant = LANESMOKE_VARIANTS[mVariant];
-        CheckLaneState(*FString::Printf(TEXT("b-%s-%s"), GetViewName(), variant.Name), variant.bShown, variant.HudGlow);
+        CheckLaneState(*FString::Printf(TEXT("b-%s-%s"), GetViewName(), variant.Name), variant.bShown, variant.HudGlow,
+            pawn.IsMapOpen());
         if (!mIsTexelChecked)
         {
             CheckGroupTexels();
             mIsTexelChecked = true;
 
-            // D24: the orbit lines are off, so only the lanes keep the occluders being written
+            // D24 with SDD 52 D1: the orbit lines are off and the tunnels hidden, and the lane lines draw on the map
+            // only, so nothing of the lanes writes the occluders in the flight view (the map check sees the writes)
             const int32 writes = mOrbitLines.IsValid() ? mOrbitLines->GetLaneOnlyOccluderWrites() : 0;
             Check(TEXT("c-occluders"), mOrbitLines.IsValid() && !mOrbitLines->AreLinesEnabled()
-                && writes > mOccluderWritesAtStart, FString::Printf(TEXT("orbit lines %s, lane-only occluder writes "
-                "%d -> %d"), mOrbitLines.IsValid() && mOrbitLines->AreLinesEnabled() ? TEXT("on") : TEXT("off"),
-                mOccluderWritesAtStart, writes));
+                && writes == mOccluderWritesAtStart && !mVisuals->IsLaneComponentVisible(), FString::Printf(
+                TEXT("orbit lines %s, lane component %s in flight, lane-only occluder writes %d -> %d (expected none)"),
+                mOrbitLines.IsValid() && mOrbitLines->AreLinesEnabled() ? TEXT("on") : TEXT("off"),
+                mVisuals->IsLaneComponentVisible() ? TEXT("visible") : TEXT("hidden"), mOccluderWritesAtStart,
+                writes));
         }
         break;
     }
@@ -492,21 +496,26 @@ void FSOLNpcLaneSmoke::ExitPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
         TakeShot(FString::Printf(TEXT("%s_cvar_off"), GetViewName()));
         break;
     case ESOLLanePhase::CvarOn:
-        CheckLaneState(TEXT("f-cvar-on"), true, SOL::Settings::HUD_GLOW_DEFAULT);
+        CheckLaneState(TEXT("f-cvar-on"), true, SOL::Settings::HUD_GLOW_DEFAULT, pawn.IsMapOpen());
         break;
     case ESOLLanePhase::MapOpen:
         TakeShot(TEXT("map"));
         break;
     case ESOLLanePhase::MapShotWait:
-        Check(TEXT("g-map-lanes"), pawn.IsMapOpen() && mVisuals->IsLaneComponentVisible(), FString::Printf(
-            TEXT("map %s, lane component %s (D18)"), pawn.IsMapOpen() ? TEXT("open") : TEXT("closed"),
-            mVisuals->IsLaneComponentVisible() ? TEXT("visible") : TEXT("hidden")));
+    {
+        // D18 with SDD 52 D1: the map keeps the lane lines, and they keep the shared occluders written
+        const int32 writes = mOrbitLines.IsValid() ? mOrbitLines->GetLaneOnlyOccluderWrites() : 0;
+        Check(TEXT("g-map-lanes"), pawn.IsMapOpen() && mVisuals->IsLaneComponentVisible()
+            && writes > mOccluderWritesAtStart, FString::Printf(TEXT("map %s, lane component %s (D18), lane-only "
+            "occluder writes %d -> %d"), pawn.IsMapOpen() ? TEXT("open") : TEXT("closed"),
+            mVisuals->IsLaneComponentVisible() ? TEXT("visible") : TEXT("hidden"), mOccluderWritesAtStart, writes));
         break;
+    }
     case ESOLLanePhase::GlowRevert:
     {
         const float saved = mSettings.IsValid() ? mSettings->GetSavedValues().HudGlow
             : SOL::Settings::HUD_GLOW_DEFAULT;
-        CheckLaneState(TEXT("h-glow-revert"), true, saved);
+        CheckLaneState(TEXT("h-glow-revert"), true, saved, pawn.IsMapOpen());
         Finish(pawn);
         break;
     }
@@ -722,18 +731,19 @@ void FSOLNpcLaneSmoke::SetPendingGlow(const float hudGlow) const
 
 //////////////////////////////////////////////////////////////////////////
 // Checks the lane component, the points' crossfade flag and the pushed glow against the expected lanes state
-void FSOLNpcLaneSmoke::CheckLaneState(const TCHAR* label, const bool bExpectShown, const float expectedHudGlow)
+void FSOLNpcLaneSmoke::CheckLaneState(const TCHAR* label, const bool bExpectShown, const float expectedHudGlow,
+    const bool bMapOpen)
 {
     float glow = -1.0f;
     FLinearColor pointParams = FLinearColor::Black;
     const bool bParams = mVisuals->GetPushedLaneParams(glow, pointParams);
     const bool bVisible = mVisuals->IsLaneComponentVisible();
-    const bool bExpectVisible = SOLNpcLane::ShouldDrawLaneLines(bExpectShown, mVisuals->GetLaneFrame());
+    const bool bExpectVisible = SOLNpcLane::ShouldDrawLaneLines(bExpectShown, bMapOpen, mVisuals->GetLaneFrame());
     const float expectedGlow = SOLHudShapeMath::HudGlowScale(mSettings.IsValid() ? expectedHudGlow
         : SOL::Settings::HUD_GLOW_DEFAULT);
 
-    // The glow is pushed only while the lines draw, so it is checked only then
-    const bool bGlowOk = !bExpectShown || FMath::Abs(glow - expectedGlow) <= LANESMOKE_GLOW_TOLERANCE;
+    // The glow is pushed only while the lines draw (on the map, SDD 52 D1), so it is checked only then
+    const bool bGlowOk = !bExpectVisible || FMath::Abs(glow - expectedGlow) <= LANESMOKE_GLOW_TOLERANCE;
     const float expectedFlag = bExpectShown ? 1.0f : 0.0f;
     Check(label, bParams && mVisuals->AreLanesShown() == bExpectShown && bVisible == bExpectVisible
         && pointParams.R == expectedFlag && bGlowOk, FString::Printf(TEXT("lanes shown %d (expected %d), component "

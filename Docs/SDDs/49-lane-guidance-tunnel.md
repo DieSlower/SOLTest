@@ -34,6 +34,10 @@ it.
   inside 100 lane radii) has faded it out. It triggers for **every lane near the player, not only a targeted lane**.
   *Rationale:* the two fades meet at 100 lane radii, so a lane is never without a cue (dashes far, ship points between,
   tunnel near), and the #38 fade band is reused rather than re-tuned.
+  *Amended by SDD 52 (issue #52, D1 / D7):* the tunnel is no longer limited to the 100 -> 50 band. In the flight view
+  it draws for every drawable lane at every distance (draw fade 1) and the dashed line is gone there. The 100 -> 50 lane
+  radii band survives only as the separate **label strength** (`TunnelFade`) that gates the wall labels, the merge
+  readout and the lane-ship points.
 - **D2: Pure HUD-style display.** No gameplay effect: no collision, no speed limit, no flight assist, no AI change.
   *Rationale:* keeps the ticket a renderer and the flight model untouched.
 - **D3: Settings.** The tunnel follows the per-profile **Lanes** overlay row (#38, governed by the master O like every
@@ -58,6 +62,10 @@ it.
   exempt (D12 amendment) and stays visible at its 0.5 floor. *Amended 2026-11-17 (guide thinning, SDD 50 D23,
   section 12d):* only every 6th ring of that lattice is kept, so near the player the rings are 12 tunnel radii apart
   and beyond 8 tunnel radii each is about 4.5 times farther than the one before.
+  *Amended by SDD 52 (issue #52, D2 / D9 / D10, part 52b):* the spacing is a **flat 12 tunnel radii everywhere** (a
+  lattice fixed to the lane, no accordion). The 10-half-extent screen fade, the depth fade (floor 0.2) and the 256-512
+  Rt detail fade are replaced by the pixel-radius fade (solid at 6 reference px, alpha 0.1 at 1 px, gone at 0.5 px,
+  log-linear) and the ring gap fades (rings 3 -> 2 px, dots and chevrons 16 -> 25 px).
 - **D8: Width from traffic, empty lanes kept.** The tunnel radius follows the lane's ship count on the #38 scale (100
   to 100,000 ships, `LaneTrafficWeight`), mapped to **1x .. 3x a base radius**. **An empty lane never vanishes:** it
   still gets a tunnel at the minimum width (the player may be inside it). The far line of an empty lane stays undrawn,
@@ -77,10 +85,15 @@ it.
   marked however small it is on screen; only the repeating rings and the dot rows take that fade. *Amended (user,
   2026-11-13, #50 D14):* `NPC_TUNNEL_END_MARGIN_RADII` goes from 1 to 3, so each end ring lies 3 tunnel radii above the
   surface (room for the #50 U-turn).
+  *Amended by SDD 52 (issue #52, D14, part 52b):* the end-ring exemption and the 0.5 alpha floor
+  (`NPC_TUNNEL_END_RING_MIN_ALPHA`, deleted) are gone. The end rings follow the pixel-radius curve like every other ring
+  and are drawn at `max(radius, 1 px)` (`NPC_TUNNEL_END_RING_MIN_DRAWN_PX`), so a far lane is not marked by permanent
+  rings.
 - **D13: Smooth spacing dependency.** Smooth dash size changes for the far lane line are a separate #38 follow-up, not
   part of #49; the tunnel's multi-scale ring spacing **must use the same smooth scheme once it is chosen**. *Resolved
   (Q9):* the follow-up chose the continuous "accordion" scale (SDD 38 D15 amendment D, `b5bae2c`); section 4.5 applies
-  the same principle to the rings.
+  the same principle to the rings. *Superseded by SDD 52 (issue #52, D2):* the rings use a flat lattice, not the
+  accordion; the shader no longer evaluates `exp(2t)`.
 - **D14: Budget gate at 1920x1080**, all lanes in range, 1M NPCs present: **<= 0.15 ms GPU, <= 0.02 ms CPU**. 4K
   (3840x2160) and one XR-4 eye (3840x3744) are measured and **recorded only** (no VR work, no two-eye run). Review
   items 9 and 11 apply; the method follows #38 (section 4.13 of SDD 38).
@@ -120,11 +133,13 @@ it.
 - **D21 (user, 2026-11-12/13): the extra points cost inside a tunnel is accepted.** Inside a tunnel the Q5 crossfade
   brings the lane's ships (about 88k on Earth - Mars) back as points, about +0.25 ms GPU on the points draw against
   `sol.NpcTunnel 0` (where the lane line stands in for them). It is outside D14's tunnel budget and recorded in
-  `TECH_DEBT.md` and section 12c.
+  `TECH_DEBT.md` and section 12c. *Amended by SDD 52 (issue #52, D6):* far lane ships stay hidden in the flight view, so
+  the points cost is paid only for ships near a lane (label strength above 0), as before.
 - **D22 (user, 2026-11-12/13): far chevrons fade like the mock-up.** The chevrons fade out by their camera-to-axis
   distance between `NPC_TUNNEL_CHEVRON_FADE_START_RADII` (13) and `NPC_TUNNEL_CHEVRON_FADE_END_RADII` (30) tunnel radii
   (a falling smoothstep, `TunnelChevronFarFade`, mirrored in the shader) instead of only the 256-512 tunnel radii detail
-  fade, which the dots keep (the mock-up's fog has them gone by about 13 tunnel radii).
+  fade, which the dots keep (the mock-up's fog has them gone by about 13 tunnel radii). *SDD 52 D10 / D22: kept as
+  built; the dots' 256-512 Rt detail fade is replaced by the ring-radius fade and the detail gap gate.*
 - **D16 (user, 2026-11-11): traffic outside the tunnel.** Some ships may travel just **outside** the tunnel, along it
   (#50). The display needs nothing special for them: it only draws rings, dots, chevrons, end rings and labels, and the
   ships keep their normal look and HUD markings wherever they are.
@@ -171,6 +186,9 @@ and drawn by the flight HUD as glow text. Per-frame CPU work is O(lanes in range
   `NPC_TUNNEL_FADE_FULL_RADII` (50) x `R`, linear in `log d` between; `R` is the **lane** radius (`LaneRadiusM`, as
   D1 states the band in lane radii). One scalar per lane per frame multiplies everything the lane's tunnel draws (rings,
   dots, chevrons, end rings).
+- *Amended by SDD 52 (issue #52, part 52b):* the tunnel fade `F` below is now the **label strength** (the texture's row 1
+  `.w`). Drawing uses a separate draw fade (row 3 `.z`, 1 for every drawable lane, `TunnelDrawFade`), and the tunnel is
+  drawn for every lane at every distance. The next bullet's line fade is the #38 rule that now applies on the map only.
 - **The lane's whole #38 line fades out with its tunnel (Q5).** Without a tunnel the line's per-pixel close-up fade
   removes it only inside 100 lane radii of each lane point, so from inside a tunnel the distant section would keep its
   dashes down the tube. Instead, with `F` the lane's tunnel fade (above) and `d` the camera distance of the lane point
@@ -270,6 +288,10 @@ under a pixel on a 30 AU lane (contract case 9).
 
 ### 4.5 Continuous "accordion" ring spacing (D7, D13, Q9)
 
+> **Superseded by SDD 52 (issue #52, part 52b).** The accordion is gone: the rings sit on a flat lattice `x = w S0` with
+> `S0` = 12 tunnel radii everywhere, the phase is `frac(foot arc / S0)` in double, and the shader has no `exp(2t)` path
+> (`SOLNpcTunnelMath` and `SOLNpcTunnel.ush`, SDD 52 section 4.2). The text below is kept as history.
+
 The #38 follow-up chose one continuous dash scale per lane, the accordion (SDD 38 D15 amendment D: a dash period stays
 about 24 px on screen, nothing pops, no dimmer copy, the dashes slide while zooming; `LaneDashLevel`,
 `LaneDashLaneFootprint`, `LaneScreenParam`). The rings use the same principle (Q9): **one continuous spacing function**,
@@ -353,6 +375,14 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
 38 D16). The "HUD and menu effects" and "Hologram menu effects" sliders do not affect the tunnel (as for the lanes).
 
 ### 4.7 Renderer (`USOLNpcTunnelComponent`, `M_SOLNpcTunnel`)
+
+> **Amended by SDD 52 (issue #52, part 52b):** the slot counts and LOD bands below are replaced (80 ring slots and 33
+> detail slots per side, five ring bands, 9,620 vertices per lane, interim budget `NPC_TUNNEL_VERTEX_BUDGET` 80,000 for 8
+> lanes, SDD 52 section 4.3). Every drawable lane gets an instance and builds its frame every frame (the "out-of-range
+> lane builds no frame" cut is gone), the texture is uploaded every frame while tunnels draw, and the per-lane ring
+> phases and last foot arcs are gone (the phase is computed directly each frame). Texture rows now: row 0 foot relative
+> to the viewpoint and `Rt`, row 1 axis and label strength, row 2 up and phase, row 3 end arcs A and B, draw fade and the
+> end-ring drawn floor in pixels (SDD 52 change log, 52b entry).
 
 - **Where the code lives.** A new component `USOLNpcTunnelComponent` (`Npc/SOLNpcTunnelComponent.{h,cpp}`, a
   `USceneComponent`, never ticks) created in `ASOLNpcVisuals`' constructor and attached to its root. It owns the slot
@@ -467,6 +497,9 @@ sequenceDiagram
 
 ### 4.9 Wall labels (D11, Q4)
 
+- *Amended by SDD 52 (issue #52, D7, part 52b):* `F` here is the **label strength** (`TunnelFade` on the old 100 -> 50
+  lane radii band, tunnel texture row 1 `.w`), not the draw fade. The tunnel draws at every distance, but labels and the
+  #50 merge readout still select lanes by strength, so a far lane has no label.
 - **Which lanes (Q4): one label per shown tunnel.** Every lane whose tunnel fade `F` is above 0 is a candidate. The
   candidates are ordered by **strength = `F`** (the same value as the tunnel fade), highest first; ties (several at
   1) go to the smallest `d / R` (the lane the player is deepest in), then the lower lane index. The first is the
@@ -914,7 +947,10 @@ the design applies it follow.
   tunnel is the one the player is in or nearest; ordering the placement by it means it is never displaced, and the
   greedy rule with fixed caps keeps the HUD work bounded. Applied: 4.9, cases 14, 19, 21.
 - **Q5: Far line inside a shown tunnel. Fade the lane's whole #38 line out together with the tunnel fade; the lane
-  ships then show as points again; ships keep their normal HUD markings inside and near tunnels.** Consequences
+  ships then show as points again; ships keep their normal HUD markings inside and near tunnels.** *(Amended by SDD 52
+  D1 / D6 / D7: in the flight view there is no line to fade and far ships stay hidden. The point alpha is
+  `1 - LaneLineFade(d) x (1 - strength)`, `d` the ship's distance from the camera and `strength` the label strength, so
+  with strength 0 a ship shows only within 100 to 400 lane radii of the camera, and the line draws only on the map. The text below is the #49 as-built rule.)* Consequences
   (section 4.2): line alpha `LaneLineFade(d, R) x (1 - F)` and lane-ship point alpha `1 - LaneLineFade(d, R) x
   (1 - F)`, summing to 1 at every lane point; `F` reaches `M_SOLNpcLanes` and `M_SOLNpcPoints` as row 1 `.w` of
   `NpcTunnelTex` (new texture parameter on both); both materials are rebuilt with `M_SOLNpcTunnel` in 49b; Lanes off,
@@ -937,7 +973,8 @@ the design applies it follow.
   rings and draws over the planet unless the planet is in front of the tunnel's path (shared occluders). Applied: 4.3,
   case 12.
 - **Q11: Dots and chevrons far away. They fade out between 256 and 512 tunnel radii**; rings alone reach the end ring.
-  Applied: 4.5, case 10.
+  Applied: 4.5, case 10. *Replaced by SDD 52 D10 / D11: the 256-512 Rt detail fade is gone. Dots fade by their ring's
+  on-screen radius, chevrons by their world length, and both are gated by the ring gap (16 -> 25 px).*
 - **Also stated by the user (D16):** some ships may travel just outside the tunnel, along it (#50); the display needs
   nothing special for them.
 
@@ -1022,6 +1059,11 @@ player" (D7's 2 tunnel radii), with the smooth growth beyond.
   vanishing point (49c emissive tuning).
 
 ## 12c. As built (part 49c, 2026-11-13, whole-ticket review done, fixes applied)
+
+> **Amended by SDD 52 (issue #52, part 52b):** the vanishing-point screen fade below (10 ribbon half extents,
+> `TunnelScreenSizeFade`, `TunnelRingScreenFade`, `NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS`), the end-ring exemption and 0.5
+> floor, and the 49c out-of-range CPU cut are replaced by the SDD 52 pixel-radius fade, gap fades and every-lane frame
+> (see the notes at D7 and D12). The chevron far fade (D22) is kept.
 
 - **Chevrons (step 10-0):** the mock-up's filled, notched dart (`ChevronDartDistance`, notch
   `NPC_TUNNEL_CHEVRON_NOTCH_FRACTION` 0.3), linear alpha `NPC_TUNNEL_CHEVRON_ALPHA` 0.3 (reads like the mock-up's sRGB
@@ -1135,6 +1177,10 @@ player" (D7's 2 tunnel radii), with the smooth growth beyond.
 
 ## 12d. Amendment (2026-11-17, under #50): guide thinning (SDD 50 D23)
 
+> **Amended by SDD 52 (issue #52, part 52b):** the thinning's density is kept as a flat 12 tunnel radii spacing at every
+> distance; the warp with its per-distance term (`NPC_TUNNEL_RING_SPACING_PER_DISTANCE`, deleted) and the 6 / 12 slot
+> counts below are replaced (SDD 52 D2, section 4.3).
+
 **Decision (user, 2026-11-17, SDD 50 D23):** keep every 6th ring of the first-built lattice, near and far, at every
 speed (the layout has no speed input), and remove the 5 between; dots and chevrons sit at every kept ring and halfway
 between consecutive kept rings (in the warp coordinate, so the exact midpoint inside the constant zone), never at a
@@ -1173,6 +1219,8 @@ fade (0.5 spacings) now dims a ring within about 0.75 of its own distance from a
 
 ## 13. Change log
 
+- 2026-11-18: amended in place by SDD 52 (issue #52, part 52b): D1 / D7 / D12 / D13 / D21 / D22, Q5, Q11, sections 4.2,
+  4.5, 4.7, 4.9, 12c and 12d. See the "Amended by SDD 52" notes.
 - 2026-11-17: amendment section 12d (under #50, SDD 50 D23): guide thinning, every 6th ring kept, dots and chevrons at
   each kept ring and halfway; spacing 12 tunnel radii and rho 1.5, 12 ring and 6 gap slots per side, LOD bands 2 / 3 /
   5, 2,884 vertices per lane; sections 2 (D7), 4.5, 4.7, 6 (note), 9 and 10 amended in place.

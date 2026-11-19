@@ -459,10 +459,10 @@ bool SOLNpcLane::AreLanesShown(const bool bHasSettings, const bool bRowShown, co
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the lane component is visible: lanes shown and at least one drawn lane
-bool SOLNpcLane::ShouldDrawLaneLines(const bool bLanesShown, const FSOLNpcLaneFrame& frame)
+// Returns whether the lane component is visible: lanes shown, the map open and at least one drawn lane
+bool SOLNpcLane::ShouldDrawLaneLines(const bool bLanesShown, const bool bMapOpen, const FSOLNpcLaneFrame& frame)
 {
-    if (!bLanesShown)
+    if (!bLanesShown || !bMapOpen)
     {
         return false;
     }

@@ -232,19 +232,19 @@ The whole flight HUD at the new default glow (issue #37) with Earth targeted.
 
 ![NPC lane lines of the inner solar system](Docs/Images/38-npc-lanes-network.png)
 
-The NPC lane lines (issue #38) seen from 3 AU above the Sun with a million NPC ships out: each lane is a pair of thin dashed hologram lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the dashes flowing each way. The short Mercury-Venus and Venus-Earth lanes keep a few longer dashes so their flow still shows.
+The NPC lane lines (issue #38) seen from 3 AU above the Sun with a million NPC ships out: each lane is a pair of thin dashed hologram lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the dashes flowing each way. The short Mercury-Venus and Venus-Earth lanes keep a few longer dashes so their flow still shows. *(Pre-#52 layout: since issue #52 the dashed lines are drawn only on the jump map; in the flight view each lane is drawn as its tunnel rings at every distance.)*
 
 ![Lanes converging on Venus](Docs/Images/38-npc-lanes-venus.png)
 
-0.15 AU off Venus: the Mercury-Venus and Venus-Earth lanes meet at the planet. The dashes stay fixed to the lane as the camera moves and regroup into finer or coarser dashes with the zoom.
+0.15 AU off Venus: the Mercury-Venus and Venus-Earth lanes meet at the planet. The dashes stay fixed to the lane as the camera moves and regroup into finer or coarser dashes with the zoom. *(Pre-#52 layout: the dashed lines are now map only, the flight view shows the lane rings at every distance.)*
 
 ![Lane ships beside Earth at 200% HUD glow](Docs/Images/38-npc-lanes-crossfade-glow.png)
 
-40,000 km beside Earth at 200% HUD glow: the Earth-Moon lane leaves from behind Earth's disc (the planet hides it), its ships show one by one close to Earth where the lines have faded out, and the lines take over farther along the lane; the lines glow with the HUD glow setting.
+40,000 km beside Earth at 200% HUD glow: the Earth-Moon lane leaves from behind Earth's disc (the planet hides it), its ships show one by one close to Earth where the lines have faded out, and the lines take over farther along the lane; the lines glow with the HUD glow setting. *(Pre-#52 layout: since issue #52 there are no lane lines in the flight view, the lane is drawn as rings at every distance, and far lane ships stay hidden.)*
 
 ![Approaching the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-approach.png)
 
-The lane guidance tunnel (issue #49) seen from 75 lane radii beside the Earth-Mars lane, where the tunnel is half faded in: the lane's dashed lines are handing over to a string of faint rings along the lane, which grow brighter as the player closes in (as built in #49; since the #50 guide thinning only every 6th ring is drawn, so few or none show from here).
+The lane guidance tunnel (issue #49) seen from 75 lane radii beside the Earth-Mars lane, where the tunnel is half faded in: the lane's dashed lines are handing over to a string of faint rings along the lane, which grow brighter as the player closes in. *(Pre-#52 layout, as built in #49: since the #50 guide thinning only every 6th ring is drawn, and since issue #52 the dashed lines are map only and the rings show at every distance, one every 12 tunnel radii, fading by their size on screen; the gallery is reshot in part 52c.)*
 
 ![Inside the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-inside.png)
 
@@ -273,11 +273,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 142.7 h |
-| Time spent answering questions | 11.4 h |
-| Tokens | 8,206.3M |
-| Notional API price | $3,246 |
-| Subagents dispatched | 621 |
+| Work time (wall-clock) | 145.0 h |
+| Time spent answering questions | 11.7 h |
+| Tokens | 8,339.1M |
+| Notional API price | $3,297 |
+| Subagents dispatched | 630 |
 <!-- METRICS:END -->
 
 ## Documentation map

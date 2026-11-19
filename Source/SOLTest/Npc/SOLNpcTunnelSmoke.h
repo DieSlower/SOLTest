@@ -136,6 +136,9 @@ private:
     // Checks that the tunnels are hidden and every fade texel is 0
     void CheckHidden(const TCHAR* label);
 
+    // Checks a far view (SDD 52 section 7): the tunnel drawn without a label, the lit rings logged, the window's edge
+    void CheckFarView(const TCHAR* label);
+
     // Returns the Earth-Mars lane's ring phase and foot arc from the component's feed; false when it is not shown
     bool ReadLanePhase(double& outPhase, double& outFootArcM, double& outRadialM) const;
 
@@ -166,7 +169,7 @@ private:
     double mPhaseTimeS = 0.0;
     double mTotalTimeS = 0.0;
     int32 mPhaseFrames = 0;
-    int32 mView = 0;                        // Current view (T1 = 0 .. T5 = 5, T5b = 6, T6 = 7)
+    int32 mView = 0;                        // Current view (T1 = 0 .. T5 = 5, T5b = 6, F300-F3000 = 7-9, T6 = 10)
     FVector3d mStartPositionM = FVector3d::ZeroVector;  // The ship's start (T5), ecliptic
     double mLaneParam = 0.25;               // T7: the lane point's parameter the ship is held at
     double mStartPhase = 0.0;               // T7: phase, foot arc and unwrapped phase advance at a phase's start

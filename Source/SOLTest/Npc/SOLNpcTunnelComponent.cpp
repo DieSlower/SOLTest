@@ -28,8 +28,8 @@ namespace
 {
     // Developer A/B switch for GPU measurements (SDD 49 section 4.2); the player's switch is the Lanes overlay row
     TAutoConsoleVariable<int32> CVarSOLNpcTunnel(SOL::NPC_TUNNEL_CVAR, 1,
-        TEXT("1: NPC lane tunnels drawn near lanes while the lanes are shown; 0: never drawn, and every lane line and "
-            "lane ship point back to its issue #38 crossfade (A/B profiling, SDD 49)"));
+        TEXT("1: NPC lane tunnels drawn at every distance while the lanes are shown (SDD 52); 0: never drawn, no wall "
+            "labels, the lane ships' points on their issue #38 close-up fade (A/B profiling, SDD 49)"));
 
     // Slot kinds of the mesh's UV0.x (Shaders/Private/SOLNpcTunnel.ush SOLNT_KIND_*)
     constexpr float TUNNEL_KIND_RING = 0.0f;
@@ -151,46 +151,16 @@ bool USOLNpcTunnelComponent::InitializeTunnels()
     // The material: the tunables once (the shader keeps no copy of them, SOLNpcTunnel.ush)
     TunnelMaterial = UMaterialInstanceDynamic::Create(baseMaterial, this);
     TunnelMaterial->SetTextureParameterValue(FName(TUNNEL_TEXTURE), TunnelTexture);
-    TunnelMaterial->SetVectorParameterValue(FName(STYLE0), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_RING_WIDTH_PX), static_cast<float>(SOL::NPC_TUNNEL_END_RING_WIDTH_PX),
-        static_cast<float>(SOL::NPC_TUNNEL_DOT_SIZE_PX), static_cast<float>(SOL::NPC_LANE_REFERENCE_HEIGHT_PX)));
-    TunnelMaterial->SetVectorParameterValue(FName(STYLE1), FLinearColor(static_cast<float>(SOL::NPC_TUNNEL_EMISSIVE),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_ALPHA), static_cast<float>(SOL::NPC_LANE_GLOW_PAD_PX),
-        static_cast<float>(SOL::NPC_TUNNEL_DOT_RADIUS_SCALE)));
-    TunnelMaterial->SetVectorParameterValue(FName(SHAPE), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_END_RING_MIN_ALPHA)));
-    TunnelMaterial->SetVectorParameterValue(FName(STYLE2), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_NOTCH_FRACTION),
-        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII)));
-    TunnelMaterial->SetVectorParameterValue(FName(STYLE3), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRONS_PER_GAP)));
-    TunnelMaterial->SetVectorParameterValue(FName(LAYOUT0), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE),
-        static_cast<float>(SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE),
-        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE)));
-    TunnelMaterial->SetVectorParameterValue(FName(LAYOUT1), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_END_FADE_SPACINGS),
-        static_cast<float>(SOL::NPC_TUNNEL_DEPTH_FADE_START_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_DEPTH_FADE_END_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_DEPTH_FADE_FLOOR)));
-    TunnelMaterial->SetVectorParameterValue(FName(LAYOUT2), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_NEAR_FADE_START_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_NEAR_FADE_FULL_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII)));
-    TunnelMaterial->SetVectorParameterValue(FName(LAYOUT3), FLinearColor(
-        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_FADE_START_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII), static_cast<float>(SOL::NPC_TUNNEL_DOTS_PER_GAP),
-        static_cast<float>(SOL::NPC_TUNNEL_DOT_ROWS)));
+    const FSOLNpcTunnelMaterialVectors vectors = SOLNpcTunnel::TunnelMaterialVectors();
+    const TPair<const TCHAR*, FVector4f> constantVectors[] = { { STYLE0, vectors.Style0 }, { STYLE1, vectors.Style1 },
+        { SHAPE, vectors.Shape }, { STYLE2, vectors.Style2 }, { STYLE3, vectors.Style3 }, { LAYOUT0, vectors.Layout0 },
+        { LAYOUT1, vectors.Layout1 }, { LAYOUT2, vectors.Layout2 }, { LAYOUT3, vectors.Layout3 },
+        { LAYOUT4, vectors.Layout4 } };
+    for (const TPair<const TCHAR*, FVector4f>& vector : constantVectors)
+    {
+        TunnelMaterial->SetVectorParameterValue(FName(vector.Key), FLinearColor(vector.Value.X, vector.Value.Y,
+            vector.Value.Z, vector.Value.W));
+    }
     TunnelMaterial->SetVectorParameterValue(FName(GLOW0), FLinearColor(static_cast<float>(HUD_GLOW_CORE_HALF_PX),
         static_cast<float>(HUD_GLOW_CORE_FALLOFF), static_cast<float>(HUD_GLOW_CORE_FALLOFF_MAX),
         static_cast<float>(HUD_GLOW_HALO_WEIGHT)));
@@ -305,28 +275,21 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
     mAreTunnelsShown = TunnelMaterial != nullptr && BodyRegistry != nullptr && SOLNpcTunnel::ResolveTunnelsShown(
         mIsOverride, mIsOverrideShown, bLanesShown, CVarSOLNpcTunnel.GetValueOnGameThread() != 0, bMapOpen);
 
-    // Each lane: its feed, effective fade and ring phase; only a lane with a fade above 0 is drawn
+    // Each lane: its feed, draw fade, label strength and ring phase; every drawable lane is drawn at every distance
+    // (SDD 52 D1, D7), the old 100 -> 50 lane radii band survives only as its label strength
     const int32 laneCount = FMath::Min(laneFrame.Lanes.Num(), static_cast<int32>(LANE_CAPACITY));
     mShownLanes.Reset();
     for (int32 lane = 0; lane < LANE_CAPACITY; ++lane)
     {
         mFades[lane] = 0.0;
+        mDrawFades[lane] = 0.0;
         mDistanceRadii[lane] = 0.0;
         if (lane >= laneCount || !mAreTunnelsShown)
         {
-            mIsInRange[lane] = false;
             mLabelSigns[lane] = 0;
             continue;
         }
-        // A lane out of range (fade 0, not forced) needs only its segment distance: no frame is built for it
         const FSOLNpcLaneEntry& entry = laneFrame.Lanes[lane];
-        const double segmentM = SOLNpcTunnel::LaneSegmentDistanceM(entry.A - viewpointM, entry.B - viewpointM);
-        if (!mIsForceAllLanes && !(SOLNpcTunnel::TunnelFade(segmentM, entry.RadiusM) > 0.0))
-        {
-            mIsInRange[lane] = false;
-            mLabelSigns[lane] = 0;
-            continue;
-        }
         const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
         const int32 bodyA = groups.LaneBodyA.IsValidIndex(lane) ? groups.LaneBodyA[lane] : INDEX_NONE;
         const int32 bodyB = groups.LaneBodyB.IsValidIndex(lane) ? groups.LaneBodyB[lane] : INDEX_NONE;
@@ -334,35 +297,39 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
         FSOLNpcTunnelLaneData data;
         const bool bTunnel = bBodies && SOLNpcTunnel::BuildTunnelLaneData(lane, entry, viewpointM,
             registry.GetRadiusM(bodyA), registry.GetRadiusM(bodyB), data, mFeet[lane]);
-        const double fade = bTunnel ? SOLNpcTunnel::EffectiveTunnelFade(data.Fade, true, mIsForceAllLanes) : 0.0;
-        if (!(fade > 0.0))
+        if (!bTunnel)
         {
-            mIsInRange[lane] = false;
             mLabelSigns[lane] = 0;
             continue;
         }
 
-        // In range: the phase stays fixed to the lane (advanced by the foot arc's change), the label side held
+        // The phase straight from the foot arc on the flat lattice (fixed to the lane, SDD 52 D2); the label side held
+        // only while the lane has a label strength
         const FSOLNpcTunnelFoot& foot = mFeet[lane];
-        mPhases[lane] = SOLNpcTunnel::StepRingPhase(mIsInRange[lane], mPhases[lane], mLastFootArcs[lane], foot.ArcM,
-            foot.RadialM, data.TunnelRadiusM);
-        mLastFootArcs[lane] = foot.ArcM;
-        mIsInRange[lane] = true;
-        mLabelSigns[lane] = SOLNpcTunnel::LabelAheadSign(FVector3d::DotProduct(cameraForward, data.Axis),
-            mLabelSigns[lane]);
-        data.Fade = fade;
-        data.Phase = mPhases[lane];
-        mFades[lane] = fade;
-        mDistanceRadii[lane] = entry.RadiusM > 0.0 ? segmentM / entry.RadiusM : 0.0;
+        const double strength = SOLNpcTunnel::EffectiveTunnelFade(data.Fade, true, mIsForceAllLanes);
+        mLabelSigns[lane] = strength > 0.0 ? SOLNpcTunnel::LabelAheadSign(FVector3d::DotProduct(cameraForward,
+            data.Axis), mLabelSigns[lane]) : 0;
+        data.Fade = strength;
+        data.DrawFade = SOLNpcTunnel::TunnelDrawFade(true);
+        data.Phase = SOLNpcTunnel::RingLatticePhase(foot.ArcM, data.TunnelRadiusM);
+        mFades[lane] = strength;
+        mDrawFades[lane] = data.DrawFade;
+        mDistanceRadii[lane] = entry.RadiusM > 0.0 ? data.SegmentDistanceM / entry.RadiusM : 0.0;
         mShownLanes.Add(data);
     }
 
-    // Instances only when the set of lanes in range changes; the component visible while one draws
-    const bool bDraw = SOLNpcTunnel::ShouldDrawTunnels(mAreTunnelsShown, TConstArrayView<double>(mFades, laneCount));
-    if (SOLNpcTunnel::CollectTunnelLanes(TConstArrayView<double>(mFades, laneCount), mInstanceLanes)
+    // Instances only when the set of drawn lanes changes (then also the vertex budget check, D15 interim); the
+    // component visible while one draws
+    const bool bDraw = SOLNpcTunnel::ShouldDrawTunnels(mAreTunnelsShown,
+        TConstArrayView<double>(mDrawFades, laneCount));
+    if (SOLNpcTunnel::CollectTunnelLanes(TConstArrayView<double>(mDrawFades, laneCount), mInstanceLanes)
         && Instances != nullptr)
     {
         WriteInstances();
+        UE_CLOG(mInstanceLanes.Num() > SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES, LogSOL, Warning,
+            TEXT("NpcTunnel: %d lanes drawn, over the %d-lane vertex budget (%d slot-mesh vertices each, budget %d; "
+                "SDD 52 D15, issue #53 revisits)"), mInstanceLanes.Num(), SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES,
+            mSlotMeshVertexCount, SOL::NPC_TUNNEL_VERTEX_BUDGET);
     }
     if (bDraw != mAreTunnelsDrawn && Instances != nullptr)
     {
@@ -370,7 +337,8 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
     }
     mAreTunnelsDrawn = bDraw;
 
-    // The texture while a tunnel shows and once more (all zeros) after the last one goes, so no stale fade remains
+    // The texture every frame a tunnel draws and once more (all zeros) after the last one goes, so no stale fade
+    // remains
     if (SOLNpcTunnel::ShouldUploadTunnelTexels(bDraw, mWasUploading))
     {
         mUploadRing = (mUploadRing + 1) % UE_ARRAY_COUNT(mTexels);
@@ -397,7 +365,13 @@ void USOLNpcTunnelComponent::PublishLabels(const TConstArrayView<FSOLNpcLaneEntr
     {
         return;
     }
-    if (mShownLanes.Num() == 0)
+    // The labels by their strength (the old 100 -> 50 lane radii band, SDD 52 D7): strongest first, dimmed after the
+    // first, only those bright enough to place; none (the snapshot cleared once) while no lane is close enough
+    int32 selected[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+    const int32 laneCount = FMath::Min(lanes.Num(), static_cast<int32>(LANE_CAPACITY));
+    const int32 selectedCount = SOLNpcTunnel::SelectLabelLanes(TConstArrayView<double>(mFades, laneCount),
+        TConstArrayView<double>(mDistanceRadii, laneCount), TArrayView<int32>(selected));
+    if (selectedCount == 0)
     {
         if (mHasLabels)
         {
@@ -406,12 +380,6 @@ void USOLNpcTunnelComponent::PublishLabels(const TConstArrayView<FSOLNpcLaneEntr
         }
         return;
     }
-
-    // The labels: strongest first, dimmed after the first, only those bright enough to place
-    int32 selected[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
-    const int32 laneCount = FMath::Min(lanes.Num(), static_cast<int32>(LANE_CAPACITY));
-    const int32 selectedCount = SOLNpcTunnel::SelectLabelLanes(TConstArrayView<double>(mFades, laneCount),
-        TConstArrayView<double>(mDistanceRadii, laneCount), TArrayView<int32>(selected));
     mLabels.Count = 0;
     for (int32 index = 0; index < selectedCount; ++index)
     {
@@ -449,13 +417,13 @@ void USOLNpcTunnelComponent::PublishLabels(const TConstArrayView<FSOLNpcLaneEntr
             mLabelSigns[lane], 180.0);
     }
 
-    // Every shown tunnel's dot rows (lane order, up to the row cap), so no label sits on a dot; none when no label is
-    // placed (the HUD then has nothing to keep clear), and none of a tunnel faded below the label cut (its dots are
-    // all but invisible)
+    // The dot rows of every drawn tunnel whose dots can be visible (lane segment within the gap gate's reach, SDD 52
+    // D4), in lane order up to the row cap, so no label sits on any visible dot row, whatever that lane's label
+    // strength; none when no label is placed (the HUD then has nothing to keep clear)
     mLabels.RowCount = 0;
     for (const FSOLNpcTunnelLaneData& data : mShownLanes)
     {
-        if (mLabels.Count == 0 || !SOLNpcTunnel::IsLabelPlaced(data.Fade))
+        if (mLabels.Count == 0 || !SOLNpcTunnel::IsDotRowInReach(data.SegmentDistanceM, data.TunnelRadiusM))
         {
             continue;
         }
@@ -494,7 +462,7 @@ void USOLNpcTunnelComponent::SetGlowScale(const float glowScale)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Shows or hides the tunnels for a verification run, optionally forcing every lane's fade to 1
+// Shows or hides the tunnels for a verification run, optionally forcing every lane's label strength to 1
 void USOLNpcTunnelComponent::SetVerificationOverride(const bool bShown, const bool bForceAllLanes)
 {
     mIsOverride = true;

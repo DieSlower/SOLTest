@@ -442,17 +442,21 @@ bool FSOLInfoTextOverlayMenuLanesTest::RunTest(const FString& /*parameters*/)
 
 namespace
 {
-    // The Info overlay paragraph's lane sentences of SDD 38 section 7 (D19), binding token unformatted
+    // The Info overlay paragraph's lane sentences of SDD 38 section 7 (D19), binding token unformatted; since SDD 52
+    // (D1, D6) the flight view draws every lane as its tunnel at every distance and the map keeps the dashed lines
     constexpr const TCHAR* INFOTEXT_LANES_SENTENCE =
-        TEXT("With NPC ships out (the Demo page), each lane between two bodies is drawn as a pair of dashed hologram "
-            "lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the dashes "
-            "flowing each way; a busier lane is wider and brighter. Close to a lane the lines fade out and its ships "
-            "show one by one. The Lanes row of the Overlay Menu ({OverlayMenu}) turns them off (the ships then show "
-            "as points, as before); the lines glow with the HUD glow setting.");
+        TEXT("With NPC ships out (the Demo page), each lane between two bodies is drawn in flight as a tunnel of cyan "
+            "rings 12 tunnel radii apart, at every distance: a ring too small or too crowded on screen fades out, so "
+            "from far away a lane may show only a short run of rings or its end rings, and its ships far from you are "
+            "not drawn. On the map each lane is a pair of dashed hologram lines instead, teal-white for traffic "
+            "leaving the inner body and cyan for traffic coming back, the dashes flowing each way; a busier lane is "
+            "wider and brighter. The Lanes row of the Overlay Menu ({OverlayMenu}) turns them off (the ships then "
+            "show as points, as before); the rings and lines glow with the HUD glow setting.");
 
-    // The Info Demo paragraph's far-ship clause of SDD 38 section 7
+    // The Info Demo paragraph's far-ship clause of SDD 38 section 7 (since SDD 52 D6: far lane ships are not drawn)
     constexpr const TCHAR* INFOTEXT_DEMO_LANE_LINES =
-        TEXT("farther ones follow simpler motion and are drawn as points, or as lane lines (see the overlays).");
+        TEXT("farther ones follow simpler motion and are drawn as points, or not at all along a far lane, whose "
+            "tunnel stands for them (see the overlays).");
 
     // Returns the indices of the paragraphs that contain a text (case-sensitive)
     TArray<int32> InfoTextParagraphsWith(const TArray<FString>& prose, const FString& text)
@@ -533,16 +537,17 @@ bool FSOLInfoTextDemoLaneLinesTest::RunTest(const FString& /*parameters*/)
 
 namespace
 {
-    // The Info overlay paragraph's lane tunnel sentences of SDD 49 section 5 (issue #49 Part 49b)
+    // The Info overlay paragraph's lane tunnel sentences of SDD 49 section 5 (issue #49 Part 49b; since SDD 52 the
+    // flat lattice fixed to the lane, details only where the rings are far enough apart, labels on the old band, D7)
     constexpr const TCHAR* INFOTEXT_TUNNEL_SENTENCE =
-        TEXT("Close to a lane (the tunnel fades in between 100 and 50 lane radii away) its dashed lines fade "
-            "out and become a tunnel of cyan rings that you can fly through, and its ships show as points again. The "
-            "lane's rule is keep right: the green dots and chevrons on the right wall mark the way out from the inner "
-            "body, the red ones on the left the way back. The rings near you stay fixed to the lane and the far ones "
-            "also slide when you move toward or away from its axis, and everything moves with the lane under time "
-            "warp. A label on each tunnel's wall names the lane, the distance to each end and how many ships use it, "
-            "or only the lane and the nearest end where space is short (the nearest tunnel's label is the "
-            "brightest). Tunnels follow the Lanes row and the HUD glow and are not shown on the map.");
+        TEXT("Close to a lane (within about 100 lane radii) its ships show as points again and you can fly through "
+            "its tunnel. The lane's rule is keep right: the green dots and chevrons on the right wall mark the way "
+            "out from the inner body, the red ones on the left the way back; they show where the rings are far "
+            "enough apart on screen. The rings stay fixed to the lane, and everything moves with the lane under time "
+            "warp. A label on the wall of each tunnel within about 100 lane radii names the lane, the distance to "
+            "each end and how many ships use it, or only the lane and the nearest end where space is short (the "
+            "nearest tunnel's label is the brightest). Tunnels follow the Lanes row and the HUD glow and are not "
+            "shown on the map.");
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -603,7 +608,7 @@ bool FSOLInfoTextLaneReadoutTest::RunTest(const FString& /*parameters*/)
         return false;
     }
     const FString& paragraph = prose[overlay];
-    const int32 tunnelAt = paragraph.Find(TEXT("Close to a lane (the tunnel"), ESearchCase::CaseSensitive);
+    const int32 tunnelAt = paragraph.Find(TEXT("Close to a lane (within about"), ESearchCase::CaseSensitive);
     const int32 dustAt = paragraph.Find(TEXT("Space dust"), ESearchCase::CaseSensitive);
     const int32 readoutAt = paragraph.Find(TEXT("readout"), ESearchCase::CaseSensitive, ESearchDir::FromStart,
         FMath::Max(tunnelAt, 0));

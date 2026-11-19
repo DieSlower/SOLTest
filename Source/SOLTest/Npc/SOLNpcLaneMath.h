@@ -164,8 +164,9 @@ namespace SOLNpcLane
     // the master O) when there is a settings subsystem; without one they are on
     SOLTEST_API bool AreLanesShown(bool bHasSettings, bool bRowShown, bool bCvarOn);
 
-    // Returns the lane component's visibility: the lanes shown and at least one lane of the frame drawn
-    SOLTEST_API bool ShouldDrawLaneLines(bool bLanesShown, const FSOLNpcLaneFrame& frame);
+    // Returns the lane component's visibility: the lanes shown, the jump map open (the flight view draws the lane
+    // tunnels instead, SDD 52 D1) and at least one lane of the frame drawn
+    SOLTEST_API bool ShouldDrawLaneLines(bool bLanesShown, bool bMapOpen, const FSOLNpcLaneFrame& frame);
 
     // Returns the far-point material's NpcParams4: (lanes shown 0 / 1, fade near radii, fade far radii, 0), the inputs
     // of the lane ships' crossfade (LaneShipPointAlpha)

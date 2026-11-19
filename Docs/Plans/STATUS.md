@@ -53,7 +53,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| - | - | Nothing in progress | - | - |
+| 3b5c | #52 | Lane tunnel far field: replace the long-distance tunnel lines with the same rings seen from inside the tunnel, dots and chevrons at every ring and halfway between, check the sparse approach view after thinning, reshoot gallery images `49-lane-tunnel-*.png` and `50-lane-*.png` at 1920x1080, re-profile the tunnel; grill-me done 2026-11-18 (D1-D5), SDD and plan done, questions Q1-Q14 answered 2026-11-18 (D6-D19); **in progress: 52a (pure math, flat lattice and fades) and 52b (shader, component, lane line, float mirror) done 2026-11-18, uncommitted; 52b review fixes applied (sub-pixel ring ribbon clamp, dot rows of every drawn lane in reach, budget warning; `M_SOLNpcTunnel` rebuilt with the new `NpcTunnelLayout4` parameter for the end-ring floor, user decision on SDD 52 D16); 52c (tuning, profile, gallery, review) next** ([SDD 52](../SDDs/52-lane-tunnel-far-field.md), [plan](52-lane-tunnel-far-field-plan.md)) (chevron visibility at the rings to revisit in game) | S-M | #50 |
 
 ## To do (ordered)
 
@@ -62,7 +62,7 @@ Finished rows move to Done, started rows to In progress.
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
 | 3b5b | #51 | Placeholder main thruster effect for the player ship and all NPC ships (consumes #50's per-ship thrust state); needs grill-me | S-M | #50 |
-| 3b5c | #52 | Lane tunnel far field: replace the long-distance tunnel lines with the same rings seen from inside the tunnel, dots and chevrons at every ring and halfway between, check the sparse approach view after thinning, reshoot gallery images `49-lane-tunnel-*.png` and `50-lane-*.png` at 1920x1080, re-profile the tunnel; needs grill-me (mock-ups `ring_far_v2` approved in direction, chevron visibility at the rings to revisit in game) | S-M | #50 |
+| 3b5d | #53 | Lane network: more lanes, planet to next-closest planet, fastest A-to-Z routing, distance on/off, future stations and asteroids; also revisits the tunnel vertex budget and active-tunnel cap left interim by #52 (D15); needs grill-me | M-L | #50 (related #52) |
 | 3b6 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b7 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m), head-and-tail tracer shape, 5 per-ship bolt colours | M | none |
@@ -106,5 +106,5 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 ## How much is left
 
-About 12 tickets (#51, #52, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
+About 13 tickets (#51, #52, #53, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
 plus whatever #24 adopts. The ToDo list above is the backlog beyond that.

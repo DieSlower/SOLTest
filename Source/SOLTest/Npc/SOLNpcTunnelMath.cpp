@@ -52,19 +52,52 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the constant ring spacing near the camera, S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII x Rt
+    // Returns the flat ring spacing, S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII x Rt (the radius checked by the caller)
     double TunnelBaseSpacingM(const double tunnelRadiusM)
     {
         return SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII * tunnelRadiusM;
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the half length x0 = sqrt(max(0, D0^2 - h^2)) of the constant-spacing zone on the foot point, with
-    // D0 = S0 / rho
-    double TunnelConstantZoneM(const double radialM, const double tunnelRadiusM)
+    // Returns a log-linear ramp: 0 at and below gone, 1 at and above full, ln(v / gone) / ln(full / gone) between; 0
+    // for NaN, 1 for +inf
+    double TunnelLogRamp(const double value, const double gone, const double full)
     {
-        const double d0 = TunnelBaseSpacingM(tunnelRadiusM) / SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE;
-        return FMath::Sqrt(FMath::Max(0.0, d0 * d0 - radialM * radialM));
+        if (!(value > gone))
+        {
+            return 0.0;
+        }
+        if (value >= full)
+        {
+            return 1.0;
+        }
+        return FMath::Clamp(FMath::Loge(value / gone) / FMath::Loge(full / gone), 0.0, 1.0);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a world size's extent on screen in reference px, f x size / d (+inf for d <= 0); 0 for a NaN distance,
+    // a bad tunnel radius or focal length (the size is a positive multiple of the radius)
+    double TunnelSizePx(const double distanceM, const double tunnelRadiusM, const double focalRefPx,
+        const double sizeRadii)
+    {
+        if (FMath::IsNaN(distanceM) || !TunnelIsPositive(tunnelRadiusM) || !TunnelIsPositive(focalRefPx))
+        {
+            return 0.0;
+        }
+        if (distanceM <= 0.0)
+        {
+            return std::numeric_limits<double>::infinity();
+        }
+        return focalRefPx * sizeRadii * tunnelRadiusM / distanceM;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the true distance from the camera beyond which the detail gap gate is shut at any focal length up to the
+    // reference: RingGapPx never exceeds f S0 / d, so the gate needs d < REFERENCE_FOCAL x S0 / DETAIL_GAP_FADE_GONE
+    double TunnelDetailReachM(const double tunnelRadiusM)
+    {
+        return SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX * TunnelBaseSpacingM(tunnelRadiusM)
+            / SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -86,12 +119,12 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns true when a slot input can lay out rings (a finite radial distance, end arcs, a positive tunnel radius;
-    // the phase is wrapped by the caller)
+    // Returns true when a slot input can lay out rings (a finite radial distance, end arcs, a positive tunnel radius
+    // and focal length; the phase is wrapped by the caller)
     bool TunnelIsInputValid(const FSOLNpcTunnelSlotInput& input)
     {
-        return TunnelIsPositive(input.TunnelRadiusM) && FMath::IsFinite(input.RadialM) && !FMath::IsNaN(input.EndArcAM)
-            && !FMath::IsNaN(input.EndArcBM);
+        return TunnelIsPositive(input.TunnelRadiusM) && TunnelIsPositive(input.FocalRefPx)
+            && FMath::IsFinite(input.RadialM) && !FMath::IsNaN(input.EndArcAM) && !FMath::IsNaN(input.EndArcBM);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -114,8 +147,7 @@ namespace
 
     //////////////////////////////////////////////////////////////////////////
     // Fills the axial range (from, to) every dot row of a tunnel shares: max(end arc A, -X) to min(end arc B, X), X
-    // where the dots end at NPC_TUNNEL_DETAIL_FADE_END_RADII x Rt of true distance; false when it is empty or an input
-    // is bad
+    // where the gap gate's reach (TunnelDetailReachM) ends in true distance; false when it is empty or an input is bad
     bool TunnelDotRowRangeM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis, const double tunnelRadiusM,
         const double endArcAM, const double endArcBM, FVector2D& outRangeM)
     {
@@ -125,7 +157,7 @@ namespace
             return false;
         }
         const double radialM = footRelM.Size();
-        const double reachM = SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * tunnelRadiusM;
+        const double reachM = TunnelDetailReachM(tunnelRadiusM);
         const double halfM = FMath::Sqrt(FMath::Max(0.0, reachM * reachM - radialM * radialM));
         outRangeM = FVector2D(FMath::Max(endArcAM, -halfM), FMath::Min(endArcBM, halfM));
         return outRangeM.X < outRangeM.Y;
@@ -143,31 +175,61 @@ namespace
         outEndM = footRelM + basis.Axis * rangeM.Y + wallM;
     }
 
+    // The tunnel element kinds a slot places (each takes its own size and gap fades, SDD 52 D12)
+    enum class ETunnelElement : uint8
+    {
+        Ring,
+        Dot,
+        Chevron
+    };
+
     //////////////////////////////////////////////////////////////////////////
-    // Fills an element at warp coordinate w (cap fade given) with its axial offset and alpha; true when it lies
-    // strictly between the end rings with a non-zero alpha. Detail elements also take the detail fade
-    bool TunnelPlaceElement(const double w, const double capFade, const bool bDetail,
+    // Fills an element at warp coordinate w (x = w S0, cap fade given) with its axial offset and alpha; true when it
+    // lies strictly between the end rings with a non-zero alpha. Every element takes the end and near fades; a ring
+    // its radius and gap fades, a dot its ring's radius fade and the detail gap gate, a chevron its length fade, the
+    // gate and the chevron far fade (distances from the camera to the axis point at x)
+    bool TunnelPlaceElement(const double w, const double capFade, const ETunnelElement kind,
         const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outElement)
     {
         const double rt = input.TunnelRadiusM;
-        const double axialM = SOLNpcTunnel::RingWarpInverse(w, input.RadialM, rt);
+        const double h = input.RadialM;
+        const double f = input.FocalRefPx;
+        const double s0 = TunnelBaseSpacingM(rt);
+        const double axialM = w * s0;
         outElement.W = w;
         outElement.AxialOffsetM = axialM;
         outElement.Alpha = 0.0;
-        if (!(axialM > input.EndArcAM && axialM < input.EndArcBM))
+        if (!(axialM > input.EndArcAM && axialM < input.EndArcBM) || !(capFade > 0.0))
         {
             return false;
         }
 
-        // Cap, end, depth and near fades (and the detail fade), the depth from the camera to the axis point
-        const double distanceM = FMath::Sqrt(axialM * axialM + input.RadialM * input.RadialM);
+        // Cap, end and near fades shared by every element
+        const double distanceM = FMath::Sqrt(axialM * axialM + h * h);
         const double distanceToEndM = FMath::Min(axialM - input.EndArcAM, input.EndArcBM - axialM);
-        double alpha = capFade * SOLNpcTunnel::TunnelEndFade(distanceToEndM,
-            SOLNpcTunnel::RingSpacingM(axialM, input.RadialM, rt)) * SOLNpcTunnel::TunnelDepthFade(distanceM, rt)
-            * SOLNpcTunnel::TunnelNearFadeAt(axialM, input.RadialM, rt);
-        if (bDetail)
+        double alpha = capFade * SOLNpcTunnel::TunnelEndFade(distanceToEndM, s0)
+            * SOLNpcTunnel::TunnelNearFadeAt(axialM, h, rt);
+        if (!(alpha > 0.0))
         {
-            alpha *= SOLNpcTunnel::TunnelDetailFade(distanceM, rt);
+            return false;
+        }
+
+        // The element's own size and gap fades
+        const double gapPx = SOLNpcTunnel::RingGapPx(axialM, h, rt, f);
+        if (kind == ETunnelElement::Ring)
+        {
+            alpha *= SOLNpcTunnel::RingRadiusFade(SOLNpcTunnel::RingRadiusPx(distanceM, rt, f))
+                * SOLNpcTunnel::RingGapFade(gapPx);
+        }
+        else if (kind == ETunnelElement::Dot)
+        {
+            alpha *= SOLNpcTunnel::RingRadiusFade(SOLNpcTunnel::RingRadiusPx(distanceM, rt, f))
+                * SOLNpcTunnel::DetailGapFade(gapPx);
+        }
+        else
+        {
+            alpha *= SOLNpcTunnel::RingRadiusFade(SOLNpcTunnel::ChevronLengthPx(distanceM, rt, f))
+                * SOLNpcTunnel::DetailGapFade(gapPx) * SOLNpcTunnel::TunnelChevronFarFade(distanceM, rt);
         }
         outElement.Alpha = alpha;
         return alpha > 0.0;
@@ -281,110 +343,167 @@ double SOLNpcTunnel::LaneSegmentDistanceM(const FVector3d& aRelM, const FVector3
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the local ring spacing: the base spacing near the camera, rho x distance beyond
-double SOLNpcTunnel::RingSpacingM(const double axialM, const double radialM, const double tunnelRadiusM)
+// Returns the focal length in reference px from the horizontal field of view and the viewport size
+double SOLNpcTunnel::FocalLengthRefPx(const double horizontalFovDeg, const double viewportWidthPx,
+    const double viewportHeightPx)
 {
-    if (!TunnelIsPositive(tunnelRadiusM) || FMath::IsNaN(axialM) || FMath::IsNaN(radialM))
+    if (!FMath::IsFinite(horizontalFovDeg) || !TunnelIsPositive(viewportWidthPx) || !TunnelIsPositive(viewportHeightPx)
+        || !(horizontalFovDeg > 0.0 && horizontalFovDeg < 180.0))
     {
         return 0.0;
     }
-    return FMath::Max(TunnelBaseSpacingM(tunnelRadiusM),
-        SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE * FMath::Sqrt(axialM * axialM + radialM * radialM));
+    const double halfFov = FMath::DegreesToRadians(0.5 * horizontalFovDeg);
+    return 0.5 * viewportWidthPx / FMath::Tan(halfFov) * SOL::NPC_LANE_REFERENCE_HEIGHT_PX / viewportHeightPx;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the ring warp: x / S0 inside the constant zone, the logarithmic (asinh) growth beyond
-double SOLNpcTunnel::RingWarp(const double axialM, const double radialM, const double tunnelRadiusM)
+// Returns a viewport pixel size in reference px (scaled by the 1080p reference height over the viewport height)
+double SOLNpcTunnel::ToReferencePx(const double viewportPx, const double viewportHeightPx)
 {
-    if (!TunnelIsPositive(tunnelRadiusM) || FMath::IsNaN(axialM) || FMath::IsNaN(radialM))
+    if (FMath::IsNaN(viewportPx) || !TunnelIsPositive(viewportHeightPx))
     {
         return 0.0;
     }
-    const double s0 = TunnelBaseSpacingM(tunnelRadiusM);
-    const double x0 = TunnelConstantZoneM(radialM, tunnelRadiusM);
-    const double u = FMath::Abs(axialM);
-    if (u <= x0)
-    {
-        return axialM / s0;
-    }
-
-    // Beyond the zone: the integral of 1 / (rho sqrt(x^2 + h^2)), in the asinh form (well defined at h = 0, x0 = 0)
-    const double h = FMath::Abs(radialM);
-    const double logPart = h > 0.0 ? std::asinh(u / h) - std::asinh(x0 / h) : FMath::Loge(u / x0);
-    const double magnitude = x0 / s0 + logPart / SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE;
-    return axialM < 0.0 ? -magnitude : magnitude;
+    return viewportPx * SOL::NPC_LANE_REFERENCE_HEIGHT_PX / viewportHeightPx;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the axial offset of a warp coordinate: w S0 inside the zone, the closed-form inverse beyond
-double SOLNpcTunnel::RingWarpInverse(const double w, const double radialM, const double tunnelRadiusM)
+// Returns the flat ring spacing S0 (0 for a bad tunnel radius)
+double SOLNpcTunnel::RingLatticeSpacingM(const double tunnelRadiusM)
 {
-    if (!TunnelIsPositive(tunnelRadiusM) || FMath::IsNaN(w) || FMath::IsNaN(radialM))
+    return TunnelIsPositive(tunnelRadiusM) ? TunnelBaseSpacingM(tunnelRadiusM) : 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lane's ring phase frac(foot arc / S0), straight from the foot arc in double
+double SOLNpcTunnel::RingLatticePhase(const double footArcM, const double tunnelRadiusM)
+{
+    if (!FMath::IsFinite(footArcM) || !TunnelIsPositive(tunnelRadiusM))
     {
         return 0.0;
     }
-    const double s0 = TunnelBaseSpacingM(tunnelRadiusM);
-    const double x0 = TunnelConstantZoneM(radialM, tunnelRadiusM);
-    const double magnitude = FMath::Abs(w);
-    if (magnitude <= x0 / s0)
-    {
-        return w * s0;
-    }
-
-    // u = (v^2 - h^2) / (2 v) with v = c e^t, written as (c expm1(2t) / 2 + x0) e^-t so it does not cancel
-    const double c = x0 + FMath::Sqrt(x0 * x0 + radialM * radialM);
-    const double t = SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE * (magnitude - x0 / s0);
-    const double u = (0.5 * c * std::expm1(2.0 * t) + x0) * std::exp(-t);
-    return w < 0.0 ? -u : u;
+    return TunnelFrac(footArcM / TunnelBaseSpacingM(tunnelRadiusM));
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the ring phase advanced by an arc change over the spacing at the foot point (bad input keeps it, wrapped)
-double SOLNpcTunnel::AdvanceRingPhase(const double phase, const double deltaArcM, const double radialM,
-    const double tunnelRadiusM)
+// Returns a ring's radius on screen in reference px
+double SOLNpcTunnel::RingRadiusPx(const double distanceM, const double tunnelRadiusM, const double focalRefPx)
 {
-    const double wrapped = TunnelWrapPhase(phase);
-    const double spacingM = RingSpacingM(0.0, radialM, tunnelRadiusM);
-    if (!FMath::IsFinite(deltaArcM) || !(spacingM > 0.0))
-    {
-        return wrapped;
-    }
-    return TunnelFrac(wrapped + deltaArcM / spacingM);
+    return TunnelSizePx(distanceM, tunnelRadiusM, focalRefPx, 1.0);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the deterministic phase of a lane entering range from its foot arc
-double SOLNpcTunnel::InitialRingPhase(const double footArcM, const double radialM, const double tunnelRadiusM)
+// Returns a chevron's length on screen in reference px
+double SOLNpcTunnel::ChevronLengthPx(const double distanceM, const double tunnelRadiusM, const double focalRefPx)
 {
-    const double spacingM = RingSpacingM(0.0, radialM, tunnelRadiusM);
-    if (!FMath::IsFinite(footArcM) || !(spacingM > 0.0))
+    return TunnelSizePx(distanceM, tunnelRadiusM, focalRefPx, 2.0 * SOL::NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a guide dot's drawn size in reference px: its world size on screen, never below the pixel floor
+double SOLNpcTunnel::DotDrawnSizePx(const double distanceM, const double tunnelRadiusM, const double focalRefPx)
+{
+    const double floorPx = SOL::NPC_TUNNEL_DOT_SIZE_PX;
+    if (!(distanceM > 0.0) || !TunnelIsPositive(tunnelRadiusM) || !TunnelIsPositive(focalRefPx))
+    {
+        return floorPx;
+    }
+    const double sizePx = TunnelSizePx(distanceM, tunnelRadiusM, focalRefPx, SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII);
+    return FMath::IsFinite(sizePx) && sizePx > floorPx ? sizePx : floorPx;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an end ring's drawn radius in reference px, never below the 1 px floor (the floor for NaN)
+double SOLNpcTunnel::EndRingDrawnRadiusPx(const double radiusRefPx)
+{
+    const double floorPx = SOL::NPC_TUNNEL_END_RING_MIN_DRAWN_PX;
+    return radiusRefPx > floorPx ? radiusRefPx : floorPx;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ring ribbon's inner reach: its half extent, capped at a fraction of the ring's radius (0 for bad input)
+double SOLNpcTunnel::RingRibbonInnerExtentPx(const double halfExtentPx, const double ringRadiusPx)
+{
+    if (!(halfExtentPx > 0.0) || !(ringRadiusPx > 0.0))
     {
         return 0.0;
     }
-    return TunnelFrac(footArcM / spacingM);
+    return FMath::Min(halfExtentPx, SOL::NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION * ringRadiusPx);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the depth fade: 1 near, log-linear to the floor, the floor far away (and for bad input)
-double SOLNpcTunnel::TunnelDepthFade(const double distanceM, const double tunnelRadiusM)
+// Returns the pixel-size fade: solid, log-linear down to the knee, log-linear down to gone, then 0
+double SOLNpcTunnel::RingRadiusFade(const double radiusRefPx)
 {
-    const double floorAlpha = SOL::NPC_TUNNEL_DEPTH_FADE_FLOOR;
-    if (FMath::IsNaN(distanceM) || !TunnelIsPositive(tunnelRadiusM))
+    const double solidPx = SOL::NPC_TUNNEL_RADIUS_FADE_SOLID_PX;
+    const double kneePx = SOL::NPC_TUNNEL_RADIUS_FADE_KNEE_PX;
+    const double kneeAlpha = SOL::NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA;
+    const double gonePx = SOL::NPC_TUNNEL_RADIUS_FADE_GONE_PX;
+    if (FMath::IsNaN(radiusRefPx))
     {
-        return floorAlpha;
+        return 0.0;
     }
-    const double startM = SOL::NPC_TUNNEL_DEPTH_FADE_START_RADII * tunnelRadiusM;
-    if (distanceM <= startM)
+    if (radiusRefPx >= solidPx)
     {
         return 1.0;
     }
-    if (distanceM >= SOL::NPC_TUNNEL_DEPTH_FADE_END_RADII * tunnelRadiusM)
+    if (radiusRefPx >= kneePx)
     {
-        return floorAlpha;
+        return kneeAlpha + (1.0 - kneeAlpha) * FMath::Loge(radiusRefPx / kneePx) / FMath::Loge(solidPx / kneePx);
     }
-    const double t = FMath::Loge(distanceM / startM)
-        / FMath::Loge(SOL::NPC_TUNNEL_DEPTH_FADE_END_RADII / SOL::NPC_TUNNEL_DEPTH_FADE_START_RADII);
-    return FMath::Clamp(1.0 - (1.0 - floorAlpha) * t, floorAlpha, 1.0);
+    if (radiusRefPx > gonePx)
+    {
+        return kneeAlpha * FMath::Loge(radiusRefPx / gonePx) / FMath::Loge(kneePx / gonePx);
+    }
+    return 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the on-screen gap to the next ring away from the camera: f x max(ray angle, angular radius difference)
+double SOLNpcTunnel::RingGapPx(const double axialM, const double radialM, const double tunnelRadiusM,
+    const double focalRefPx)
+{
+    if (FMath::IsNaN(axialM) || FMath::IsNaN(radialM) || !TunnelIsPositive(tunnelRadiusM)
+        || !TunnelIsPositive(focalRefPx))
+    {
+        return 0.0;
+    }
+    const double x = FMath::Abs(axialM);
+    const double h = FMath::Abs(radialM);
+    const double distanceM = FMath::Sqrt(x * x + h * h);
+    if (distanceM <= 0.0)
+    {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    // The neighbour one spacing farther from the camera: the angle between the two view rays, and the difference of
+    // the two rings' angular radii (the larger reads as the gap: the rays from the side, the radii down the axis)
+    const double nextX = x + TunnelBaseSpacingM(tunnelRadiusM);
+    const double nextDistanceM = FMath::Sqrt(nextX * nextX + h * h);
+    const double rays = std::atan2(nextX, h) - std::atan2(x, h);
+    const double radii = tunnelRadiusM / distanceM - tunnelRadiusM / nextDistanceM;
+    return focalRefPx * FMath::Max(rays, radii);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the ring gap fade, log-linear from the gone gap to the full gap
+double SOLNpcTunnel::RingGapFade(const double gapRefPx)
+{
+    return TunnelLogRamp(gapRefPx, SOL::NPC_TUNNEL_RING_GAP_FADE_GONE_PX, SOL::NPC_TUNNEL_RING_GAP_FADE_FULL_PX);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the dot and chevron gap gate, log-linear from the gone gap to the full gap
+double SOLNpcTunnel::DetailGapFade(const double gapRefPx)
+{
+    return TunnelLogRamp(gapRefPx, SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX, SOL::NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lane's draw fade: 1 shown, 0 hidden
+double SOLNpcTunnel::TunnelDrawFade(const bool bShown)
+{
+    return bShown ? 1.0 : 0.0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -427,28 +546,6 @@ double SOLNpcTunnel::TunnelNearFadeAt(const double axialOffsetM, const double ra
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the dot and chevron fade: 1 inside the start radii, 0 past the end radii, log-linear between
-double SOLNpcTunnel::TunnelDetailFade(const double distanceM, const double tunnelRadiusM)
-{
-    if (FMath::IsNaN(distanceM) || !TunnelIsPositive(tunnelRadiusM))
-    {
-        return 0.0;
-    }
-    const double startM = SOL::NPC_TUNNEL_DETAIL_FADE_START_RADII * tunnelRadiusM;
-    if (distanceM <= startM)
-    {
-        return 1.0;
-    }
-    if (distanceM >= SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * tunnelRadiusM)
-    {
-        return 0.0;
-    }
-    const double t = FMath::Loge(distanceM / startM)
-        / FMath::Loge(SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII / SOL::NPC_TUNNEL_DETAIL_FADE_START_RADII);
-    return FMath::Clamp(1.0 - t, 0.0, 1.0);
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Returns the dot and chevron near fade by the element's own distance (smoothstep from the start to the full radius)
 double SOLNpcTunnel::TunnelDetailNearFade(const double elementDistanceM, const double tunnelRadiusM)
 {
@@ -460,29 +557,6 @@ double SOLNpcTunnel::TunnelDetailNearFade(const double elementDistanceM, const d
     const double fullM = SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII * tunnelRadiusM;
     const double t = FMath::Clamp((elementDistanceM - startM) / (fullM - startM), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns clamp(projected radius / (SCREEN_FADE_HALF_EXTENTS x ribbon half extent), 0, 1)
-double SOLNpcTunnel::TunnelScreenSizeFade(const double projectedRadiusPx, const double halfExtentPx)
-{
-    if (FMath::IsNaN(projectedRadiusPx) || !(halfExtentPx > 0.0))
-    {
-        return 0.0;
-    }
-    return FMath::Clamp(projectedRadiusPx / (SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS * halfExtentPx), 0.0, 1.0);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns a ring's screen-size fade: 1 for an end ring (exempt), else of Rt x the pixels per metre at its centre
-double SOLNpcTunnel::TunnelRingScreenFade(const bool bEndRing, const double tunnelRadiusM, const double pxPerMAtCentre,
-    const double halfExtentPx)
-{
-    if (bEndRing)
-    {
-        return 1.0;
-    }
-    return TunnelScreenSizeFade(tunnelRadiusM * pxPerMAtCentre, halfExtentPx);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -560,39 +634,25 @@ bool SOLNpcTunnel::RingSlot(const int32 slot, const FSOLNpcTunnelSlotInput& inpu
         return false;
     }
     const double w = TunnelRingSlotW(slot, TunnelWrapPhase(input.Phase));
-    return TunnelPlaceElement(w, RingCapFade(w), false, input, outRing);
+    return TunnelPlaceElement(w, RingCapFade(w), ETunnelElement::Ring, input, outRing);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns ring slot k's axial offset in float arithmetic, as the tunnel shader computes it
-float SOLNpcTunnel::RingSlotOffsetM(const int32 slot, const float phase, const float radialM,
-    const float tunnelRadiusM)
+// Returns ring slot k's axial offset in float arithmetic, as the tunnel shader computes it (w x S0, no exp)
+float SOLNpcTunnel::RingSlotOffsetM(const int32 slot, const float phase, const float tunnelRadiusM)
 {
-    if (slot < 0 || slot >= RingSlotCount() || !FMath::IsFinite(phase) || !FMath::IsFinite(radialM)
-        || !FMath::IsFinite(tunnelRadiusM) || tunnelRadiusM <= 0.0f)
+    if (slot < 0 || slot >= RingSlotCount() || !FMath::IsFinite(tunnelRadiusM) || tunnelRadiusM <= 0.0f)
     {
         return 0.0f;
     }
 
-    // The slot's warp coordinate (the phase wrapped into [0, 1)), then the inverse warp, all in float
-    const float wrapped = phase - FMath::FloorToFloat(phase);
+    // The slot's warp coordinate (the phase wrapped into [0, 1), a non-finite one read as 0) times S0, all in float
+    const float wrapped = FMath::IsFinite(phase) ? phase - FMath::FloorToFloat(phase) : 0.0f;
     const float slotPhase = wrapped >= 1.0f ? 0.0f : wrapped;
     const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
     const float w = slot < perSide ? static_cast<float>(slot + 1) - slotPhase
         : -(static_cast<float>(slot - perSide) + slotPhase);
-    const float rho = static_cast<float>(SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE);
-    const float s0 = static_cast<float>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII) * tunnelRadiusM;
-    const float d0 = s0 / rho;
-    const float x0 = FMath::Sqrt(FMath::Max(0.0f, d0 * d0 - radialM * radialM));
-    const float magnitude = FMath::Abs(w);
-    if (magnitude <= x0 / s0)
-    {
-        return w * s0;
-    }
-    const float c = x0 + FMath::Sqrt(x0 * x0 + radialM * radialM);
-    const float t = rho * (magnitude - x0 / s0);
-    const float u = (0.5f * c * (FMath::Exp(2.0f * t) - 1.0f) + x0) * FMath::Exp(-t);
-    return w < 0.0f ? -u : u;
+    return w * (static_cast<float>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII) * tunnelRadiusM);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -614,7 +674,7 @@ bool SOLNpcTunnel::DotSlot(const int32 slot, const int32 dot, const FSOLNpcTunne
     }
     const double offset = static_cast<double>(dot) / static_cast<double>(SOL::NPC_TUNNEL_DOTS_PER_GAP);
     const double w = TunnelGapSlotW(slot, TunnelWrapPhase(input.Phase)) + offset;
-    return TunnelPlaceElement(w, DetailCapFade(w), true, input, outDot);
+    return TunnelPlaceElement(w, DetailCapFade(w), ETunnelElement::Dot, input, outDot);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -629,16 +689,7 @@ bool SOLNpcTunnel::ChevronSlot(const int32 slot, const int32 chevron, const FSOL
     }
     const double offset = static_cast<double>(chevron) / static_cast<double>(SOL::NPC_TUNNEL_CHEVRONS_PER_GAP);
     const double w = TunnelGapSlotW(slot, TunnelWrapPhase(input.Phase)) + offset;
-    if (!TunnelPlaceElement(w, DetailCapFade(w), true, input, outChevron))
-    {
-        return false;
-    }
-
-    // The chevrons' own far fade (D22), by the same camera-to-axis-point distance as the detail fade
-    const double axialM = outChevron.AxialOffsetM;
-    outChevron.Alpha *= TunnelChevronFarFade(FMath::Sqrt(axialM * axialM + input.RadialM * input.RadialM),
-        input.TunnelRadiusM);
-    return outChevron.Alpha > 0.0;
+    return TunnelPlaceElement(w, DetailCapFade(w), ETunnelElement::Chevron, input, outChevron);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -763,7 +814,7 @@ void SOLNpcTunnel::WriteTunnelTexels(const TConstArrayView<FSOLNpcTunnelLaneData
         texels[index] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
     }
 
-    // Each shown lane's column: (foot, Rt), (axis, fade), (up, phase), (end arcs, 0, 0)
+    // Each shown lane's column: (foot, Rt), (axis, label strength), (up, phase), (end arcs, draw fade, 0)
     for (const FSOLNpcTunnelLaneData& lane : lanes)
     {
         if (lane.Lane < 0 || lane.Lane >= width)
@@ -778,7 +829,7 @@ void SOLNpcTunnel::WriteTunnelTexels(const TConstArrayView<FSOLNpcTunnelLaneData
         texels[2 * width + column] = FVector4f(static_cast<float>(lane.Up.X), static_cast<float>(lane.Up.Y),
             static_cast<float>(lane.Up.Z), static_cast<float>(lane.Phase));
         texels[3 * width + column] = FVector4f(static_cast<float>(lane.EndArcAM), static_cast<float>(lane.EndArcBM),
-            0.0f, 0.0f);
+            static_cast<float>(lane.DrawFade), 0.0f);
     }
 }
 
@@ -846,16 +897,18 @@ FSOLNpcTunnelFoot SOLNpcTunnel::LaneFoot(const FVector3d& aRelM, const FVector3d
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns an end ring's alpha: the depth fade with its floor raised to the end-ring minimum, times the near fade
-double SOLNpcTunnel::EndRingAlpha(const double axialOffsetM, const double radialM, const double tunnelRadiusM)
+// Returns an end ring's alpha: the near fade times the pixel-size fade of its radius on screen (gone below 0.5 px)
+double SOLNpcTunnel::EndRingAlpha(const double axialOffsetM, const double radialM, const double tunnelRadiusM,
+    const double focalRefPx)
 {
-    if (FMath::IsNaN(axialOffsetM) || FMath::IsNaN(radialM) || !TunnelIsPositive(tunnelRadiusM))
+    if (FMath::IsNaN(axialOffsetM) || FMath::IsNaN(radialM) || !TunnelIsPositive(tunnelRadiusM)
+        || !TunnelIsPositive(focalRefPx))
     {
         return 0.0;
     }
     const double distanceM = FMath::Sqrt(axialOffsetM * axialOffsetM + radialM * radialM);
-    return FMath::Max(TunnelDepthFade(distanceM, tunnelRadiusM), SOL::NPC_TUNNEL_END_RING_MIN_ALPHA)
-        * TunnelNearFadeAt(axialOffsetM, radialM, tunnelRadiusM);
+    return TunnelNearFadeAt(axialOffsetM, radialM, tunnelRadiusM)
+        * RingRadiusFade(RingRadiusPx(distanceM, tunnelRadiusM, focalRefPx));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -868,8 +921,8 @@ bool SOLNpcTunnel::EndRingSlot(const int32 end, const FSOLNpcTunnelSlotInput& in
     }
     const double axialM = end == 0 ? input.EndArcAM : input.EndArcBM;
     outRing.AxialOffsetM = axialM;
-    outRing.W = RingWarp(axialM, input.RadialM, input.TunnelRadiusM);
-    outRing.Alpha = EndRingAlpha(axialM, input.RadialM, input.TunnelRadiusM);
+    outRing.W = axialM / TunnelBaseSpacingM(input.TunnelRadiusM);
+    outRing.Alpha = EndRingAlpha(axialM, input.RadialM, input.TunnelRadiusM, input.FocalRefPx);
     return outRing.Alpha > 0.0;
 }
 
@@ -939,6 +992,13 @@ int32 SOLNpcTunnel::TunnelDotRowSegmentsRelM(const FVector3d& footRelM, const FS
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns whether a tunnel's dot rows can show: the lane segment within the gap gate's reach
+bool SOLNpcTunnel::IsDotRowInReach(const double segmentDistanceM, const double tunnelRadiusM)
+{
+    return TunnelIsPositive(tunnelRadiusM) && segmentDistanceM < TunnelDetailReachM(tunnelRadiusM);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Fills a lane's renderer feed and foot; true when the lane can have a tunnel
 bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneEntry& lane,
     const FVector3d& viewpointM, const double bodyRadiusAM, const double bodyRadiusBM,
@@ -971,22 +1031,11 @@ bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneE
     outData.TunnelRadiusM = tunnelRadiusM;
     outData.Axis = basis.Axis;
     outData.Up = basis.Up;
-    outData.Fade = TunnelFade(LaneSegmentDistanceM(aRelM, bRelM), lane.RadiusM);
+    outData.SegmentDistanceM = LaneSegmentDistanceM(aRelM, bRelM);
+    outData.Fade = TunnelFade(outData.SegmentDistanceM, lane.RadiusM);
     outData.EndArcAM = endArcsM.X - outFoot.ArcM;
     outData.EndArcBM = endArcsM.Y - outFoot.ArcM;
     return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns the next ring phase: the initial phase on entering range, else advanced by the foot arc's change
-double SOLNpcTunnel::StepRingPhase(const bool bWasInRange, const double phase, const double previousFootArcM,
-    const double footArcM, const double radialM, const double tunnelRadiusM)
-{
-    if (!bWasInRange)
-    {
-        return InitialRingPhase(footArcM, radialM, tunnelRadiusM);
-    }
-    return AdvanceRingPhase(phase, footArcM - previousFootArcM, radialM, tunnelRadiusM);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1061,7 +1110,12 @@ int32 SOLNpcTunnel::RingSegmentsForSlot(const int32 slot)
     {
         return SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR;
     }
-    return k < SOL::NPC_TUNNEL_RING_MID_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_MID : SOL::NPC_TUNNEL_RING_SEGMENTS_FAR;
+    if (k < SOL::NPC_TUNNEL_RING_MID_SLOTS)
+    {
+        return SOL::NPC_TUNNEL_RING_SEGMENTS_MID;
+    }
+    return k < SOL::NPC_TUNNEL_RING_FAR_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_FAR
+        : SOL::NPC_TUNNEL_RING_SEGMENTS_FARTHEST;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1088,4 +1142,49 @@ double SOLNpcTunnel::ReadTunnelFadeTexel(const TConstArrayView<FVector4f> texels
         return 0.0;
     }
     return static_cast<double>(texels[width + lane].W);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane's draw fade from row 3 .z of its column
+double SOLNpcTunnel::ReadTunnelDrawFadeTexel(const TConstArrayView<FVector4f> texels, const int32 lane)
+{
+    constexpr int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
+    if (lane < 0 || lane >= width || texels.Num() < 4 * width)
+    {
+        return 0.0;
+    }
+    return static_cast<double>(texels[3 * width + lane].Z);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the tunnel material's constant vectors, packed from SOLConstants.h as SOLNpcTunnel.ush reads them
+FSOLNpcTunnelMaterialVectors SOLNpcTunnel::TunnelMaterialVectors()
+{
+    // Returns a float4 of four double constants
+    const auto pack = [](const double x, const double y, const double z, const double w)
+    {
+        return FVector4f(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(w));
+    };
+    FSOLNpcTunnelMaterialVectors vectors;
+    vectors.Style0 = pack(SOL::NPC_TUNNEL_RING_WIDTH_PX, SOL::NPC_TUNNEL_END_RING_WIDTH_PX, SOL::NPC_TUNNEL_DOT_SIZE_PX,
+        SOL::NPC_LANE_REFERENCE_HEIGHT_PX);
+    vectors.Style1 = pack(SOL::NPC_TUNNEL_EMISSIVE, SOL::NPC_TUNNEL_CHEVRON_ALPHA, SOL::NPC_LANE_GLOW_PAD_PX,
+        SOL::NPC_TUNNEL_DOT_RADIUS_SCALE);
+    vectors.Shape = pack(SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE, SOL::NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII,
+        SOL::NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII, SOL::NPC_TUNNEL_RADIUS_FADE_GONE_PX);
+    vectors.Style2 = pack(SOL::NPC_TUNNEL_CHEVRON_NOTCH_FRACTION, SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII,
+        SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII, SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII);
+    vectors.Style3 = pack(SOL::NPC_TUNNEL_RING_GAP_FADE_GONE_PX, SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII,
+        SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII, SOL::NPC_TUNNEL_CHEVRONS_PER_GAP);
+    vectors.Layout0 = pack(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII, SOL::NPC_TUNNEL_RING_GAP_FADE_FULL_PX,
+        SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE, SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE);
+    vectors.Layout1 = pack(SOL::NPC_TUNNEL_END_FADE_SPACINGS, SOL::NPC_TUNNEL_RADIUS_FADE_SOLID_PX,
+        SOL::NPC_TUNNEL_RADIUS_FADE_KNEE_PX, SOL::NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA);
+    vectors.Layout2 = pack(SOL::NPC_TUNNEL_NEAR_FADE_START_RADII, SOL::NPC_TUNNEL_NEAR_FADE_FULL_RADII,
+        SOL::NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII, SOL::NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII);
+    vectors.Layout3 = pack(SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX, SOL::NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX,
+        SOL::NPC_TUNNEL_DOTS_PER_GAP, SOL::NPC_TUNNEL_DOT_ROWS);
+    vectors.Layout4 = pack(SOL::NPC_TUNNEL_END_RING_MIN_DRAWN_PX, SOL::NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION, 0.0,
+        0.0);
+    return vectors;
 }

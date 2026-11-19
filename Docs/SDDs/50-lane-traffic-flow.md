@@ -148,7 +148,9 @@ the lane.
   spacing terms scale by 6 (`NPC_TUNNEL_RING_BASE_SPACING_RADII` 12, `NPC_TUNNEL_RING_SPACING_PER_DISTANCE` 1.5), so
   the constant zone stays 8 tunnel radii and the kept rings are a subset of the old ones. Guide dots and wall chevrons
   sit at every kept ring and halfway to the next (`NPC_TUNNEL_DOTS_PER_GAP` 2, `NPC_TUNNEL_CHEVRONS_PER_GAP` 2), never
-  at a removed ring; the end rings are unchanged.
+  at a removed ring; the end rings are unchanged. *Amended by SDD 52 (issue #52, D2, part 52b): the 12 tunnel radii
+  spacing is now the flat lattice spacing at every distance (no per-distance warp, `NPC_TUNNEL_RING_SPACING_PER_DISTANCE`
+  deleted). Dots and chevrons still sit at every ring and halfway between, now gated by the ring gap on screen.*
 
 ## 3. What exists today (code survey, HEAD `f336e10`)
 
@@ -597,6 +599,9 @@ Pure function `SOLLaneTraffic::MergeReadout(...)` on the UI side (no `UI -> Npc`
   -> the smallest `rho_p` (distance from the axis over that lane's own wall radius), the lower lane index on a tie.
   None -> hidden. Also hidden while the map, a menu or warp-jump shows, the HUD is hidden, or
   the Lanes row (with the master O) is off (D8: follows the Lanes row like #49).
+  *Amended by SDD 52 (issue #52, D7, part 52b): the tunnel now draws at every distance, but the readout (and its label)
+  still follows the label rule, the old 100 -> 50 lane radii band (label strength above 0). A lane the player is far
+  from has neither label nor readout.*
 - **Lane frame velocity** at the player's foot: `lerp(V_A, V_B, s)` (registry body velocities, `s` the foot fraction):
   exactly the nearest body's velocity near either end (D3), a blend mid-lane.
 - **Direction** `d` (the traffic the player would merge into): the sign of `(v_player - v_frame) . a` when its size is
@@ -1513,7 +1518,10 @@ Both changes were built after part 50e, test first, and are uncommitted at the t
   cases re-pinned.
 - Not re-profiled after the thinning: there are fewer vertices, so the section 15 GPU figures are an upper bound. The
   README shots `49-lane-tunnel-*.png` and `50-lane-*.png` show the ring layout before thinning.
-- The tunnel density as a whole (how many rings to keep) is decided separately under ticket #52.
+- The tunnel density as a whole (how many rings to keep) is decided separately under ticket #52. *Decided by SDD 52
+  (issue #52): a flat 12 tunnel radii lattice at every distance, drawn as a moving window with pixel-size and gap fades.
+  The slot counts and the 2,884-vertex mesh above are replaced (80 ring slots and 33 detail slots per side, 9,620
+  vertices per lane).*
 
 **Verification (as built):** full suite 2017 / 2017; smokes NpcTunnel 39 / 39, NpcTraffic 19 / 19, NpcLanes 35 / 35,
 LaneMerge 15 / 15, AutoLanes 13 / 13, Hud 45 / 45 at 1280x720, 1920x1080 and 2560x1440; `GameUserSettings.ini`

@@ -32,8 +32,8 @@
 // at a removed ring; end rings unchanged. API contract (from the test author):
 //   SOL::NPC_TUNNEL_RING_KEEP_EVERY (int32) = 6, the thinning factor
 //   SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII = 12.0 (6 x the pre-thinning 2.0) and
-//   SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE = 1.5 (6 x 0.25): every spacing is 6 times the old one, so D0 = S0 / rho
-//     stays 8 Rt and the new warp is the old warp / 6 (the kept rings are a subset of the old ones)
+//   (then) the accordion's rho 1.5 (6 x 0.25): every spacing 6 times the old one (rho and the accordion are gone
+//     since SDD 52, the lattice is flat at S0 everywhere)
 //   SOL::NPC_TUNNEL_CHEVRONS_PER_GAP (int32) = 2; SOL::NPC_TUNNEL_DOTS_PER_GAP stays 2
 //   SOLNpcTunnel::DotSlot(slot, dot, input, out): dot d at d / DOTS_PER_GAP of its gap (offsets 0 and 0.5, were 0.25
 //     and 0.75)
@@ -41,9 +41,13 @@
 //     CHEVRONS_PER_GAP of its gap (offsets 0 and 0.5, was one at 0.5); false for a chevron out of range
 //   SOLNpcTunnel::TunnelSlotMeshVertexCount(): a quad per chevron is now 2 walls x CHEVRONS_PER_GAP x gap slots
 // NPC_TUNNEL_RING_SLOTS_PER_SIDE, NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE and the ring segment bands are left to the
-// implementation under invariants (the float path finite and accurate for every slot: 64 slots overflow a float at
-// rho 1.5; every default lane inside PER_SIDE - 1 slots; the detail slots reaching 512 Rt; 8 lanes within the fixed
-// 80,000-vertex budget).
+// implementation under invariants.
+//
+// Issue #52 part 52a (contract Docs/Plans/52a-tunnel-far-field-contract.md): the accordion, the accumulated phase, the
+// depth, 256-512 Rt detail and 49c screen fades and the 0.5 end-ring floor are gone (flat 12 Rt lattice, direct phase,
+// pixel-size and gap fades). Their cases here were deleted or re-pinned; the far-field cases live in
+// NpcTunnelFarFieldTest.cpp (SOLTest.Npc.TunnelFarField.*): spacing, phase, window, no-pop sweeps, coverage, float
+// path, end rings, slot-mesh budget. Every slot input here carries the reference focal length.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -64,28 +68,11 @@ namespace
     constexpr double NPCTUNNEL_NEPTUNE_RADIUS_M = 2.4764e7;
     constexpr double NPCTUNNEL_URANUS_NEPTUNE_LANE_RADIUS_M = 1.0e7;
 
-    // The ring lattice before the guide thinning (SDD 49 section 4.5 as first built): 2 Rt near the camera, a quarter
-    // of the distance beyond, and the thinning factor the user chose (keep every 6th ring)
+    // The thinning factor the user chose (keep every 6th ring of the first-built 2 Rt lattice, 2026-11-17)
     constexpr double NPCTUNNEL_PRE_THIN_BASE_SPACING_RADII = 2.0;
-    constexpr double NPCTUNNEL_PRE_THIN_SPACING_PER_DISTANCE = 0.25;
     constexpr int32 NPCTUNNEL_KEEP_EVERY = 6;
 
-    // A ring or detail element of the brute-force reference: its warp coordinate, axial offset and alpha
-    struct FNpcTunnelRefElement
-    {
-        double W = 0.0;
-        double X = 0.0;
-        double Alpha = 0.0;
-    };
-
-    // A ring seen by the no-pop sweep: its axial offset and alpha
-    struct FNpcTunnelSeenRing
-    {
-        double X = 0.0;
-        double Alpha = 0.0;
-    };
-
-    // Failure counters of a coverage or sweep check, with the first failure's description
+    // Failure counters of a check, with the first failure's description
     struct FNpcTunnelFailures
     {
         int32 Count = 0;
@@ -110,101 +97,17 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns frac(x) in [0, 1) (a negative x wraps up)
-    double NpcTunnelFrac(const double x)
-    {
-        return x - FMath::FloorToDouble(x);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the circular distance between two phases in [0, 1)
-    double NpcTunnelWrapDistance(const double a, const double b)
-    {
-        const double d = FMath::Abs(a - b);
-        return FMath::Min(d, 1.0 - d);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the constant ring spacing near the camera, S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII x Rt
+    // Returns the flat ring spacing, S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII x Rt (SDD 52 D2)
     double NpcTunnelS0(const double tunnelRadiusM)
     {
         return SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII * tunnelRadiusM;
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the spacing growth per distance, rho = NPC_TUNNEL_RING_SPACING_PER_DISTANCE
-    double NpcTunnelRho()
-    {
-        return SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the half length of the constant-spacing zone on the camera's foot point, x0 = sqrt(max(0, D0^2 - h^2))
-    // with D0 = S0 / rho
-    double NpcTunnelX0(const double radialM, const double tunnelRadiusM)
-    {
-        const double d0 = NpcTunnelS0(tunnelRadiusM) / NpcTunnelRho();
-        return FMath::Sqrt(FMath::Max(0.0, d0 * d0 - radialM * radialM));
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the contract's local ring spacing, max(S0, rho x sqrt(x^2 + h^2)) (the test's own closed form)
-    double NpcTunnelRefSpacing(const double axialM, const double radialM, const double tunnelRadiusM)
-    {
-        return FMath::Max(NpcTunnelS0(tunnelRadiusM),
-            NpcTunnelRho() * FMath::Sqrt(axialM * axialM + radialM * radialM));
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the contract's ring warp W(x, h), the integral of 1 / spacing from the foot point (the test's own closed
-    // form, in the asinh form so it is well conditioned at h = 0 and x0 = 0)
-    double NpcTunnelRefWarp(const double axialM, const double radialM, const double tunnelRadiusM)
-    {
-        const double s0 = NpcTunnelS0(tunnelRadiusM);
-        const double x0 = NpcTunnelX0(radialM, tunnelRadiusM);
-        const double u = FMath::Abs(axialM);
-        if (u <= x0)
-        {
-            return axialM / s0;
-        }
-        const double logPart = radialM > 0.0 ? std::asinh(u / radialM) - std::asinh(x0 / radialM)
-            : std::log(u / x0);
-        const double magnitude = x0 / s0 + logPart / NpcTunnelRho();
-        return axialM < 0.0 ? -magnitude : magnitude;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the contract's inverse warp: x = w S0 inside the constant zone, else u = (v^2 - h^2) / (2 v) with
-    // v = (x0 + sqrt(x0^2 + h^2)) e^(rho (|w| - x0 / S0)), written with expm1 so it does not cancel
-    double NpcTunnelRefWarpInverse(const double w, const double radialM, const double tunnelRadiusM)
-    {
-        const double s0 = NpcTunnelS0(tunnelRadiusM);
-        const double x0 = NpcTunnelX0(radialM, tunnelRadiusM);
-        const double a = FMath::Abs(w);
-        if (a <= x0 / s0)
-        {
-            return w * s0;
-        }
-        const double c = x0 + FMath::Sqrt(x0 * x0 + radialM * radialM);
-        const double t = NpcTunnelRho() * (a - x0 / s0);
-        const double u = (0.5 * c * std::expm1(2.0 * t) + x0) * std::exp(-t);
-        return w < 0.0 ? -u : u;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns ring slot k's warp coordinate (SDD 49 section 4.5): slots 0 .. PER_SIDE - 1 ahead at k + 1 - phase,
-    // slots PER_SIDE .. 2 PER_SIDE - 1 behind at -((k - PER_SIDE) + phase)
-    double NpcTunnelSlotW(const int32 slot, const double phase)
-    {
-        const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
-        return slot < perSide ? static_cast<double>(slot + 1) - phase
-            : -(static_cast<double>(slot - perSide) + phase);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns a slot input (radial distance, tunnel radius, phase, end-ring arcs relative to the foot arc)
+    // Returns a slot input (radial distance, tunnel radius, phase, end-ring arcs relative to the foot arc, focal length
+    // in reference px: the reference focal unless given, SDD 52 D8)
     FSOLNpcTunnelSlotInput NpcTunnelInput(const double radialM, const double tunnelRadiusM, const double phase,
-        const double endArcAM, const double endArcBM)
+        const double endArcAM, const double endArcBM, const double focalRefPx = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX)
     {
         FSOLNpcTunnelSlotInput input;
         input.RadialM = radialM;
@@ -212,83 +115,8 @@ namespace
         input.Phase = phase;
         input.EndArcAM = endArcAM;
         input.EndArcBM = endArcBM;
+        input.FocalRefPx = focalRefPx;
         return input;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the axial distance from x to the nearer end ring, inside the tunnel (negative outside)
-    double NpcTunnelDistanceToEnd(const double axialM, const FSOLNpcTunnelSlotInput& input)
-    {
-        return FMath::Min(axialM - input.EndArcAM, input.EndArcBM - axialM);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the reference alpha of a ring (SDD 49 sections 4.5 and 4.7): cap fade x end fade x depth fade x near
-    // fade (weighted by h, TunnelNearFadeAt), the depth measured from the camera to the ring's centre on the axis,
-    // sqrt(x^2 + h^2)
-    double NpcTunnelRefRingAlpha(const double w, const double axialM, const FSOLNpcTunnelSlotInput& input)
-    {
-        using namespace SOLNpcTunnel;
-        const double rt = input.TunnelRadiusM;
-        const double distanceM = FMath::Sqrt(axialM * axialM + input.RadialM * input.RadialM);
-        return RingCapFade(w) * TunnelEndFade(NpcTunnelDistanceToEnd(axialM, input), RingSpacingM(axialM,
-            input.RadialM, rt)) * TunnelDepthFade(distanceM, rt) * TunnelNearFadeAt(axialM, input.RadialM, rt);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the reference alpha of a guide dot or chevron (its cap fade is 1 wherever the detail fade is not 0):
-    // end fade x depth fade x near fade x detail fade, distances from the camera to the axis point at x
-    double NpcTunnelRefDetailAlpha(const double axialM, const FSOLNpcTunnelSlotInput& input)
-    {
-        using namespace SOLNpcTunnel;
-        const double rt = input.TunnelRadiusM;
-        const double distanceM = FMath::Sqrt(axialM * axialM + input.RadialM * input.RadialM);
-        return TunnelEndFade(NpcTunnelDistanceToEnd(axialM, input), RingSpacingM(axialM, input.RadialM, rt))
-            * TunnelDepthFade(distanceM, rt) * TunnelNearFadeAt(axialM, input.RadialM, rt)
-            * TunnelDetailFade(distanceM, rt);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Fills the brute-force rings: every whole n with W^-1(n - phase) strictly between the end rings and a non-zero
-    // reference alpha (the cap fade removes every ring with |w| >= PER_SIDE)
-    void NpcTunnelBruteRings(const FSOLNpcTunnelSlotInput& input, TArray<FNpcTunnelRefElement>& outRings)
-    {
-        outRings.Reset();
-        const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
-        for (int32 n = -perSide - 2; n <= perSide + 2; ++n)
-        {
-            const double w = static_cast<double>(n) - input.Phase;
-            const double x = NpcTunnelRefWarpInverse(w, input.RadialM, input.TunnelRadiusM);
-            if (!(x > input.EndArcAM && x < input.EndArcBM))
-            {
-                continue;
-            }
-            const double alpha = NpcTunnelRefRingAlpha(w, x, input);
-            if (alpha > 0.0)
-            {
-                outRings.Add({ w, x, alpha });
-            }
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the pre-thinning ring warp W_old(x, h) (the same closed form with 2 Rt and 0.25; D0 is 8 Rt in both), so
-    // a kept ring has W_old + KEEP_EVERY x phase on a multiple of KEEP_EVERY
-    double NpcTunnelPreThinWarp(const double axialM, const double radialM, const double tunnelRadiusM)
-    {
-        const double s0 = NPCTUNNEL_PRE_THIN_BASE_SPACING_RADII * tunnelRadiusM;
-        const double rho = NPCTUNNEL_PRE_THIN_SPACING_PER_DISTANCE;
-        const double d0 = s0 / rho;
-        const double x0 = FMath::Sqrt(FMath::Max(0.0, d0 * d0 - radialM * radialM));
-        const double u = FMath::Abs(axialM);
-        if (u <= x0)
-        {
-            return axialM / s0;
-        }
-        const double logPart = radialM > 0.0 ? std::asinh(u / radialM) - std::asinh(x0 / radialM)
-            : std::log(u / x0);
-        const double magnitude = x0 / s0 + logPart / rho;
-        return axialM < 0.0 ? -magnitude : magnitude;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -296,207 +124,6 @@ namespace
     double NpcTunnelOffLattice(const double value, const double period)
     {
         return FMath::Abs(std::remainder(value, period));
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Fills the brute-force dots (bChevrons false) or chevrons at n - phase + 0 and + 0.5 (at each ring and halfway to
-    // the next, guide thinning) strictly between the end rings with a non-zero reference alpha
-    void NpcTunnelBruteDetails(const FSOLNpcTunnelSlotInput& input, const bool bChevrons,
-        TArray<FNpcTunnelRefElement>& outElements)
-    {
-        outElements.Reset();
-        const int32 perSide = SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE;
-        const double dotOffsets[] = { 0.0, 0.5 };
-        const double chevronOffsets[] = { 0.0, 0.5 };
-        const TConstArrayView<double> offsets = bChevrons ? TConstArrayView<double>(chevronOffsets)
-            : TConstArrayView<double>(dotOffsets);
-        for (int32 n = -perSide - 2; n <= perSide + 2; ++n)
-        {
-            for (const double offset : offsets)
-            {
-                const double w = static_cast<double>(n) - input.Phase + offset;
-                const double x = NpcTunnelRefWarpInverse(w, input.RadialM, input.TunnelRadiusM);
-                if (!(x > input.EndArcAM && x < input.EndArcBM))
-                {
-                    continue;
-                }
-                // Chevrons also take their own far fade (D22), by the camera-to-axis-point distance
-                const double alpha = NpcTunnelRefDetailAlpha(x, input) * (bChevrons
-                    ? SOLNpcTunnel::TunnelChevronFarFade(FMath::Sqrt(x * x + input.RadialM * input.RadialM),
-                        input.TunnelRadiusM)
-                    : 1.0);
-                if (alpha > 0.0)
-                {
-                    outElements.Add({ w, x, alpha });
-                }
-            }
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Matches the elements a set of slots returned against the brute-force reference: every reference element with a
-    // visible alpha is returned exactly once with the same axial offset (1e-6 relative) and alpha (1e-6), and no slot
-    // returns an element outside the end rings or one the reference does not have
-    void NpcTunnelMatchCoverage(const TArray<FNpcTunnelRefElement>& reference,
-        const TArray<FSOLNpcTunnelRing>& returned, const FSOLNpcTunnelSlotInput& input, const FString& label,
-        FNpcTunnelFailures& failures)
-    {
-        constexpr double visibleAlpha = 1.0e-6;
-        TArray<int32> hits;
-        hits.Init(0, reference.Num());
-        const double offsetScale = input.TunnelRadiusM;
-        for (const FSOLNpcTunnelRing& ring : returned)
-        {
-            if (ring.AxialOffsetM < input.EndArcAM || ring.AxialOffsetM > input.EndArcBM)
-            {
-                failures.Add(label + FString::Printf(TEXT(": element at %.6e m outside the end rings"),
-                    ring.AxialOffsetM));
-                continue;
-            }
-
-            // Find the reference element with the same warp coordinate
-            int32 match = INDEX_NONE;
-            for (int32 index = 0; index < reference.Num(); ++index)
-            {
-                if (FMath::Abs(reference[index].W - ring.W) < 1.0e-6)
-                {
-                    match = index;
-                    break;
-                }
-            }
-            if (match == INDEX_NONE)
-            {
-                if (ring.Alpha > visibleAlpha)
-                {
-                    failures.Add(label + FString::Printf(TEXT(": stray element w %.6f alpha %.6f"), ring.W,
-                        ring.Alpha));
-                }
-                continue;
-            }
-            ++hits[match];
-            const FNpcTunnelRefElement& expected = reference[match];
-            if (FMath::Abs(ring.AxialOffsetM - expected.X) > 1.0e-6 * FMath::Max(FMath::Abs(expected.X), offsetScale))
-            {
-                failures.Add(label + FString::Printf(TEXT(": w %.6f offset %.9e, expected %.9e"), ring.W,
-                    ring.AxialOffsetM, expected.X));
-            }
-            if (FMath::Abs(ring.Alpha - expected.Alpha) > 1.0e-6)
-            {
-                failures.Add(label + FString::Printf(TEXT(": w %.6f alpha %.9f, expected %.9f"), ring.W, ring.Alpha,
-                    expected.Alpha));
-            }
-        }
-
-        // Every visible reference element exactly once
-        for (int32 index = 0; index < reference.Num(); ++index)
-        {
-            if (hits[index] > 1 || (hits[index] == 0 && reference[index].Alpha > visibleAlpha))
-            {
-                failures.Add(label + FString::Printf(TEXT(": w %.6f (x %.6e, alpha %.6f) returned %d times"),
-                    reference[index].W, reference[index].X, reference[index].Alpha, hits[index]));
-            }
-        }
-    }
-
-    // The tunnel element kinds a no-pop sweep follows
-    enum class ENpcTunnelElement : uint8
-    {
-        Ring,
-        Dot,
-        Chevron
-    };
-
-    //////////////////////////////////////////////////////////////////////////
-    // Fills the elements of one kind every slot returns for an input
-    void NpcTunnelVisibleElements(const ENpcTunnelElement kind, const FSOLNpcTunnelSlotInput& input,
-        TArray<FNpcTunnelSeenRing>& outElements)
-    {
-        outElements.Reset();
-        FSOLNpcTunnelRing element;
-        if (kind == ENpcTunnelElement::Ring)
-        {
-            for (int32 slot = 0; slot < SOLNpcTunnel::RingSlotCount(); ++slot)
-            {
-                if (SOLNpcTunnel::RingSlot(slot, input, element))
-                {
-                    outElements.Add({ element.AxialOffsetM, element.Alpha });
-                }
-            }
-            return;
-        }
-        for (int32 slot = 0; slot < SOLNpcTunnel::DetailSlotCount(); ++slot)
-        {
-            if (kind == ENpcTunnelElement::Chevron)
-            {
-                for (int32 chevron = 0; chevron < SOL::NPC_TUNNEL_CHEVRONS_PER_GAP; ++chevron)
-                {
-                    if (SOLNpcTunnel::ChevronSlot(slot, chevron, input, element))
-                    {
-                        outElements.Add({ element.AxialOffsetM, element.Alpha });
-                    }
-                }
-                continue;
-            }
-            for (int32 dot = 0; dot < SOL::NPC_TUNNEL_DOTS_PER_GAP; ++dot)
-            {
-                if (SOLNpcTunnel::DotSlot(slot, dot, input, element))
-                {
-                    outElements.Add({ element.AxialOffsetM, element.Alpha });
-                }
-            }
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Fills the rings every ring slot returns for an input
-    void NpcTunnelVisibleRings(const FSOLNpcTunnelSlotInput& input, TArray<FNpcTunnelSeenRing>& outRings)
-    {
-        NpcTunnelVisibleElements(ENpcTunnelElement::Ring, input, outRings);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Checks one step of a no-pop sweep: every ring of 'from' has a ring of 'to' within a quarter of its local spacing
-    // (a ring moves far less per step, and its neighbours are a whole spacing away) with an alpha change under 0.05, or
-    // else its alpha is under 1e-3 (it entered or left at the cap, an end ring or the near fade). With 'fromInput' an
-    // unmatched element within one local spacing of an end ring counts as an end-ring transition
-    void NpcTunnelCheckStep(const TArray<FNpcTunnelSeenRing>& from, const TArray<FNpcTunnelSeenRing>& to,
-        const double radialM, const double tunnelRadiusM, const FString& label, FNpcTunnelFailures& failures,
-        const FSOLNpcTunnelSlotInput* fromInput = nullptr, int32* endTransitions = nullptr)
-    {
-        for (const FNpcTunnelSeenRing& ring : from)
-        {
-            const double bound = 0.25 * NpcTunnelRefSpacing(ring.X, radialM, tunnelRadiusM);
-            const FNpcTunnelSeenRing* nearest = nullptr;
-            double nearestGap = NPCTUNNEL_INF;
-            for (const FNpcTunnelSeenRing& other : to)
-            {
-                const double gap = FMath::Abs(other.X - ring.X);
-                if (gap < nearestGap)
-                {
-                    nearestGap = gap;
-                    nearest = &other;
-                }
-            }
-            if (nearest != nullptr && nearestGap <= bound)
-            {
-                if (FMath::Abs(nearest->Alpha - ring.Alpha) > 0.05)
-                {
-                    failures.Add(label + FString::Printf(TEXT(": ring at %.6e m alpha jumps %.4f -> %.4f"), ring.X,
-                        ring.Alpha, nearest->Alpha));
-                }
-            }
-            else if (ring.Alpha >= 1.0e-3)
-            {
-                failures.Add(label + FString::Printf(TEXT(": ring at %.6e m (alpha %.5f) has no match"), ring.X,
-                    ring.Alpha));
-            }
-            else if (fromInput != nullptr && endTransitions != nullptr
-                && FMath::Min(FMath::Abs(ring.X - fromInput->EndArcAM), FMath::Abs(fromInput->EndArcBM - ring.X))
-                    < NpcTunnelRefSpacing(ring.X, radialM, tunnelRadiusM))
-            {
-                ++*endTransitions;
-            }
-        }
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -554,40 +181,17 @@ bool FSOLNpcTunnelMathConstantsTest::RunTest(const FString& /*parameters*/)
     // Radius, spacing and slots
     TestEqual(TEXT("radius min scale 1"), static_cast<double>(SOL::NPC_TUNNEL_RADIUS_MIN_SCALE), 1.0, NPCTUNNEL_TOL);
     TestEqual(TEXT("radius max scale 3"), static_cast<double>(SOL::NPC_TUNNEL_RADIUS_MAX_SCALE), 3.0, NPCTUNNEL_TOL);
-    // Guide thinning (user, 2026-11-17): every 6th ring kept, so both spacing terms are 6 times the pre-thinning ones
-    // and the constant zone D0 = S0 / rho keeps its 8 radii
+    // Guide thinning (user, 2026-11-17): every 6th ring kept; since SDD 52 D2 its 12 Rt is the flat spacing
+    // everywhere (the slot counts and the far-field constants are pinned in SOLTest.Npc.TunnelFarField.Constants)
     TestEqual(TEXT("keep every 6th ring"), static_cast<int32>(SOL::NPC_TUNNEL_RING_KEEP_EVERY), NPCTUNNEL_KEEP_EVERY);
     TestEqual(TEXT("ring base spacing 12 radii"), static_cast<double>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII), 12.0,
         NPCTUNNEL_TOL);
-    TestEqual(TEXT("ring spacing per distance 1.5"), static_cast<double>(SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE),
-        1.5, NPCTUNNEL_TOL);
     TestEqual(TEXT("base spacing = keep x the pre-thinning 2 radii"),
         static_cast<double>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII),
         SOL::NPC_TUNNEL_RING_KEEP_EVERY * NPCTUNNEL_PRE_THIN_BASE_SPACING_RADII, NPCTUNNEL_TOL);
-    TestEqual(TEXT("spacing per distance = keep x the pre-thinning 0.25"),
-        static_cast<double>(SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE),
-        SOL::NPC_TUNNEL_RING_KEEP_EVERY * NPCTUNNEL_PRE_THIN_SPACING_PER_DISTANCE, NPCTUNNEL_TOL);
-    TestEqual(TEXT("constant zone still 8 radii"), SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII
-        / SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE, 8.0, NPCTUNNEL_TOL);
-
-    // The slot counts after the thinning, pinned exactly so the documented values cannot drift silently (the
-    // coverage, float-path and slot-mesh cases check that they are enough): 12 ring and 6 gap slots per side, below
-    // the pre-thinning 64 and 24 (the budget)
-    TestEqual(TEXT("ring slots per side 12"), static_cast<int32>(SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE), 12);
-    TestEqual(TEXT("detail slots per side 6"), static_cast<int32>(SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE), 6);
-    TestTrue(TEXT("ring slots per side in [2, 64]"), SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE >= 2
-        && SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE <= 64);
-    TestTrue(TEXT("detail slots per side in [2, 24]"), SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE >= 2
-        && SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE <= 24);
 
     // Fades
     TestEqual(TEXT("end fade 0.5 spacings"), static_cast<double>(SOL::NPC_TUNNEL_END_FADE_SPACINGS), 0.5,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth fade start 8 radii"), static_cast<double>(SOL::NPC_TUNNEL_DEPTH_FADE_START_RADII), 8.0,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth fade end 65,536 radii"), static_cast<double>(SOL::NPC_TUNNEL_DEPTH_FADE_END_RADII), 65536.0,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth fade floor 0.2"), static_cast<double>(SOL::NPC_TUNNEL_DEPTH_FADE_FLOOR), 0.2,
         NPCTUNNEL_TOL);
     TestEqual(TEXT("near fade start 0.5 radii"), static_cast<double>(SOL::NPC_TUNNEL_NEAR_FADE_START_RADII), 0.5,
         NPCTUNNEL_TOL);
@@ -597,13 +201,7 @@ bool FSOLNpcTunnelMathConstantsTest::RunTest(const FString& /*parameters*/)
         static_cast<double>(SOL::NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII), 1.5, NPCTUNNEL_TOL);
     TestEqual(TEXT("near fade gone 3 radii off the axis"),
         static_cast<double>(SOL::NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII), 3.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("detail fade start 256 radii"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_FADE_START_RADII),
-        256.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("detail fade end 512 radii"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII), 512.0,
-        NPCTUNNEL_TOL);
     TestEqual(TEXT("end margin 3 radii (SDD 50 D14)"), static_cast<double>(SOL::NPC_TUNNEL_END_MARGIN_RADII), 3.0,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("end ring min alpha 0.5"), static_cast<double>(SOL::NPC_TUNNEL_END_RING_MIN_ALPHA), 0.5,
         NPCTUNNEL_TOL);
 
     // Dots, orientation and labels
@@ -1065,677 +663,17 @@ bool FSOLNpcTunnelMathNearestTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathSpacingTest, "SOLTest.NpcTunnelMath.RingSpacing",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 7 (guide thinning: 6 times the pre-thinning spacing): the local ring spacing is max(BASE x Rt, rho x sqrt(x^2 +
-// h^2)): 12 Rt near the camera, 1.5 times the distance beyond; continuous, even in x, non-decreasing in |x| and h,
-// scale free; bad inputs give 0
-bool FSOLNpcTunnelMathSpacingTest::RunTest(const FString& /*parameters*/)
-{
-    using SOLNpcTunnel::RingSpacingM;
-    const double rt = 1.0e6;
-    TestEqual(TEXT("on the axis at the foot: 12 Rt"), RingSpacingM(0.0, 0.0, rt), 12.0 * rt, NPCTUNNEL_TOL * rt);
-    TestEqual(TEXT("5 Rt ahead: 12 Rt"), RingSpacingM(5.0 * rt, 0.0, rt), 12.0 * rt, NPCTUNNEL_TOL * rt);
-    TestEqual(TEXT("8 Rt ahead: 12 Rt"), RingSpacingM(8.0 * rt, 0.0, rt), 12.0 * rt, NPCTUNNEL_TOL * rt);
-    TestEqual(TEXT("100 Rt ahead: 150 Rt"), RingSpacingM(100.0 * rt, 0.0, rt), 150.0 * rt, NPCTUNNEL_TOL * rt);
-    TestEqual(TEXT("100 Rt behind: 150 Rt"), RingSpacingM(-100.0 * rt, 0.0, rt), 150.0 * rt, NPCTUNNEL_TOL * rt);
-    TestEqual(TEXT("foot point 50 Rt off the axis: 75 Rt"), RingSpacingM(0.0, 50.0 * rt, rt), 75.0 * rt,
-        NPCTUNNEL_TOL * rt);
-    TestEqual(TEXT("3 Rt off, 4 Rt ahead: 12 Rt"), RingSpacingM(4.0 * rt, 3.0 * rt, rt), 12.0 * rt,
-        NPCTUNNEL_TOL * rt);
-
-    // Everywhere 6 times the pre-thinning spacing max(2 Rt, 0.25 sqrt(x^2 + h^2))
-    for (const double h : { 0.0, 3.0, 8.0, 40.0 })
-    {
-        for (const double x : { 0.0, 2.0, 7.0, 9.0, 64.0, 1.0e4 })
-        {
-            const double preThin = FMath::Max(NPCTUNNEL_PRE_THIN_BASE_SPACING_RADII * rt,
-                NPCTUNNEL_PRE_THIN_SPACING_PER_DISTANCE * FMath::Sqrt(x * x + h * h) * rt);
-            TestEqual(FString::Printf(TEXT("x %.0f Rt, h %.0f Rt: 6 x the pre-thinning spacing"), x, h),
-                RingSpacingM(x * rt, h * rt, rt), NPCTUNNEL_KEEP_EVERY * preThin, NPCTUNNEL_TOL * preThin);
-        }
-    }
-
-    // The closed form over a grid, even in x
-    for (const double h : { 0.0, 0.5, 7.9, 8.0, 12.0, 50.0, 100.0 })
-    {
-        for (const double x : { 0.0, 0.3, 1.0, 6.0, 7.99, 8.0, 8.01, 20.0, 300.0, 4.0e5 })
-        {
-            const FString label = FString::Printf(TEXT("x %.2f Rt, h %.1f Rt"), x, h);
-            const double expected = NpcTunnelRefSpacing(x * rt, h * rt, rt);
-            TestEqual(label + TEXT(": closed form"), RingSpacingM(x * rt, h * rt, rt), expected,
-                NPCTUNNEL_TOL * expected);
-            TestEqual(label + TEXT(": even in x"), RingSpacingM(-x * rt, h * rt, rt), RingSpacingM(x * rt, h * rt, rt),
-                NPCTUNNEL_TOL * expected);
-        }
-    }
-
-    // Non-decreasing in |x| and in h, continuous (no step over a fine sweep)
-    for (const double h : { 0.0, 2.0, 7.9, 50.0 })
-    {
-        double previous = 0.0;
-        for (int32 step = 0; step <= 4000; ++step)
-        {
-            const double x = static_cast<double>(step) * 0.01 * rt;
-            const double spacing = RingSpacingM(x, h * rt, rt);
-            TestTrue(FString::Printf(TEXT("h %.1f: non-decreasing in |x| at step %d"), h, step),
-                spacing >= previous - 1.0e-9 * rt);
-            TestTrue(FString::Printf(TEXT("h %.1f: continuous at step %d"), h, step),
-                step == 0 || spacing - previous <= 1.01 * NpcTunnelRho() * 0.01 * rt);
-            previous = spacing;
-        }
-    }
-    for (const double x : { 0.0, 3.0, 10.0, 200.0 })
-    {
-        double previous = 0.0;
-        for (int32 step = 0; step <= 400; ++step)
-        {
-            const double h = static_cast<double>(step) * 0.25 * rt;
-            const double spacing = RingSpacingM(x * rt, h, rt);
-            TestTrue(FString::Printf(TEXT("x %.1f: non-decreasing in h at step %d"), x, step),
-                spacing >= previous - 1.0e-9 * rt);
-            previous = spacing;
-        }
-    }
-
-    // Scale free: spacing(k x, k h, k Rt) == k spacing(x, h, Rt)
-    for (const double k : { 1.0e-3, 7.0, 1.0e3 })
-    {
-        for (const double x : { 0.0, 4.0, 30.0 })
-        {
-            const double expected = k * RingSpacingM(x * rt, 9.0 * rt, rt);
-            TestEqual(FString::Printf(TEXT("scale free k %.3f at x %.0f Rt"), k, x),
-                RingSpacingM(k * x * rt, k * 9.0 * rt, k * rt), expected, 1.0e-12 * expected);
-        }
-    }
-
-    // Bad inputs
-    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("radius %f -> 0"), badRadius), RingSpacingM(10.0 * rt, rt, badRadius), 0.0,
-            NPCTUNNEL_TOL);
-    }
-    TestEqual(TEXT("NaN x -> 0"), RingSpacingM(NPCTUNNEL_NAN, rt, rt), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("NaN h -> 0"), RingSpacingM(10.0 * rt, NPCTUNNEL_NAN, rt), 0.0, NPCTUNNEL_TOL);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathWarpTest, "SOLTest.NpcTunnelMath.RingWarp",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 8 (Q9, the accordion; guide thinning): the ring warp is odd, strictly increasing, x / (12 Rt) inside x0, its
-// derivative is 1 / RingSpacingM, it is continuous at x0 and as h crosses 8 Rt, 2 / 3 + (2 / 3) ln(|x| / (8 Rt)) on the
-// axis past 8 Rt, and everywhere the pre-thinning warp / 6; the inverse round-trips both ways; on the axis half a
-// kept gap is 6 Rt inside 8 Rt and neighbouring rings are e^1.5 = (e^0.25)^6 apart in distance past it
-bool FSOLNpcTunnelMathWarpTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    const double radialsRt[] = { 0.0, 0.5, 7.9, 8.0, 50.0, 100.0 };
-    for (const double rt : { 2.0e5, 3.0e7 })
-    {
-        for (const double hRt : radialsRt)
-        {
-            const double h = hRt * rt;
-            const double x0 = NpcTunnelX0(h, rt);
-            const FString label = FString::Printf(TEXT("Rt %.0e, h %.1f Rt"), rt, hRt);
-
-            // Inside the constant zone: x / (12 Rt)
-            for (const double fraction : { 0.0, 0.1, 0.5, 0.97 })
-            {
-                const double x = fraction * x0;
-                TestEqual(label + FString::Printf(TEXT(": x / (12 Rt) at %.2f x0"), fraction), RingWarp(x, h, rt),
-                    x / (12.0 * rt), NPCTUNNEL_TOL);
-            }
-
-            // Everywhere the pre-thinning warp / 6 (so the kept rings are the old rings 0, 6, 12, ...)
-            for (const double xRt : { -3.0e5, -40.0, -7.0, 0.3, 5.0, 9.0, 250.0, 4.0e6 })
-            {
-                const double x = xRt * rt;
-                const double expected = NpcTunnelPreThinWarp(x, h, rt) / NPCTUNNEL_KEEP_EVERY;
-                TestEqual(label + FString::Printf(TEXT(": the pre-thinning warp / 6 at %.1f Rt"), xRt),
-                    RingWarp(x, h, rt), expected, NPCTUNNEL_TOL * FMath::Max(1.0, FMath::Abs(expected)));
-            }
-
-            // Against the test's closed form, odd, over a log sweep of |x| from 0.01 Rt to 1e6 Rt
-            double previous = -NPCTUNNEL_INF;
-            for (int32 step = -120; step <= 120; ++step)
-            {
-                const double magnitude = rt * FMath::Pow(10.0, -2.0 + 8.0 * FMath::Abs(static_cast<double>(step))
-                    / 120.0);
-                const double x = step < 0 ? -magnitude : (step == 0 ? 0.0 : magnitude);
-                const double warp = RingWarp(x, h, rt);
-                const double expected = NpcTunnelRefWarp(x, h, rt);
-                TestEqual(label + FString::Printf(TEXT(": closed form at step %d"), step), warp, expected,
-                    NPCTUNNEL_TOL * FMath::Max(1.0, FMath::Abs(expected)));
-                TestEqual(label + FString::Printf(TEXT(": odd at step %d"), step), RingWarp(-x, h, rt), -warp,
-                    NPCTUNNEL_TOL * FMath::Max(1.0, FMath::Abs(warp)));
-                TestTrue(label + FString::Printf(TEXT(": strictly increasing at step %d"), step), warp > previous);
-                previous = warp;
-            }
-
-            // The derivative is 1 / spacing (central differences at 40 points, away from the x0 kink)
-            for (int32 point = 0; point < 40; ++point)
-            {
-                const double magnitude = rt * FMath::Pow(10.0, -1.5 + 7.0 * static_cast<double>(point) / 39.0);
-                const double x = (point % 2 == 0) ? magnitude : -magnitude;
-                const double spacing = NpcTunnelRefSpacing(x, h, rt);
-                const double dx = 1.0e-4 * spacing;
-                if (x0 > 0.0 && FMath::Abs(FMath::Abs(x) - x0) < 4.0 * dx)
-                {
-                    continue;
-                }
-                const double derivative = (RingWarp(x + dx, h, rt) - RingWarp(x - dx, h, rt)) / (2.0 * dx);
-                TestEqual(label + FString::Printf(TEXT(": derivative at %.4e m"), x), derivative * spacing, 1.0,
-                    1.0e-6);
-                TestEqual(label + FString::Printf(TEXT(": derivative = 1 / RingSpacingM at %.4e m"), x),
-                    derivative * RingSpacingM(x, h, rt), 1.0, 1.0e-6);
-            }
-
-            // Continuous at x0
-            if (x0 > 0.0)
-            {
-                const double inner = RingWarp(x0 * (1.0 - 1.0e-10), h, rt);
-                const double outer = RingWarp(x0 * (1.0 + 1.0e-10), h, rt);
-                TestTrue(label + TEXT(": continuous at x0"), FMath::Abs(outer - inner) < 1.0e-6);
-            }
-
-            // Inverse round trips: x -> w -> x up to 4.5e12 m and w -> x -> w for |w| up to 64
-            for (const double x : { 0.02 * rt, -0.7 * rt, 3.0 * rt, -7.5 * rt, 9.0 * rt, -64.0 * rt, 1.0e3 * rt,
-                -3.7e8, 1.0e11, -4.5e12, 4.5e12 })
-            {
-                const double back = RingWarpInverse(RingWarp(x, h, rt), h, rt);
-                TestEqual(label + FString::Printf(TEXT(": x round trip at %.4e m"), x), back, x,
-                    1.0e-9 * FMath::Max(FMath::Abs(x), rt));
-            }
-            for (int32 step = -64; step <= 64; ++step)
-            {
-                const double w = static_cast<double>(step) + (step < 0 ? 0.37 : -0.29) * (step == 0 ? 0.0 : 1.0);
-                if (FMath::Abs(w) > static_cast<double>(SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE))
-                {
-                    continue;
-                }
-                const double x = RingWarpInverse(w, h, rt);
-                TestEqual(label + FString::Printf(TEXT(": inverse closed form at w %.2f"), w), x,
-                    NpcTunnelRefWarpInverse(w, h, rt), 1.0e-9 * FMath::Max(FMath::Abs(x), rt));
-                TestEqual(label + FString::Printf(TEXT(": w round trip at %.2f"), w), RingWarp(x, h, rt), w,
-                    1.0e-9 * FMath::Max(FMath::Abs(w), 1.0));
-            }
-        }
-
-        // Continuous as h crosses 8 Rt
-        for (const double xRt : { 0.5, 3.0, 7.0, 20.0, 1.0e3 })
-        {
-            const double below = RingWarp(xRt * rt, 8.0 * rt * (1.0 - 1.0e-9), rt);
-            const double above = RingWarp(xRt * rt, 8.0 * rt * (1.0 + 1.0e-9), rt);
-            TestTrue(FString::Printf(TEXT("Rt %.0e: continuous across h = 8 Rt at x %.1f Rt"), rt, xRt),
-                FMath::Abs(above - below) < 1.0e-6);
-        }
-
-        // The closed form on the axis past 8 Rt: x0 / S0 + ln(x / x0) / rho = 2 / 3 + (2 / 3) ln(x / 8 Rt)
-        for (const double x : { 8.0 * rt, 20.0 * rt, 1.0e4 * rt, 4.5e12 })
-        {
-            const double expected = (2.0 + 2.0 * FMath::Loge(x / (8.0 * rt))) / 3.0;
-            TestEqual(FString::Printf(TEXT("Rt %.0e: 2 / 3 + (2 / 3) ln(x / 8 Rt) at %.3e m"), rt, x),
-                RingWarp(x, 0.0, rt), expected, NPCTUNNEL_TOL * FMath::Max(1.0, expected));
-            TestEqual(FString::Printf(TEXT("Rt %.0e: behind at %.3e m"), rt, x), RingWarp(-x, 0.0, rt), -expected,
-                NPCTUNNEL_TOL * FMath::Max(1.0, expected));
-        }
-
-        // Spacing on the axis: the constant zone (8 Rt) is shorter than one kept gap (12 Rt), so inside it half a gap
-        // is 6 Rt (three pre-thinning spacings); past it neighbouring distances are e^1.5 apart (six e^0.25 steps)
-        for (const double w : { -0.66, -0.4, -0.25, 0.0, 0.1, 0.16 })
-        {
-            TestEqual(FString::Printf(TEXT("Rt %.0e: half a gap from w %.2f is 6 Rt"), rt, w),
-                RingWarpInverse(w + 0.5, 0.0, rt) - RingWarpInverse(w, 0.0, rt), 6.0 * rt, NPCTUNNEL_TOL * rt);
-        }
-        for (const double phase : { 0.0, 0.3, 0.999 })
-        {
-            for (int32 n = 2; n <= 10; n += 2)
-            {
-                const double w = static_cast<double>(n) - phase;
-                const double ratio = RingWarpInverse(w + 1.0, 0.0, rt) / RingWarpInverse(w, 0.0, rt);
-                TestEqual(FString::Printf(TEXT("Rt %.0e, phase %.3f: ratio e^1.5 after ring %d"), rt, phase, n),
-                    ratio, FMath::Exp(1.5), NPCTUNNEL_TOL * FMath::Exp(1.5));
-                const double behindRatio = RingWarpInverse(-w - 1.0, 0.0, rt) / RingWarpInverse(-w, 0.0, rt);
-                TestEqual(FString::Printf(TEXT("Rt %.0e, phase %.3f: behind ratio e^1.5 after ring %d"), rt, phase,
-                    n), behindRatio, FMath::Exp(1.5), NPCTUNNEL_TOL * FMath::Exp(1.5));
-            }
-        }
-    }
-
-    // Bad inputs
-    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -1.0e6, NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("warp, radius %f -> 0"), badRadius), RingWarp(3.0e7, 1.0e6, badRadius), 0.0,
-            NPCTUNNEL_TOL);
-        TestEqual(FString::Printf(TEXT("inverse, radius %f -> 0"), badRadius), RingWarpInverse(12.0, 1.0e6,
-            badRadius), 0.0, NPCTUNNEL_TOL);
-    }
-    TestEqual(TEXT("warp, NaN x -> 0"), RingWarp(NPCTUNNEL_NAN, 1.0e6, 1.0e6), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("warp, NaN h -> 0"), RingWarp(3.0e7, NPCTUNNEL_NAN, 1.0e6), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("inverse, NaN w -> 0"), RingWarpInverse(NPCTUNNEL_NAN, 1.0e6, 1.0e6), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("inverse, NaN h -> 0"), RingWarpInverse(12.0, NPCTUNNEL_NAN, 1.0e6), 0.0, NPCTUNNEL_TOL);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathNoPopTest, "SOLTest.NpcTunnelMath.NoPopSweep",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 8, no pops: for a camera moving in 12,000 small steps along a lane inside the tube (rings leaving at end ring A
-// and entering at the cap ahead), across it (h from 0 to 100 Rt, 2,000 steps) and along it outside the tube (rings
-// crossing end ring B), with the phase advanced by AdvanceRingPhase and wrapping, the visible rings, dots and
-// chevrons change continuously: every element of a step matches one of the neighbouring step, and an unmatched one has
-// alpha below 1e-3 (it entered or left at the cap, an end ring or the near fade); along the lane at least one element
-// actually crosses an end ring. Per step the phase moves 2e-4, so an element's fades move less than 1e-3
-bool FSOLNpcTunnelMathNoPopTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    constexpr int32 stepCount = 2000;
-    constexpr int32 alongStepCount = 12000;
-    constexpr double phaseStep = 2.0e-4;
-    TArray<FNpcTunnelSeenRing> previous;
-    TArray<FNpcTunnelSeenRing> current;
-    previous.Reserve(RingSlotCount());
-    current.Reserve(RingSlotCount());
-
-    // One along-the-lane sweep of one element kind: the foot arc and the phase advance together, the end rings are
-    // fixed to the lane; some element must cross an end ring on the way
-    const auto alongSweep = [&](const FString& label, const ENpcTunnelElement kind, const double tunnelRadiusM,
-        const double radialM, const double endArcAM, const double endArcBM, const double startFootArcM)
-    {
-        FNpcTunnelFailures failures;
-        const double footSpacingM = NpcTunnelRefSpacing(0.0, radialM, tunnelRadiusM);
-        const double deltaM = phaseStep * footSpacingM;
-        double footArcM = startFootArcM;
-        double phase = InitialRingPhase(footArcM, radialM, tunnelRadiusM);
-        int32 wraps = 0;
-        int32 seenTotal = 0;
-        int32 endTransitions = 0;
-        FSOLNpcTunnelSlotInput previousInput = NpcTunnelInput(radialM, tunnelRadiusM, phase, endArcAM - footArcM,
-            endArcBM - footArcM);
-        NpcTunnelVisibleElements(kind, previousInput, previous);
-        for (int32 step = 1; step <= alongStepCount; ++step)
-        {
-            const double nextPhase = AdvanceRingPhase(phase, deltaM, radialM, tunnelRadiusM);
-            wraps += nextPhase < phase ? 1 : 0;
-            phase = nextPhase;
-            footArcM += deltaM;
-            const FSOLNpcTunnelSlotInput input = NpcTunnelInput(radialM, tunnelRadiusM, phase, endArcAM - footArcM,
-                endArcBM - footArcM);
-            NpcTunnelVisibleElements(kind, input, current);
-            const FString stepLabel = label + FString::Printf(TEXT(" step %d"), step);
-            NpcTunnelCheckStep(current, previous, radialM, tunnelRadiusM, stepLabel + TEXT(" (new vs old)"), failures,
-                &input, &endTransitions);
-            NpcTunnelCheckStep(previous, current, radialM, tunnelRadiusM, stepLabel + TEXT(" (old vs new)"), failures,
-                &previousInput, &endTransitions);
-            seenTotal += current.Num();
-            Swap(previous, current);
-            previousInput = input;
-        }
-        TestTrue(label + TEXT(": elements were visible"), seenTotal > alongStepCount);
-        TestTrue(label + TEXT(": the phase wrapped"), wraps >= 1);
-        TestTrue(label + TEXT(": an element crossed an end ring"), endTransitions >= 1);
-        if (!TestEqual(label + TEXT(": pops"), failures.Count, 0))
-        {
-            AddInfo(label + TEXT(": first pop: ") + failures.First);
-        }
-    };
-
-    // Inside the tube near end ring A (behind elements reach it), a lane long enough that the cap is reached ahead. The
-    // start is anchored in tunnel radii (end ring A 14 Rt behind), so the chevrons (gone past 30 Rt) still reach it
-    // with the 12 Rt kept spacing; the sweep covers 2.4 foot spacings (28.8 Rt)
-    {
-        const double rt = 3.0e6;
-        const double startArcM = 24.0 * rt;
-        alongSweep(TEXT("rings along, inside"), ENpcTunnelElement::Ring, rt, 0.5 * rt, 10.0 * rt, 1.0e14, startArcM);
-        alongSweep(TEXT("dots along, inside"), ENpcTunnelElement::Dot, rt, 0.5 * rt, 10.0 * rt, 1.0e14, startArcM);
-        alongSweep(TEXT("chevrons along, inside"), ENpcTunnelElement::Chevron, rt, 0.5 * rt, 10.0 * rt, 1.0e14,
-            startArcM);
-    }
-
-    // Outside the tube (h = 20 Rt, every ring slides) near end ring B
-    {
-        const double rt = 2.0e5;
-        const double h = 20.0 * rt;
-        const double footSpacing = NpcTunnelRefSpacing(0.0, h, rt);
-        const double endB = 1.0e9;
-        alongSweep(TEXT("rings along, outside"), ENpcTunnelElement::Ring, rt, h, 10.0 * rt, endB,
-            footSpacing * (FMath::FloorToDouble((endB - 30.0 * rt) / footSpacing) + 0.8));
-    }
-
-    // Across the lane: h from 0 to 100 Rt, the phase fixed, end rings out of reach (only the near fade lets a ring
-    // in or out; at rho 1.5 the last slots pass 1e20 m, so the ends sit at 1e60 m, beyond any slot)
-    {
-        const double rt = 1.0e7;
-        const double phase = 0.37;
-        const double farEndM = 1.0e60;
-        FNpcTunnelFailures failures;
-        double previousH = 0.0;
-        NpcTunnelVisibleRings(NpcTunnelInput(0.0, rt, phase, -farEndM, farEndM), previous);
-        for (int32 step = 1; step < stepCount; ++step)
-        {
-            const double h = 100.0 * rt * static_cast<double>(step) / static_cast<double>(stepCount - 1);
-            NpcTunnelVisibleRings(NpcTunnelInput(h, rt, phase, -farEndM, farEndM), current);
-            const double lowerH = FMath::Min(h, previousH);
-            const FString stepLabel = FString::Printf(TEXT("across step %d"), step);
-            NpcTunnelCheckStep(current, previous, lowerH, rt, stepLabel + TEXT(" (new vs old)"), failures);
-            NpcTunnelCheckStep(previous, current, lowerH, rt, stepLabel + TEXT(" (old vs new)"), failures);
-            previousH = h;
-            Swap(previous, current);
-        }
-        if (!TestEqual(TEXT("across: pops"), failures.Count, 0))
-        {
-            AddInfo(TEXT("across: first pop: ") + failures.First);
-        }
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLaneFixedTest, "SOLTest.NpcTunnelMath.LaneFixedNearRings",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 8, lane-fixed near rings (D6, Q2): within x0 a ring's lane arc (foot arc + x) does not change when the camera
-// moves along the lane and the phase is advanced by AdvanceRingPhase (1e-6 Rt), from any starting phase; with
-// InitialRingPhase they sit on whole multiples of the base spacing from node A
-bool FSOLNpcTunnelMathLaneFixedTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    const double rt = 3.0e6;
-    const double h = 2.0 * rt;
-    const double x0 = NpcTunnelX0(h, rt);
-    const double s0 = NpcTunnelS0(rt);
-    const double nearLimit = x0 - 0.25 * rt;
-    const double deltasRt[] = { 0.37, -0.11, 1.9, -2.6, 0.05, 3.3, -0.71 };
-
-    for (const bool bInitialPhase : { false, true })
-    {
-        const FString label = bInitialPhase ? TEXT("initial phase") : TEXT("phase 0.123");
-        double footArcM = 1.0e9 + 0.3 * rt;
-        double phase = bInitialPhase ? InitialRingPhase(footArcM, h, rt) : 0.123;
-
-        // The reference lattice: one near ring's lane arc at the start
-        double referenceArcM = NPCTUNNEL_NAN;
-        const FSOLNpcTunnelSlotInput startInput = NpcTunnelInput(h, rt, phase, -1.0e12, 1.0e12);
-        for (int32 slot = 0; slot < RingSlotCount(); ++slot)
-        {
-            FSOLNpcTunnelRing ring;
-            if (RingSlot(slot, startInput, ring) && FMath::Abs(ring.AxialOffsetM) < nearLimit)
-            {
-                referenceArcM = footArcM + ring.AxialOffsetM;
-                break;
-            }
-        }
-        if (!TestFalse(label + TEXT(": a near ring at the start"), FMath::IsNaN(referenceArcM)))
-        {
-            continue;
-        }
-        if (bInitialPhase)
-        {
-            const double multiple = referenceArcM / s0;
-            TestTrue(label + TEXT(": on a whole multiple of the base spacing"),
-                FMath::Abs(multiple - FMath::RoundToDouble(multiple)) * s0 <= 1.0e-6 * rt);
-        }
-
-        // Move along the lane; every near ring stays on the lattice
-        FNpcTunnelFailures failures;
-        int32 nearRings = 0;
-        for (int32 step = 0; step < 70; ++step)
-        {
-            const double deltaM = deltasRt[step % static_cast<int32>(UE_ARRAY_COUNT(deltasRt))] * rt;
-            phase = AdvanceRingPhase(phase, deltaM, h, rt);
-            footArcM += deltaM;
-            const FSOLNpcTunnelSlotInput input = NpcTunnelInput(h, rt, phase, -1.0e12, 1.0e12);
-            for (int32 slot = 0; slot < RingSlotCount(); ++slot)
-            {
-                FSOLNpcTunnelRing ring;
-                if (!RingSlot(slot, input, ring) || FMath::Abs(ring.AxialOffsetM) >= nearLimit)
-                {
-                    continue;
-                }
-                ++nearRings;
-                const double offset = (footArcM + ring.AxialOffsetM - referenceArcM) / s0;
-                const double errorM = FMath::Abs(offset - FMath::RoundToDouble(offset)) * s0;
-                if (errorM > 1.0e-6 * rt)
-                {
-                    failures.Add(FString::Printf(TEXT("step %d slot %d: lane arc off the lattice by %.6e m"), step,
-                        slot, errorM));
-                }
-            }
-        }
-        // The near window (15 Rt wide) is longer than one kept spacing (12 Rt), so every step has a near ring
-        TestTrue(label + TEXT(": near rings were checked"), nearRings >= 70);
-        if (!TestEqual(label + TEXT(": near rings fixed to the lane"), failures.Count, 0))
-        {
-            AddInfo(label + TEXT(": first: ") + failures.First);
-        }
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathPhaseTest, "SOLTest.NpcTunnelMath.RingPhase",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 9: the ring phase advances by the foot arc change over the spacing at the foot point, frac in [0, 1) in double
-// (a negative delta wraps up, a 4.5e12 m delta stays in range); a NaN or infinite delta or a bad radius keeps it; the
-// initial phase is frac(foot arc / spacing), NaN -> 0
-bool FSOLNpcTunnelMathPhaseTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    const double rt = 1.0e6;
-    const double s0 = NpcTunnelS0(rt);
-    TestEqual(TEXT("0.2 + half a spacing -> 0.7"), AdvanceRingPhase(0.2, 0.5 * s0, 0.0, rt), 0.7, NPCTUNNEL_TOL);
-    TestEqual(TEXT("0.7 + half a spacing wraps to 0.2"), AdvanceRingPhase(0.7, 0.5 * s0, 0.0, rt), 0.2,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("0.2 - half a spacing wraps up to 0.7"), AdvanceRingPhase(0.2, -0.5 * s0, 0.0, rt), 0.7,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("h 5 Rt: still the base spacing"), AdvanceRingPhase(0.1, 0.25 * s0, 5.0 * rt, rt), 0.35,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("h 50 Rt: spacing 75 Rt"), AdvanceRingPhase(0.1, 37.5 * rt, 50.0 * rt, rt), 0.6, NPCTUNNEL_TOL);
-    TestEqual(TEXT("zero delta keeps the phase"), AdvanceRingPhase(0.42, 0.0, 0.0, rt), 0.42, NPCTUNNEL_TOL);
-
-    // Huge deltas stay in range and match the closed form
-    for (const double delta : { 4.5e12, -4.5e12, 4.5e12 + 0.37 * s0, 1.234567e11 })
-    {
-        const double phase = AdvanceRingPhase(0.25, delta, 0.0, rt);
-        TestTrue(FString::Printf(TEXT("delta %.4e: in [0, 1)"), delta), phase >= 0.0 && phase < 1.0);
-        TestTrue(FString::Printf(TEXT("delta %.4e: closed form"), delta),
-            NpcTunnelWrapDistance(phase, NpcTunnelFrac(0.25 + delta / s0)) < 1.0e-6);
-    }
-
-    // Always in [0, 1) over a sweep of deltas
-    double phase = 0.0;
-    for (int32 step = -300; step <= 300; ++step)
-    {
-        phase = AdvanceRingPhase(phase, static_cast<double>(step) * 0.173 * rt, 3.0 * rt, rt);
-        TestTrue(FString::Printf(TEXT("sweep step %d: in [0, 1)"), step), phase >= 0.0 && phase < 1.0);
-    }
-
-    // A bad delta or radius keeps the phase
-    for (const double badDelta : { NPCTUNNEL_NAN, NPCTUNNEL_INF, -NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("delta %f keeps the phase"), badDelta), AdvanceRingPhase(0.31, badDelta, 0.0,
-            rt), 0.31, NPCTUNNEL_TOL);
-    }
-    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("radius %f keeps the phase"), badRadius), AdvanceRingPhase(0.31, 1.0e6, 0.0,
-            badRadius), 0.31, NPCTUNNEL_TOL);
-    }
-
-    // A phase outside [0, 1) is wrapped and a non-finite one reads as 0, so the result is always finite and in range
-    TestEqual(TEXT("phase 1.3 wraps to 0.3"), AdvanceRingPhase(1.3, 0.0, 0.0, rt), 0.3, NPCTUNNEL_TOL);
-    TestEqual(TEXT("phase -0.25 wraps to 0.75"), AdvanceRingPhase(-0.25, 0.0, 0.0, rt), 0.75, NPCTUNNEL_TOL);
-    TestEqual(TEXT("NaN phase reads as 0"), AdvanceRingPhase(NPCTUNNEL_NAN, 0.5 * s0, 0.0, rt), 0.5, NPCTUNNEL_TOL);
-    TestEqual(TEXT("infinite phase reads as 0"), AdvanceRingPhase(NPCTUNNEL_INF, 0.0, 0.0, rt), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("NaN phase and NaN delta: 0"), AdvanceRingPhase(NPCTUNNEL_NAN, NPCTUNNEL_NAN, 0.0, rt), 0.0,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("phase 1.31 kept wrapped on a bad delta"), AdvanceRingPhase(1.31, NPCTUNNEL_NAN, 0.0, rt), 0.31,
-        1.0e-12);
-
-    // The slots wrap the phase too: 1.3 lays out the rings of 0.3, a NaN phase those of 0
-    {
-        const FSOLNpcTunnelSlotInput wrapped = NpcTunnelInput(0.0, rt, 1.3, -1.0e12, 1.0e12);
-        const FSOLNpcTunnelSlotInput plain = NpcTunnelInput(0.0, rt, 0.3, -1.0e12, 1.0e12);
-        const FSOLNpcTunnelSlotInput nanPhase = NpcTunnelInput(0.0, rt, NPCTUNNEL_NAN, -1.0e12, 1.0e12);
-        const FSOLNpcTunnelSlotInput zeroPhase = NpcTunnelInput(0.0, rt, 0.0, -1.0e12, 1.0e12);
-        int32 mismatches = 0;
-        for (int32 slot = 0; slot < RingSlotCount(); ++slot)
-        {
-            FSOLNpcTunnelRing a;
-            FSOLNpcTunnelRing b;
-            const bool bA = RingSlot(slot, wrapped, a);
-            const bool bB = RingSlot(slot, plain, b);
-            mismatches += bA != bB || FMath::Abs(a.AxialOffsetM - b.AxialOffsetM) > 1.0e-6 * rt ? 1 : 0;
-            const bool bC = RingSlot(slot, nanPhase, a);
-            const bool bD = RingSlot(slot, zeroPhase, b);
-            mismatches += bC != bD || FMath::Abs(a.AxialOffsetM - b.AxialOffsetM) > 1.0e-6 * rt ? 1 : 0;
-            mismatches += FMath::Abs(RingSlotOffsetM(slot, 1.3f, 0.0f, static_cast<float>(rt))
-                - RingSlotOffsetM(slot, 0.3f, 0.0f, static_cast<float>(rt))) > 1.0e-3 * rt ? 1 : 0;
-            mismatches += FMath::IsFinite(RingSlotOffsetM(slot, NAN, 0.0f, static_cast<float>(rt))) ? 0 : 1;
-        }
-        for (int32 slot = 0; slot < DetailSlotCount(); ++slot)
-        {
-            FSOLNpcTunnelRing a;
-            FSOLNpcTunnelRing b;
-            const bool bA = ChevronSlot(slot, 1, wrapped, a);
-            const bool bB = ChevronSlot(slot, 1, plain, b);
-            mismatches += bA != bB || FMath::Abs(a.AxialOffsetM - b.AxialOffsetM) > 1.0e-6 * rt ? 1 : 0;
-            const bool bC = DotSlot(slot, 1, wrapped, a);
-            const bool bD = DotSlot(slot, 1, plain, b);
-            mismatches += bC != bD || FMath::Abs(a.AxialOffsetM - b.AxialOffsetM) > 1.0e-6 * rt ? 1 : 0;
-        }
-        TestEqual(TEXT("slots wrap the phase"), mismatches, 0);
-    }
-
-    // The initial phase
-    TestEqual(TEXT("initial: 0 at arc 0"), InitialRingPhase(0.0, 0.0, rt), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("initial: 3.25 spacings -> 0.25"), InitialRingPhase(3.25 * s0, 0.0, rt), 0.25, NPCTUNNEL_TOL);
-    TestEqual(TEXT("initial: -0.25 spacings wraps up to 0.75"), InitialRingPhase(-0.25 * s0, 0.0, rt), 0.75,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("initial: h 50 Rt uses 75 Rt"), InitialRingPhase(187.5 * rt, 50.0 * rt, rt), 0.5,
-        NPCTUNNEL_TOL);
-    TestEqual(TEXT("initial: NaN -> 0"), InitialRingPhase(NPCTUNNEL_NAN, 0.0, rt), 0.0, NPCTUNNEL_TOL);
-    for (const double footArc : { 1.0e6, 3.7e8, 4.5e12 })
-    {
-        const double initial = InitialRingPhase(footArc, 0.0, rt);
-        TestTrue(FString::Printf(TEXT("initial at %.2e m: in [0, 1)"), footArc), initial >= 0.0 && initial < 1.0);
-        TestTrue(FString::Printf(TEXT("initial at %.2e m: closed form"), footArc),
-            NpcTunnelWrapDistance(initial, NpcTunnelFrac(footArc / s0)) < 1.0e-6);
-
-        // Advancing from the initial phase agrees with the initial phase of the moved foot point
-        const double delta = 0.613 * s0;
-        TestTrue(FString::Printf(TEXT("initial at %.2e m: advance agrees"), footArc),
-            NpcTunnelWrapDistance(AdvanceRingPhase(initial, delta, 0.0, rt), InitialRingPhase(footArc + delta, 0.0,
-                rt)) < 1.0e-6);
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathFloatPathTest, "SOLTest.NpcTunnelMath.RingSlotFloatPath",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 9, float path: rebuilding a ring's camera-relative axial offset from the phase and the slot index in float (the
-// shader's path, RingSlotOffsetM) is within 1e-3 Rt of the double result for foot arcs up to 4.5e12 m at Rt = 2e5 m
-// and 3e7 m and cameras up to 100 Rt off the axis, for every ring within 64 Rt of the foot point; farther rings stay
-// within 1e-5 of their distance (a fraction of a pixel there)
-bool FSOLNpcTunnelMathFloatPathTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    FNpcTunnelFailures failures;
-    int32 checked = 0;
-    for (const double rt : { 2.0e5, 3.0e7 })
-    {
-        for (const double footArc : { 0.0, 1.234e6, 3.7e8, 1.0e11, 4.5e12 })
-        {
-            for (const double hRt : { 0.0, 0.5, 5.0, 20.0, 50.0, 100.0 })
-            {
-                const double h = hRt * rt;
-                const double phase = InitialRingPhase(footArc, h, rt);
-                for (int32 slot = 0; slot < RingSlotCount(); ++slot)
-                {
-                    const double expected = NpcTunnelRefWarpInverse(NpcTunnelSlotW(slot, phase), h, rt);
-                    const double rebuilt = static_cast<double>(RingSlotOffsetM(slot, static_cast<float>(phase),
-                        static_cast<float>(h), static_cast<float>(rt)));
-                    const double tolerance = FMath::Abs(expected) <= 64.0 * rt ? 1.0e-3 * rt
-                        : FMath::Max(1.0e-3 * rt, 1.0e-5 * FMath::Abs(expected));
-                    ++checked;
-                    if (!(FMath::Abs(rebuilt - expected) <= tolerance))
-                    {
-                        failures.Add(FString::Printf(TEXT("Rt %.0e, arc %.3e, h %.1f Rt, slot %d: %.9e vs %.9e"), rt,
-                            footArc, hRt, slot, rebuilt, expected));
-                    }
-                }
-            }
-        }
-    }
-    TestEqual(TEXT("every slot checked"), checked, 2 * 5 * 6 * RingSlotCount());
-    if (!TestEqual(TEXT("float path within tolerance"), failures.Count, 0))
-    {
-        AddInfo(TEXT("first: ") + failures.First);
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathFadesTest, "SOLTest.NpcTunnelMath.Fades",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 10: the depth fade (1 inside 8 Rt, log-linear to the floor at 65,536 Rt, never below it), the near fade (0
-// within 0.5 Rt, smoothstep to 1 at 1.5 Rt, symmetric), the detail fade (1 inside 256 Rt, 0 from 512 Rt), the end
-// fade, the ring cap fade and the detail cap fade; all scale free; bad inputs give the floor (depth) or 0
+// Case 10: the near fade (0 within 0.5 Rt, smoothstep to 1 at 1.5 Rt, symmetric), the end fade, the ring cap fade and
+// the detail cap fade with the SDD 52 slot counts; all scale free; bad inputs give 0. (The depth and 256-512 Rt detail
+// fades are gone, SDD 52 D10; the pixel-size and gap fades are in SOLTest.Npc.TunnelFarField)
 bool FSOLNpcTunnelMathFadesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
     const double rt = 1.0e6;
-    const double floorAlpha = SOL::NPC_TUNNEL_DEPTH_FADE_FLOOR;
-    const double depthStart = SOL::NPC_TUNNEL_DEPTH_FADE_START_RADII;
-    const double depthEnd = SOL::NPC_TUNNEL_DEPTH_FADE_END_RADII;
-
-    // Depth fade
-    TestEqual(TEXT("depth: 1 at 0"), TunnelDepthFade(0.0, rt), 1.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth: 1 at 4 Rt"), TunnelDepthFade(4.0 * rt, rt), 1.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth: 1 at 8 Rt"), TunnelDepthFade(8.0 * rt, rt), 1.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth: the floor at 65,536 Rt"), TunnelDepthFade(65536.0 * rt, rt), floorAlpha, NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth: the floor at 1e7 Rt"), TunnelDepthFade(1.0e7 * rt, rt), floorAlpha, NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth: the floor at +inf"), TunnelDepthFade(NPCTUNNEL_INF, rt), floorAlpha, NPCTUNNEL_TOL);
-    for (const double t : { 0.25, 0.5 })
-    {
-        const double d = depthStart * rt * FMath::Pow(depthEnd / depthStart, t);
-        TestEqual(FString::Printf(TEXT("depth: log-linear at t %.2f"), t), TunnelDepthFade(d, rt),
-            1.0 - (1.0 - floorAlpha) * t, NPCTUNNEL_TOL);
-    }
-    double previous = 2.0;
-    for (int32 step = 0; step <= 300; ++step)
-    {
-        const double d = rt * FMath::Pow(10.0, -1.0 + 7.0 * static_cast<double>(step) / 300.0);
-        const double fade = TunnelDepthFade(d, rt);
-        TestTrue(FString::Printf(TEXT("depth: non-increasing at step %d"), step), fade <= previous + 1.0e-12);
-        TestTrue(FString::Printf(TEXT("depth: in [floor, 1] at step %d"), step), fade >= floorAlpha - 1.0e-12
-            && fade <= 1.0);
-        previous = fade;
-    }
-    TestEqual(TEXT("depth: scale free"), TunnelDepthFade(1.0e3 * 777.0 * rt, 1.0e3 * rt), TunnelDepthFade(777.0 * rt,
-        rt), NPCTUNNEL_TOL);
-    TestEqual(TEXT("depth: NaN distance -> the floor"), TunnelDepthFade(NPCTUNNEL_NAN, rt), floorAlpha,
-        NPCTUNNEL_TOL);
-    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("depth: radius %f -> the floor"), badRadius), TunnelDepthFade(10.0 * rt,
-            badRadius), floorAlpha, NPCTUNNEL_TOL);
-    }
 
     // Near fade
     for (const double x : { 0.0, 0.3, -0.3, 0.5, -0.5 })
@@ -1763,35 +701,6 @@ bool FSOLNpcTunnelMathFadesTest::RunTest(const FString& /*parameters*/)
     {
         TestEqual(FString::Printf(TEXT("near: radius %f -> 0"), badRadius), TunnelNearFade(3.0 * rt, badRadius), 0.0,
             NPCTUNNEL_TOL);
-    }
-
-    // Detail fade
-    for (const double d : { 0.0, 100.0, 256.0 })
-    {
-        TestEqual(FString::Printf(TEXT("detail: 1 at %.0f Rt"), d), TunnelDetailFade(d * rt, rt), 1.0, NPCTUNNEL_TOL);
-    }
-    for (const double d : { 512.0, 1.0e4, 1.0e9 })
-    {
-        TestEqual(FString::Printf(TEXT("detail: 0 at %.0f Rt"), d), TunnelDetailFade(d * rt, rt), 0.0, NPCTUNNEL_TOL);
-    }
-    TestEqual(TEXT("detail: 0 at +inf"), TunnelDetailFade(NPCTUNNEL_INF, rt), 0.0, NPCTUNNEL_TOL);
-    previous = 1.0;
-    for (int32 step = 1; step < 1000; ++step)
-    {
-        const double d = (256.0 + 256.0 * static_cast<double>(step) / 1000.0) * rt;
-        const double fade = TunnelDetailFade(d, rt);
-        TestTrue(FString::Printf(TEXT("detail: inside (0, 1) at step %d"), step), fade > 0.0 && fade < 1.0);
-        TestTrue(FString::Printf(TEXT("detail: non-increasing and continuous at step %d"), step),
-            fade <= previous + 1.0e-12 && previous - fade < 0.01);
-        previous = fade;
-    }
-    TestEqual(TEXT("detail: scale free"), TunnelDetailFade(1.0e3 * 300.0 * rt, 1.0e3 * rt),
-        TunnelDetailFade(300.0 * rt, rt), NPCTUNNEL_TOL);
-    TestEqual(TEXT("detail: NaN -> 0"), TunnelDetailFade(NPCTUNNEL_NAN, rt), 0.0, NPCTUNNEL_TOL);
-    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("detail: radius %f -> 0"), badRadius), TunnelDetailFade(10.0 * rt, badRadius),
-            0.0, NPCTUNNEL_TOL);
     }
 
     // End fade: clamp(dEnd / (0.5 spacing), 0, 1)
@@ -1835,8 +744,8 @@ bool FSOLNpcTunnelMathFadesTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("detail cap: 0 at w DETAIL_PER_SIDE - 0.25"), DetailCapFade(detailPerSide - 0.25), 0.0,
         NPCTUNNEL_TOL);
     TestEqual(TEXT("detail cap: NaN -> 0"), DetailCapFade(NPCTUNNEL_NAN), 0.0, NPCTUNNEL_TOL);
-    TestTrue(TEXT("detail cap: 1 wherever the detail fade shows (on the axis out to 512 Rt)"),
-        RingWarp(SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * rt, 0.0, rt) <= detailPerSide - 2.0);
+    TestEqual(TEXT("detail cap: 1 out to where the gap gate shuts (DETAIL_PER_SIDE - 3 spacings)"),
+        DetailCapFade(-(detailPerSide - 3.0)), 1.0, NPCTUNNEL_TOL);
     return true;
 }
 
@@ -1908,8 +817,8 @@ bool FSOLNpcTunnelMathNearFadeRadialTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("near at: NaN h -> 0"), TunnelNearFadeAt(rt, NPCTUNNEL_NAN, rt), 0.0, NPCTUNNEL_TOL);
     TestEqual(TEXT("near at: bad radius -> 0"), TunnelNearFadeAt(rt, 50.0 * rt, -rt), 0.0, NPCTUNNEL_TOL);
 
-    // The ring at the foot point (phase 0: the first behind slot, w = 0, x = 0): hidden inside the tube, present with
-    // its depth fade from outside
+    // The ring at the foot point (phase 0: the first behind slot, w = 0, x = 0): hidden inside the tube, present from
+    // outside (at the reference focal its radius and gap fades are 1 out to 100 Rt: f / h >= 9.6 px)
     const int32 footSlot = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
     for (const double h : { 0.0, 0.5, 1.0, fullRadii })
     {
@@ -1924,8 +833,7 @@ bool FSOLNpcTunnelMathNearFadeRadialTest::RunTest(const FString& /*parameters*/)
         TestTrue(FString::Printf(TEXT("foot ring present at h %.0f Rt"), h), bShown);
         TestEqual(FString::Printf(TEXT("foot ring at h %.0f Rt: at the foot point"), h), ring.AxialOffsetM, 0.0,
             NPCTUNNEL_TOL * rt);
-        TestEqual(FString::Printf(TEXT("foot ring at h %.0f Rt: only the depth fade"), h), ring.Alpha,
-            TunnelDepthFade(h * rt, rt), 1.0e-12);
+        TestEqual(FString::Printf(TEXT("foot ring at h %.0f Rt: full"), h), ring.Alpha, 1.0, 1.0e-12);
     }
 
     // The foot ring's alpha changes continuously as the camera moves out through the band
@@ -1945,259 +853,22 @@ bool FSOLNpcTunnelMathNearFadeRadialTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathRingCoverageTest, "SOLTest.NpcTunnelMath.RingSlotCoverage",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 11: against a brute-force reference (every whole n with W^-1(n - phase) between the end rings and a non-zero
-// alpha), for cameras on the axis and 0.5-100 Rt off it, at both ends (and just past end A) and the middle of the
-// shortest (Earth-Moon at perigee) and longest (Uranus-Neptune at 30 AU) default lanes, at both radius scales and
-// phases 0, 0.3 and 0.999, every visible ring is returned by exactly one slot with the same offset and alpha, and no
-// slot returns a ring outside the end rings; slot k is the ring at w = k + 1 - phase ahead, -(k + phase) behind; every
-// default lane fits its rings in the slots
-bool FSOLNpcTunnelMathRingCoverageTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
-    TestEqual(TEXT("two slots per ring index"), RingSlotCount(), 2 * perSide);
-
-    // The two lanes: length, body radii, lane radius
-    struct FLaneCase
-    {
-        const TCHAR* Name;
-        double LengthM;
-        double BodyRadiusAM;
-        double BodyRadiusBM;
-        double LaneRadiusM;
-    };
-    const FLaneCase lanes[] = {
-        { TEXT("Earth-Moon"), NPCTUNNEL_EARTH_MOON_PERIGEE_M, NPCTUNNEL_EARTH_RADIUS_M, NPCTUNNEL_MOON_RADIUS_M,
-            NPCTUNNEL_EARTH_MOON_LANE_RADIUS_M },
-        { TEXT("Uranus-Neptune"), NPCTUNNEL_URANUS_NEPTUNE_M, NPCTUNNEL_URANUS_RADIUS_M, NPCTUNNEL_NEPTUNE_RADIUS_M,
-            NPCTUNNEL_URANUS_NEPTUNE_LANE_RADIUS_M },
-    };
-    const double scales[] = { SOL::NPC_TUNNEL_RADIUS_MIN_SCALE, SOL::NPC_TUNNEL_RADIUS_MAX_SCALE };
-    const double radialsRt[] = { 0.0, 0.5, 1.0, 10.0, 50.0, 100.0 };
-    const double phases[] = { 0.0, 0.3, 0.999 };
-
-    FNpcTunnelFailures failures;
-    FNpcTunnelFailures layoutFailures;
-    TArray<FNpcTunnelRefElement> reference;
-    TArray<FSOLNpcTunnelRing> returned;
-    int32 visibleTotal = 0;
-    for (const FLaneCase& lane : lanes)
-    {
-        for (const double scale : scales)
-        {
-            const double rt = lane.LaneRadiusM * scale;
-            const double endA = lane.BodyRadiusAM + SOL::NPC_TUNNEL_END_MARGIN_RADII * rt;
-            const double endB = lane.LengthM - lane.BodyRadiusBM - SOL::NPC_TUNNEL_END_MARGIN_RADII * rt;
-            const double footArcs[] = { endA, 0.5 * (endA + endB), endB, endA - 3.0 * rt };
-            for (const double footArc : footArcs)
-            {
-                for (const double hRt : radialsRt)
-                {
-                    for (const double phase : phases)
-                    {
-                        const FSOLNpcTunnelSlotInput input = NpcTunnelInput(hRt * rt, rt, phase, endA - footArc,
-                            endB - footArc);
-                        const FString label = FString::Printf(TEXT("%s x%.0f, foot %.4e m, h %.1f Rt, phase %.3f"),
-                            lane.Name, scale, footArc, hRt, phase);
-                        NpcTunnelBruteRings(input, reference);
-                        visibleTotal += reference.Num();
-                        returned.Reset();
-                        for (int32 slot = 0; slot < RingSlotCount(); ++slot)
-                        {
-                            FSOLNpcTunnelRing ring;
-                            if (!RingSlot(slot, input, ring))
-                            {
-                                continue;
-                            }
-                            returned.Add(ring);
-
-                            // The slot layout of SDD 49 section 4.5
-                            if (FMath::Abs(ring.W - NpcTunnelSlotW(slot, phase)) > NPCTUNNEL_TOL)
-                            {
-                                layoutFailures.Add(label + FString::Printf(TEXT(": slot %d at w %.9f, expected %.9f"),
-                                    slot, ring.W, NpcTunnelSlotW(slot, phase)));
-                            }
-                        }
-                        NpcTunnelMatchCoverage(reference, returned, input, label, failures);
-                    }
-                }
-            }
-        }
-    }
-    TestTrue(TEXT("the reference had visible rings"), visibleTotal > 300);
-    if (!TestEqual(TEXT("every visible ring exactly once, none outside"), failures.Count, 0))
-    {
-        AddInfo(TEXT("first: ") + failures.First);
-    }
-    if (!TestEqual(TEXT("slot layout"), layoutFailures.Count, 0))
-    {
-        AddInfo(TEXT("first: ") + layoutFailures.First);
-    }
-
-    // Every default lane at its minimum tunnel radius fits its whole length in the slots on the axis (lengths are the
-    // bodies' aphelia on opposite sides of the Sun, an upper bound; Earth-Moon at its apogee)
-    struct FDefaultLane
-    {
-        const TCHAR* Name;
-        double MaxLengthM;
-        double LaneRadiusM;
-    };
-    const FDefaultLane defaultLanes[] = {
-        { TEXT("Mercury-Venus"), 1.20 * NPCTUNNEL_AU_M, 2.0e6 },
-        { TEXT("Venus-Earth"), 1.75 * NPCTUNNEL_AU_M, 2.0e6 },
-        { TEXT("Earth-Moon"), 4.06e8, 2.0e5 },
-        { TEXT("Earth-Mars"), 2.69 * NPCTUNNEL_AU_M, 3.0e6 },
-        { TEXT("Mars-Jupiter"), 7.13 * NPCTUNNEL_AU_M, 5.0e6 },
-        { TEXT("Jupiter-Saturn"), 15.6 * NPCTUNNEL_AU_M, 8.0e6 },
-        { TEXT("Saturn-Uranus"), 30.2 * NPCTUNNEL_AU_M, 1.0e7 },
-        { TEXT("Uranus-Neptune"), 50.6 * NPCTUNNEL_AU_M, 1.0e7 },
-    };
-    for (const FDefaultLane& lane : defaultLanes)
-    {
-        const double rt = lane.LaneRadiusM * SOL::NPC_TUNNEL_RADIUS_MIN_SCALE;
-        TestTrue(FString::Printf(TEXT("%s: whole length under %d ring slots"), lane.Name, perSide - 1),
-            RingWarp(lane.MaxLengthM, 0.0, rt) < static_cast<double>(perSide - 1));
-    }
-
-    // The detail slots cover the dots and chevrons out to the detail fade's end
-    TestTrue(TEXT("detail slots reach 512 Rt"), RingWarp(SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * 1.0e6, 0.0, 1.0e6)
-        < static_cast<double>(SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE - 1));
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathDetailCoverageTest, "SOLTest.NpcTunnelMath.DetailSlotCoverage",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 11, dots and chevrons (guide thinning): with the same warp and phase, two dots and two chevrons per kept ring
-// gap (at the ring, + 0, and halfway, + 0.5); against a brute-force reference every visible one out to 512 Rt is
-// returned by exactly one gap slot (DotSlot with its dot index, ChevronSlot with its chevron index) with the same
-// offset and alpha, none outside the end rings
-bool FSOLNpcTunnelMathDetailCoverageTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    TestEqual(TEXT("two detail slots per gap index"), DetailSlotCount(), 2 * SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE);
-
-    struct FLaneCase
-    {
-        const TCHAR* Name;
-        double LengthM;
-        double BodyRadiusAM;
-        double BodyRadiusBM;
-        double LaneRadiusM;
-    };
-    const FLaneCase lanes[] = {
-        { TEXT("Earth-Moon"), NPCTUNNEL_EARTH_MOON_PERIGEE_M, NPCTUNNEL_EARTH_RADIUS_M, NPCTUNNEL_MOON_RADIUS_M,
-            NPCTUNNEL_EARTH_MOON_LANE_RADIUS_M },
-        { TEXT("Uranus-Neptune"), NPCTUNNEL_URANUS_NEPTUNE_M, NPCTUNNEL_URANUS_RADIUS_M, NPCTUNNEL_NEPTUNE_RADIUS_M,
-            NPCTUNNEL_URANUS_NEPTUNE_LANE_RADIUS_M },
-    };
-    const double scales[] = { SOL::NPC_TUNNEL_RADIUS_MIN_SCALE, SOL::NPC_TUNNEL_RADIUS_MAX_SCALE };
-    const double radialsRt[] = { 0.0, 1.0, 10.0, 100.0 };
-    const double phases[] = { 0.0, 0.3, 0.999 };
-
-    FNpcTunnelFailures dotFailures;
-    FNpcTunnelFailures chevronFailures;
-    TArray<FNpcTunnelRefElement> reference;
-    TArray<FSOLNpcTunnelRing> returned;
-    int32 visibleDots = 0;
-    int32 visibleChevrons = 0;
-    for (const FLaneCase& lane : lanes)
-    {
-        for (const double scale : scales)
-        {
-            const double rt = lane.LaneRadiusM * scale;
-            const double endA = lane.BodyRadiusAM + SOL::NPC_TUNNEL_END_MARGIN_RADII * rt;
-            const double endB = lane.LengthM - lane.BodyRadiusBM - SOL::NPC_TUNNEL_END_MARGIN_RADII * rt;
-            const double footArcs[] = { endA, 0.5 * (endA + endB), endB, endA - 3.0 * rt };
-            for (const double footArc : footArcs)
-            {
-                for (const double hRt : radialsRt)
-                {
-                    for (const double phase : phases)
-                    {
-                        const FSOLNpcTunnelSlotInput input = NpcTunnelInput(hRt * rt, rt, phase, endA - footArc,
-                            endB - footArc);
-                        const FString label = FString::Printf(TEXT("%s x%.0f, foot %.4e m, h %.1f Rt, phase %.3f"),
-                            lane.Name, scale, footArc, hRt, phase);
-
-                        // Dots
-                        NpcTunnelBruteDetails(input, false, reference);
-                        visibleDots += reference.Num();
-                        returned.Reset();
-                        for (int32 slot = 0; slot < DetailSlotCount(); ++slot)
-                        {
-                            for (int32 dot = 0; dot < SOL::NPC_TUNNEL_DOTS_PER_GAP; ++dot)
-                            {
-                                FSOLNpcTunnelRing element;
-                                if (DotSlot(slot, dot, input, element))
-                                {
-                                    returned.Add(element);
-                                }
-                            }
-                        }
-                        NpcTunnelMatchCoverage(reference, returned, input, label + TEXT(" (dots)"), dotFailures);
-
-                        // Chevrons
-                        NpcTunnelBruteDetails(input, true, reference);
-                        visibleChevrons += reference.Num();
-                        returned.Reset();
-                        for (int32 slot = 0; slot < DetailSlotCount(); ++slot)
-                        {
-                            for (int32 chevron = 0; chevron < SOL::NPC_TUNNEL_CHEVRONS_PER_GAP; ++chevron)
-                            {
-                                FSOLNpcTunnelRing element;
-                                if (ChevronSlot(slot, chevron, input, element))
-                                {
-                                    returned.Add(element);
-                                }
-                            }
-                        }
-                        NpcTunnelMatchCoverage(reference, returned, input, label + TEXT(" (chevrons)"),
-                            chevronFailures);
-                    }
-                }
-            }
-        }
-    }
-    TestTrue(TEXT("the reference had visible dots"), visibleDots > 200);
-    TestTrue(TEXT("the reference had visible chevrons"), visibleChevrons > 100);
-    if (!TestEqual(TEXT("every visible dot exactly once"), dotFailures.Count, 0))
-    {
-        AddInfo(TEXT("first: ") + dotFailures.First);
-    }
-    if (!TestEqual(TEXT("every visible chevron exactly once"), chevronFailures.Count, 0))
-    {
-        AddInfo(TEXT("first: ") + chevronFailures.First);
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathGuideThinningTest, "SOLTest.NpcTunnelMath.GuideThinning",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Guide thinning (user, 2026-11-17): only every 6th ring of the pre-thinning lattice is kept, near and far. For cameras
-// on and off the axis of the shortest and longest default lanes, at both radius scales and several phases: every ring
-// a slot returns is a pre-thinning ring whose index (W_old + 6 phase) is a multiple of 6, so none sits at a removed
-// position; dot and chevron 0 of a gap sit on a kept ring (a multiple of 6) and index 1 halfway to the next (3 more),
-// their warp coordinates on the gap's ring and half a gap on; per view the rings are at most a sixth of the
-// pre-thinning lattice's (same reach) plus 1 and at least that sixth less 3, the dots and chevrons within their slot
-// budgets; out-of-range indices return nothing; the end rings stay at their arcs. On the axis two kept rings inside the
-// constant zone are 12 Rt apart (6 x the old 2 Rt) and the ahead slots beyond it e^1.5 apart. A tiny lane (end rings
-// 10 Rt apart, under one kept gap) shows at most one repeating ring, at most two dots and two chevrons per row slot
-// set, and both end rings, at every phase
+// Guide thinning (user, 2026-11-17), re-pinned to the flat lattice of SDD 52 D2 (the kept rings' 12 Rt everywhere):
+// for cameras on and off the axis of the shortest and longest default lanes, at both radius scales and several
+// phases, every ring a slot returns sits on the lattice (w + phase whole, x = w S0), dot and chevron 0 of a gap on a
+// ring and index 1 halfway to the next (offsets 0 and 0.5 of the flat gap); per view the rings are at most the lattice
+// positions inside the window between the end rings, the dots and chevrons within their slot budgets; out-of-range
+// indices return nothing; the end rings stay at their arcs. On the axis neighbouring rings are 12 Rt apart (6 x the
+// pre-thinning 2 Rt) near and farther out. A tiny lane (end rings 10 Rt apart, under one gap) shows at most one
+// repeating ring, at most two dots and two chevrons per row slot set, and both end rings, at every phase
 bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
     const double keep = static_cast<double>(NPCTUNNEL_KEEP_EVERY);
-    const double half = 0.5 * keep;
     const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
 
     struct FLaneCase
@@ -2228,6 +899,7 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
         for (const double scale : scales)
         {
             const double rt = lane.LaneRadiusM * scale;
+            const double s0 = NpcTunnelS0(rt);
             const double endA = lane.BodyRadiusAM + SOL::NPC_TUNNEL_END_MARGIN_RADII * rt;
             const double endB = lane.LengthM - lane.BodyRadiusBM - SOL::NPC_TUNNEL_END_MARGIN_RADII * rt;
             for (const double footArc : { endA + 2.0 * rt, 0.5 * (endA + endB), endB - 40.0 * rt })
@@ -2242,7 +914,7 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
                         const FString label = FString::Printf(TEXT("%s x%.0f, foot %.4e m, h %.1f Rt, phase %.3f"),
                             lane.Name, scale, footArc, hRt, phase);
 
-                        // Rings: each on a kept pre-thinning ring (index a multiple of 6)
+                        // Rings: each on the flat lattice (w + phase whole, x = w S0)
                         int32 rings = 0;
                         for (int32 slot = 0; slot < RingSlotCount(); ++slot)
                         {
@@ -2252,32 +924,28 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
                                 continue;
                             }
                             ++rings;
-                            const double index = NpcTunnelPreThinWarp(ring.AxialOffsetM, h, rt) + keep * phase;
-                            if (NpcTunnelOffLattice(index, keep) > 1.0e-5)
+                            if (NpcTunnelOffLattice(ring.W + phase, 1.0) > 1.0e-9
+                                || FMath::Abs(ring.AxialOffsetM - ring.W * s0) > 1.0e-9 * s0)
                             {
-                                latticeFailures.Add(label + FString::Printf(TEXT(": ring at %.6e m is pre-thinning "
-                                    "ring %.6f, not a kept one"), ring.AxialOffsetM, index));
+                                latticeFailures.Add(label + FString::Printf(TEXT(": ring at %.6e m (w %.6f) off the "
+                                    "lattice"), ring.AxialOffsetM, ring.W));
                             }
                         }
                         ringsSeen += rings;
 
-                        // Against the pre-thinning lattice of the same reach (|w_old| < 6 PER_SIDE) between the end
-                        // rings: at most a sixth plus 1, at least a sixth less 3 (the near-faded foot ring, the ends)
-                        const double lowOld = FMath::Max(NpcTunnelPreThinWarp(input.EndArcAM, h, rt),
-                            -keep * perSide) + keep * phase;
-                        const double highOld = FMath::Min(NpcTunnelPreThinWarp(input.EndArcBM, h, rt),
-                            keep * perSide) + keep * phase;
-                        const int32 oldCount = FMath::Max(0, FMath::CeilToInt32(highOld) - FMath::FloorToInt32(lowOld)
-                            - 1);
-                        if (rings > oldCount / NPCTUNNEL_KEEP_EVERY + 1
-                            || rings < oldCount / NPCTUNNEL_KEEP_EVERY - 3)
+                        // At most the lattice positions inside the window (|w| < PER_SIDE) between the end rings
+                        const double lowW = FMath::Max(input.EndArcAM / s0, -static_cast<double>(perSide));
+                        const double highW = FMath::Min(input.EndArcBM / s0, static_cast<double>(perSide));
+                        const int32 latticeCount = FMath::Max(0, FMath::CeilToInt32(highW + phase)
+                            - FMath::FloorToInt32(lowW + phase) - 1);
+                        if (rings > latticeCount)
                         {
-                            countFailures.Add(label + FString::Printf(TEXT(": %d rings against %d pre-thinning ones"),
-                                rings, oldCount));
+                            countFailures.Add(label + FString::Printf(TEXT(": %d rings against %d lattice positions"),
+                                rings, latticeCount));
                         }
 
-                        // Dots and chevrons: index 0 on a kept ring, index 1 halfway (3 pre-thinning spacings on in
-                        // the index), their warp coordinates at the gap's ring and half a gap on
+                        // Dots and chevrons: index 0 on a ring, index 1 halfway to the next (w + phase - offset
+                        // whole, x = w S0)
                         int32 dots = 0;
                         int32 chevrons = 0;
                         for (int32 slot = 0; slot < DetailSlotCount(); ++slot)
@@ -2294,17 +962,14 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
                                         continue;
                                     }
                                     (bChevron ? chevrons : dots) += 1;
-                                    const double offset = element == 0 ? 0.0 : half;
-                                    const double index = NpcTunnelPreThinWarp(detail.AxialOffsetM, h, rt)
-                                        + keep * phase - offset;
                                     const double gapOffset = element == 0 ? 0.0 : 0.5;
-                                    if (NpcTunnelOffLattice(index, keep) > 1.0e-5
-                                        || NpcTunnelOffLattice(detail.W + phase - gapOffset, 1.0) > 1.0e-9)
+                                    if (NpcTunnelOffLattice(detail.W + phase - gapOffset, 1.0) > 1.0e-9
+                                        || FMath::Abs(detail.AxialOffsetM - detail.W * s0) > 1.0e-9 * s0)
                                     {
                                         latticeFailures.Add(label + FString::Printf(TEXT(": %s %d of slot %d at "
-                                            "%.6e m (w %.6f), pre-thinning index %.6f"), bChevron ? TEXT("chevron")
-                                            : TEXT("dot"), element, slot, detail.AxialOffsetM, detail.W,
-                                            index + offset));
+                                            "%.6e m (w %.6f) not at offset %.1f of a gap"), bChevron
+                                            ? TEXT("chevron") : TEXT("dot"), element, slot, detail.AxialOffsetM,
+                                            detail.W, gapOffset));
                                     }
                                 }
                             }
@@ -2337,12 +1002,11 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
     }
     TestTrue(FString::Printf(TEXT("rings, dots and chevrons were seen (%d, %d, %d)"), ringsSeen, dotsSeen,
         chevronsSeen), ringsSeen > 200 && dotsSeen > 100 && chevronsSeen > 50);
-    if (!TestEqual(TEXT("rings only at kept positions, dots and chevrons at kept rings and halfway"),
-        latticeFailures.Count, 0))
+    if (!TestEqual(TEXT("rings on the lattice, dots and chevrons at rings and halfway"), latticeFailures.Count, 0))
     {
         AddInfo(TEXT("first: ") + latticeFailures.First);
     }
-    if (!TestEqual(TEXT("a sixth of the rings per view, details within their budgets"), countFailures.Count, 0))
+    if (!TestEqual(TEXT("rings within the window's lattice, details within their budgets"), countFailures.Count, 0))
     {
         AddInfo(TEXT("first: ") + countFailures.First);
     }
@@ -2362,7 +1026,7 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
             && ChevronSlot(1, 1, input, element));
     }
 
-    // On the axis: two kept rings inside the constant zone 12 Rt apart; ahead slots beyond it e^1.5 apart
+    // On the axis: the rings either side of the foot point 12 Rt apart, and the ahead slots farther out too (flat)
     {
         const double rt = 2.0e6;
         const FSOLNpcTunnelSlotInput input = NpcTunnelInput(0.0, rt, 0.4, -1.0e15, 1.0e15);
@@ -2382,8 +1046,8 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
             if (TestTrue(FString::Printf(TEXT("ahead slots %d and %d shown"), slot, slot + 1),
                 RingSlot(slot, input, nearer) && RingSlot(slot + 1, input, farther)))
             {
-                TestEqual(FString::Printf(TEXT("ahead slots %d and %d: e^1.5 apart"), slot, slot + 1),
-                    farther.AxialOffsetM / nearer.AxialOffsetM, FMath::Exp(1.5), 1.0e-6);
+                TestEqual(FString::Printf(TEXT("ahead slots %d and %d: 12 Rt apart"), slot, slot + 1),
+                    farther.AxialOffsetM - nearer.AxialOffsetM, NpcTunnelS0(rt), 1.0e-6 * rt);
             }
         }
     }
@@ -2691,9 +1355,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathTexelsTest, "SOLTest.NpcTunnel
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 16 (Q5): the tunnel texture has 4 rows of GROUP_TEXTURE_WIDTH texels; a tunnel's lane column holds (foot point
-// relative to the viewpoint, Rt), (axis, fade), (up, phase), (end arc A, end arc B relative to the foot arc, 0, 0);
-// every other column is zero (fade 0); an empty list writes all zeros; a buffer shorter than 4 rows is left alone
+// Case 16 (Q5; SDD 52 D7, D14): the tunnel texture has 4 rows of GROUP_TEXTURE_WIDTH texels; a tunnel's lane column
+// holds (foot point relative to the viewpoint, Rt), (axis, label strength), (up, phase), (end arc A, end arc B relative
+// to the foot arc, draw fade, 0: the end-ring floor is the material's Layout4.x since the D16 rebuild); every other
+// column is zero (not drawn, strength 0); an empty list writes all zeros; a buffer shorter than 4 rows is left alone
 bool FSOLNpcTunnelMathTexelsTest::RunTest(const FString& /*parameters*/)
 {
     using SOLNpcTunnel::WriteTunnelTexels;
@@ -2731,6 +1396,7 @@ bool FSOLNpcTunnelMathTexelsTest::RunTest(const FString& /*parameters*/)
         data.Phase = 0.07 * k;
         data.EndArcAM = -4.0e7 * k;
         data.EndArcBM = 9.0e8 * k;
+        data.DrawFade = 1.0;
         lanes.Add(data);
     }
     TArray<FVector4f> texels;
@@ -2760,8 +1426,8 @@ bool FSOLNpcTunnelMathTexelsTest::RunTest(const FString& /*parameters*/)
             data->Axis.Z, data->Fade));
         TestTrue(label + TEXT(": row 2 = up, phase"), texelNear(texels[2 * width + column], data->Up.X, data->Up.Y,
             data->Up.Z, data->Phase));
-        TestTrue(label + TEXT(": row 3 = end arcs, 0, 0"), texelNear(texels[3 * width + column], data->EndArcAM,
-            data->EndArcBM, 0.0, 0.0));
+        TestTrue(label + TEXT(": row 3 = end arcs, draw fade, 0"), texelNear(texels[3 * width + column],
+            data->EndArcAM, data->EndArcBM, data->DrawFade, 0.0));
         TestEqual(label + TEXT(": the fade is row 1 .w"), static_cast<double>(texels[width + column].W), data->Fade,
             1.0e-6);
     }
@@ -3063,111 +1729,6 @@ bool FSOLNpcTunnelMathLaneFootTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathEndRingTest, "SOLTest.NpcTunnelMath.EndRing",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Step 7b (SDD 49 sections 4.5 and 4.6): EndRingAlpha(x, h, Rt) = max(TunnelDepthFade(sqrt(x^2 + h^2), Rt),
-// NPC_TUNNEL_END_RING_MIN_ALPHA) x TunnelNearFadeAt(x, h, Rt): the depth floor is lifted to 0.5 so an end ring stays
-// readable to the far node, while the near fade still removes the end ring the camera passes through on the axis; no
-// cap, end or detail fade applies and the tunnel fade is left to the caller (as for the ring slots). EndRingSlot(end)
-// returns end ring A (0) or B (1) at its arc with its warp coordinate and that alpha, beyond the ring cap too
-bool FSOLNpcTunnelMathEndRingTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    const double rt = 1.0e6;
-    const double floorAlpha = SOL::NPC_TUNNEL_END_RING_MIN_ALPHA;
-
-    // Seen from outside the tube (no near fade): the depth fade with its floor raised to 0.5
-    for (const double inRadii : { 9.0, 100.0, 1.0e3, 1.0e4, 65536.0, 1.0e6, 1.0e9 })
-    {
-        const double h = 4.0 * rt;
-        const double d = inRadii * rt;
-        const double x = FMath::Sqrt(d * d - h * h);
-        const double expected = FMath::Max(TunnelDepthFade(d, rt), floorAlpha);
-        TestEqual(FString::Printf(TEXT("%g Rt: max(depth, 0.5)"), inRadii), EndRingAlpha(x, h, rt), expected,
-            NPCTUNNEL_TOL);
-        TestTrue(FString::Printf(TEXT("%g Rt: never below 0.5"), inRadii), EndRingAlpha(-x, h, rt) >= floorAlpha);
-    }
-    TestEqual(TEXT("near, outside the tube: 1"), EndRingAlpha(5.0 * rt, 4.0 * rt, rt), 1.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("far: the floor, not the depth floor 0.2"), EndRingAlpha(1.0e8 * rt, 0.0, rt), floorAlpha,
-        NPCTUNNEL_TOL);
-
-    // On the axis the near fade still applies: the end ring the camera flies through does not sweep the screen
-    TestEqual(TEXT("at the camera's foot on the axis: 0"), EndRingAlpha(0.0, 0.0, rt), 0.0, NPCTUNNEL_TOL);
-    for (const double x : { 0.3, 0.75, 1.0, 1.4, 2.0 })
-    {
-        for (const double h : { 0.0, 1.0, 2.0, 2.5, 3.0 })
-        {
-            const double d = FMath::Sqrt(x * x + h * h) * rt;
-            const double expected = FMath::Max(TunnelDepthFade(d, rt), floorAlpha)
-                * TunnelNearFadeAt(x * rt, h * rt, rt);
-            TestEqual(FString::Printf(TEXT("x %g Rt, h %g Rt: floored depth x near"), x, h), EndRingAlpha(x * rt,
-                h * rt, rt), expected, NPCTUNNEL_TOL);
-            TestEqual(FString::Printf(TEXT("x %g Rt, h %g Rt: symmetric in x"), x, h), EndRingAlpha(-x * rt, h * rt,
-                rt), EndRingAlpha(x * rt, h * rt, rt), NPCTUNNEL_TOL);
-        }
-    }
-
-    // Bad inputs
-    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
-    {
-        TestEqual(FString::Printf(TEXT("radius %g: 0"), badRadius), EndRingAlpha(10.0 * rt, 0.0, badRadius), 0.0);
-    }
-    TestEqual(TEXT("NaN offset: 0"), EndRingAlpha(NPCTUNNEL_NAN, 0.0, rt), 0.0);
-    TestEqual(TEXT("NaN radial: 0"), EndRingAlpha(10.0 * rt, NPCTUNNEL_NAN, rt), 0.0);
-
-    // The two end-ring slots
-    const double h = 0.5 * rt;
-    const FSOLNpcTunnelSlotInput input = NpcTunnelInput(h, rt, 0.3, -20.0 * rt, 500.0 * rt);
-    const double ends[] = { input.EndArcAM, input.EndArcBM };
-    for (int32 end = 0; end < 2; ++end)
-    {
-        FSOLNpcTunnelRing ring;
-        const FString label = FString::Printf(TEXT("end %d"), end);
-        if (!TestTrue(label + TEXT(": drawn"), EndRingSlot(end, input, ring)))
-        {
-            continue;
-        }
-        TestEqual(label + TEXT(": at its arc"), ring.AxialOffsetM, ends[end], NPCTUNNEL_TOL * rt);
-        TestEqual(label + TEXT(": warp coordinate"), ring.W, RingWarp(ends[end], h, rt), NPCTUNNEL_TOL);
-        TestEqual(label + TEXT(": alpha"), ring.Alpha, EndRingAlpha(ends[end], h, rt), NPCTUNNEL_TOL);
-    }
-
-    // Beyond the ring cap (|w| > PER_SIDE) the end ring is still drawn, at least at the floor
-    {
-        const double beyondCapM = NpcTunnelRefWarpInverse(SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE + 2.0, 0.0, rt);
-        const FSOLNpcTunnelSlotInput farInput = NpcTunnelInput(0.0, rt, 0.0, -5.0 * rt, beyondCapM);
-        FSOLNpcTunnelRing ring;
-        TestTrue(TEXT("far end ring: drawn"), EndRingSlot(1, farInput, ring));
-        TestTrue(TEXT("far end ring: past the ring cap"), ring.W > SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE);
-        TestTrue(TEXT("far end ring: at least the floor"), ring.Alpha >= floorAlpha);
-    }
-
-    // The camera on the axis at end ring A: that ring is hidden by the near fade, end ring B is drawn
-    {
-        const FSOLNpcTunnelSlotInput atEnd = NpcTunnelInput(0.0, rt, 0.0, 0.0, 300.0 * rt);
-        FSOLNpcTunnelRing ring;
-        TestFalse(TEXT("camera at end ring A: A hidden"), EndRingSlot(0, atEnd, ring));
-        TestTrue(TEXT("camera at end ring A: B drawn"), EndRingSlot(1, atEnd, ring));
-    }
-
-    // Crossed or equal end arcs, a bad index or a bad radius: nothing
-    FSOLNpcTunnelRing ring;
-    const FSOLNpcTunnelSlotInput crossed = NpcTunnelInput(h, rt, 0.3, 50.0 * rt, 10.0 * rt);
-    const FSOLNpcTunnelSlotInput equal = NpcTunnelInput(h, rt, 0.3, 10.0 * rt, 10.0 * rt);
-    for (int32 end = 0; end < 2; ++end)
-    {
-        TestFalse(FString::Printf(TEXT("crossed: end %d"), end), EndRingSlot(end, crossed, ring));
-        TestFalse(FString::Printf(TEXT("equal: end %d"), end), EndRingSlot(end, equal, ring));
-    }
-    TestFalse(TEXT("end -1"), EndRingSlot(-1, input, ring));
-    TestFalse(TEXT("end 2"), EndRingSlot(2, input, ring));
-    TestFalse(TEXT("bad radius"), EndRingSlot(0, NpcTunnelInput(h, NPCTUNNEL_NAN, 0.3, -20.0 * rt, 500.0 * rt), ring));
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLabelAheadTest, "SOLTest.NpcTunnelMath.LabelAheadSign",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -3307,13 +1868,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathDotRowSegmentTest, "SOLTest.Np
 // SDD 49 section 4.9 (49b, what the HUD projects to keep labels off the dots): TunnelDotRowSegmentRelM gives a dot
 // row's straight segment along the tube, viewpoint-relative: foot + x Axis + NPC_TUNNEL_DOT_RADIUS_SCALE x Rt x
 // WallDirection(basis, DotRowAngleDeg(row)) for x from max(end arc A, -X) to min(end arc B, X), X = sqrt(max(0,
-// (NPC_TUNNEL_DETAIL_FADE_END_RADII Rt)^2 - h^2)) (where the dots end), h = |foot|; false when that range is empty,
-// the row is out of range, the basis invalid or the tunnel radius bad
+// reach^2 - h^2)), h = |foot|, the reach where the dots end: since SDD 52 the gap gate's, NPC_TUNNEL_REFERENCE_FOCAL_PX
+// x S0 / NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX of true distance (720 Rt; RingGapPx never exceeds f S0 / d, so no dot
+// passes the gate beyond it at a focal up to the reference); false when that range is empty, the row is out of range,
+// the basis invalid or the tunnel radius bad; IsDotRowInReach gates the published rows by the same reach on the lane
+// segment distance (52b review)
 bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
     const double rt = 1.0e6;
-    const double detailEnd = SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * rt;
+    const double detailEnd = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX * NpcTunnelS0(rt)
+        / SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX;
+    TestTrue(TEXT("the reach is beyond 300 Rt and within 800 Rt (the cases below)"), detailEnd > 300.0 * rt
+        && detailEnd < 800.0 * rt);
     const double dotRadius = SOL::NPC_TUNNEL_DOT_RADIUS_SCALE * rt;
     const FSOLNpcTunnelBasis basis = TunnelBasis(FVector3d::ZeroVector, FVector3d(1.0e12, 0.0, 0.0));
     const double tol = NPCTUNNEL_TOL * detailEnd;
@@ -3368,10 +1935,10 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
     // Nothing to draw
     FVector3d start;
     FVector3d end;
-    TestFalse(TEXT("600 Rt off the axis: no dots"), TunnelDotRowSegmentRelM(FVector3d(0.0, 600.0 * rt, 0.0), basis,
+    TestFalse(TEXT("800 Rt off the axis: no dots"), TunnelDotRowSegmentRelM(FVector3d(0.0, 800.0 * rt, 0.0), basis,
         rt, -1.0e4 * rt, 1.0e4 * rt, 0, start, end));
     TestFalse(TEXT("tunnel beyond the dots' reach"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt,
-        600.0 * rt, 700.0 * rt, 0, start, end));
+        800.0 * rt, 900.0 * rt, 0, start, end));
     TestFalse(TEXT("crossed end arcs"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, 20.0 * rt,
         -10.0 * rt, 0, start, end));
     TestFalse(TEXT("row -1"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, -10.0 * rt, 20.0 * rt, -1,
@@ -3384,7 +1951,7 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
         20.0 * rt, 0, start, end));
 
     // 49c: the batch writes every row's segment (all rows, capped by the outputs), 0 when empty. Off the axis by
-    // sqrt(13) Rt the dots reach about 512 Rt, so both end rings clip: each row runs from end ring A to end ring B at
+    // sqrt(13) Rt the dots reach about 720 Rt, so both end rings clip: each row runs from end ring A to end ring B at
     // its own clock angle, and matches the single-row function
     FVector3d starts[SOL::NPC_TUNNEL_DOT_ROWS];
     FVector3d ends[SOL::NPC_TUNNEL_DOT_ROWS];
@@ -3407,6 +1974,18 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
         TArrayView<FVector3d>(starts), TArrayView<FVector3d>(ends)), 0);
     TestEqual(TEXT("batch: invalid basis"), TunnelDotRowSegmentsRelM(foot, FSOLNpcTunnelBasis(), rt, -10.0 * rt,
         20.0 * rt, TArrayView<FVector3d>(starts), TArrayView<FVector3d>(ends)), 0);
+
+    // 52b review: the labels keep clear of the dot rows of every drawn tunnel within the same reach, whatever its
+    // label strength (IsDotRowInReach on the lane segment distance); beyond it the rows are empty anyway
+    const double reachM = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX * SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII * rt
+        / SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX;
+    TestTrue(TEXT("in reach: beside the tube"), IsDotRowInReach(10.0 * rt, rt));
+    TestTrue(TEXT("in reach: just inside"), IsDotRowInReach(0.999 * reachM, rt));
+    TestFalse(TEXT("in reach: just beyond"), IsDotRowInReach(1.001 * reachM, rt));
+    TestFalse(TEXT("in reach: NaN distance"), IsDotRowInReach(NPCTUNNEL_NAN, rt));
+    TestFalse(TEXT("in reach: bad radius"), IsDotRowInReach(10.0 * rt, 0.0));
+    TestEqual(TEXT("beyond the reach the rows are empty too"), TunnelDotRowSegmentsRelM(FVector3d(0.0, 1.001 * reachM,
+        0.0), basis, rt, -1.0e4 * rt, 1.0e4 * rt, TArrayView<FVector3d>(starts), TArrayView<FVector3d>(ends)), 0);
     return true;
 }
 
@@ -3418,7 +1997,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLaneDataTest, "SOLTest.NpcTunn
 // SDD 49 sections 4.2, 4.3 and 4.7 (the per-lane renderer feed, what the smoke compares every texel with):
 // BuildTunnelLaneData(lane, entry, viewpoint, body radius A, body radius B, out data, out foot) fills the lane index,
 // the foot point relative to the viewpoint (LaneFoot of A and B relative to it), Rt = TunnelRadiusM(R, ships), the
-// basis' axis and up, the fade TunnelFade(LaneSegmentDistanceM, R) and the end arcs (TunnelEndArcsM) minus the foot
+// basis' axis and up, the fade TunnelFade(LaneSegmentDistanceM, R) with that segment distance kept in
+// SegmentDistanceM (52b review: computed once per lane per frame), and the end arcs (TunnelEndArcsM) minus the foot
 // arc, leaving the phase at 0 for the caller; it returns whether the lane can have a tunnel (both bodies resolved, a
 // valid basis, drawable end rings), whatever its fade. An empty lane gets the minimum radius
 bool FSOLNpcTunnelMathLaneDataTest::RunTest(const FString& /*parameters*/)
@@ -3443,6 +2023,8 @@ bool FSOLNpcTunnelMathLaneDataTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("T1: up"), NpcTunnelVecNear(data.Up, basis.Up, 1.0e-12));
     TestEqual(TEXT("T1: fade = TunnelFade(75 R)"), data.Fade, TunnelFade(75.0 * lane.RadiusM, lane.RadiusM), 1.0e-6);
     TestEqual(TEXT("T1: fade about 0.415"), data.Fade, 0.415, 1.0e-3);
+    TestEqual(TEXT("T1: segment distance kept (75 R, computed once per lane)"), data.SegmentDistanceM,
+        LaneSegmentDistanceM(lane.A - viewpoint, lane.B - viewpoint), tol);
     TestEqual(TEXT("T1: phase left to the caller"), data.Phase, 0.0);
     TestTrue(TEXT("T1: foot valid"), foot.bValid);
     TestEqual(TEXT("T1: foot arc mid-lane"), foot.ArcM, 0.5 * laneLengthM, tol);
@@ -3458,6 +2040,7 @@ bool FSOLNpcTunnelMathLaneDataTest::RunTest(const FString& /*parameters*/)
     const FVector3d farView = lane.A + basis.Axis * (0.5 * laneLengthM) + basis.Right * (500.0 * lane.RadiusM);
     TestTrue(TEXT("500 R: can have a tunnel"), BuildTunnelLaneData(5, lane, farView, radiusA, radiusB, data, foot));
     TestEqual(TEXT("500 R: fade 0"), data.Fade, 0.0);
+    TestEqual(TEXT("500 R: segment distance 500 R"), data.SegmentDistanceM, 500.0 * lane.RadiusM, tol);
 
     // On the axis a quarter of the way along (smoke view T2): full fade, h 0
     const FVector3d onAxis = lane.A + basis.Axis * (0.25 * laneLengthM);
@@ -3494,46 +2077,6 @@ bool FSOLNpcTunnelMathLaneDataTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathStepPhaseTest, "SOLTest.NpcTunnelMath.StepRingPhase",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// SDD 49 section 4.4: StepRingPhase(bWasInRange, phase, previous foot arc, foot arc, h, Rt) starts a lane entering
-// range at InitialRingPhase(foot arc) and otherwise advances it by the foot arc's change (AdvanceRingPhase), so a lane
-// that entered at one arc and moved reads the phase it would have entered with at the new arc (the rings stay fixed to
-// the lane), and a camera at rest relative to the lane sees no change
-bool FSOLNpcTunnelMathStepPhaseTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcTunnel;
-    const double rt = 1.0e6;
-    const double h = 0.5 * rt;
-    TestEqual(TEXT("entering: the initial phase"), StepRingPhase(false, 0.77, 123.0, 5.0e8, h, rt),
-        InitialRingPhase(5.0e8, h, rt), NPCTUNNEL_TOL);
-    TestEqual(TEXT("in range: advanced by the arc change"), StepRingPhase(true, 0.3, 5.0e8, 5.0e8 + 1.3e6, h, rt),
-        AdvanceRingPhase(0.3, 1.3e6, h, rt), NPCTUNNEL_TOL);
-    TestEqual(TEXT("at rest: unchanged"), StepRingPhase(true, 0.42, 7.0e9, 7.0e9, h, rt), 0.42, NPCTUNNEL_TOL);
-    TestEqual(TEXT("NaN previous arc: unchanged"), StepRingPhase(true, 0.42, NPCTUNNEL_NAN, 7.0e9, h, rt), 0.42,
-        NPCTUNNEL_TOL);
-
-    // Enter, then move in steps: the phase matches entering at the end arc
-    for (const double h2 : { 0.0, 0.5 * rt, 50.0 * rt })
-    {
-        double phase = StepRingPhase(false, 0.0, 0.0, 3.3e8, h2, rt);
-        double arc = 3.3e8;
-        for (int32 step = 1; step <= 200; ++step)
-        {
-            const double next = arc + 1.7e5 * FMath::Sin(0.1 * static_cast<double>(step)) + 2.1e4;
-            phase = StepRingPhase(true, phase, arc, next, h2, rt);
-            arc = next;
-        }
-        TestTrue(FString::Printf(TEXT("h %g Rt: lane-fixed after 200 steps"), h2 / rt),
-            NpcTunnelWrapDistance(phase, InitialRingPhase(arc, h2, rt)) < 1.0e-9);
-        TestTrue(FString::Printf(TEXT("h %g Rt: in [0, 1)"), h2 / rt), phase >= 0.0 && phase < 1.0);
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathVisibilityTest, "SOLTest.NpcTunnelMath.VisibilityRules",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -3543,7 +2086,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathVisibilityTest, "SOLTest.NpcTu
 // EffectiveTunnelFade is 0 while hidden, 1 for every lane when forced (the all-lanes budget case), else the fade
 // clamped (NaN as 0); ShouldDrawTunnels needs the tunnels shown and a fade above 0; the lanes report "drawn" to the
 // shared occluders when lane lines or tunnels draw (IsLaneOverlayDrawn); the texture uploads while a tunnel shows and
-// once more (all zeros) on the frame the last one goes away (ShouldUploadTunnelTexels)
+// once more (all zeros) on the frame the last one goes away (ShouldUploadTunnelTexels). SDD 52 D7: the effective fade
+// is the label strength only; drawing reads TunnelDrawFade (1 while shown, no distance input), so ShouldDrawTunnels
+// and CollectTunnelLanes see every drawable lane at every distance, and the upload runs every frame they draw
 bool FSOLNpcTunnelMathVisibilityTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -3571,6 +2116,41 @@ bool FSOLNpcTunnelMathVisibilityTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("NaN: 0"), EffectiveTunnelFade(NPCTUNNEL_NAN, true, false), 0.0);
     TestEqual(TEXT("above 1: clamped"), EffectiveTunnelFade(1.5, true, false), 1.0);
     TestEqual(TEXT("below 0: clamped"), EffectiveTunnelFade(-0.2, true, false), 0.0);
+
+    // SDD 52 D7: the draw fade has no distance input, so a lane far outside the old label band still draws
+    TestEqual(TEXT("draw fade shown: 1"), TunnelDrawFade(true), 1.0);
+    TestEqual(TEXT("draw fade hidden: 0"), TunnelDrawFade(false), 0.0);
+    const double farStrength = EffectiveTunnelFade(TunnelFade(1.0e3 * 3.0e6, 3.0e6), true, false);
+    TestEqual(TEXT("a lane at 1,000 lane radii: label strength 0"), farStrength, 0.0);
+    const double drawFades[] = { TunnelDrawFade(true), TunnelDrawFade(true) };
+    TestTrue(TEXT("lanes beyond the label band still draw (D7)"), ShouldDrawTunnels(true, drawFades));
+    TArray<int32> drawnLanes;
+    TestTrue(TEXT("every drawable lane gets an instance"), CollectTunnelLanes(drawFades, drawnLanes)
+        && drawnLanes.Num() == 2);
+    const bool drawnByFrame[] = { true, true, true };
+    bool bWasDrawn = false;
+    int32 uploads = 0;
+    for (const bool bDrawn : drawnByFrame)
+    {
+        uploads += ShouldUploadTunnelTexels(bDrawn, bWasDrawn) ? 1 : 0;
+        bWasDrawn = bDrawn;
+    }
+    TestEqual(TEXT("the texture uploads every frame the tunnels draw"), uploads, 3);
+
+    // SDD 52 D7 (case 13): the labels pick by label strength on the old band, so of four drawn lanes at 30, 75, 150 and
+    // 1,000 lane radii only the two inside 100 lane radii get a label, the nearer first
+    const double laneRadiusM = 3.0e6;
+    const double distancesRadii[] = { 150.0, 30.0, 1.0e3, 75.0 };
+    double strengths[4];
+    for (int32 lane = 0; lane < 4; ++lane)
+    {
+        strengths[lane] = EffectiveTunnelFade(TunnelFade(distancesRadii[lane] * laneRadiusM, laneRadiusM), true, false);
+    }
+    int32 picked[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+    const int32 pickedCount = SelectLabelLanes(strengths, distancesRadii, TArrayView<int32>(picked));
+    TestEqual(TEXT("labels: only the lanes inside the old band (D7)"), pickedCount, 2);
+    TestTrue(TEXT("labels: the nearer lane first, then the 75 lane radii one"), pickedCount == 2 && picked[0] == 1
+        && picked[1] == 3);
 
     // Drawing the tunnel component
     const double none[] = { 0.0, 0.0, 0.0 };
@@ -3606,32 +2186,34 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathSlotMeshTest, "SOLTest.NpcTunn
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 49 section 4.7 (level of detail by slot, the mesh built once; 49c: 96 segments for the two nearest slots; guide
-// thinning: the band edges follow the slot count): RingSegmentsForSlot gives NPC_TUNNEL_RING_SEGMENTS_NEAREST (96)
-// segments to ring slots 0 .. NEAREST_SLOTS - 1 (2) of each side, NEAR (48) up to NEAR_SLOTS, MID (24) up to MID_SLOTS
-// and FAR (12) beyond (behind slots like the ahead slot of the same index; the bands ordered within PER_SIDE), 0 out
-// of range; TunnelSlotMeshVertexCount is the rings' ribbons ((N + 1) samples x 2 sides each), two end rings at the
+// SDD 49 section 4.7 (level of detail by slot, the mesh built once; 49c: 96 segments for the nearest slots; SDD 52
+// section 4.3: a fifth, FARTHEST band): RingSegmentsForSlot gives NPC_TUNNEL_RING_SEGMENTS_NEAREST segments to ring
+// slots 0 .. NEAREST_SLOTS - 1 of each side, NEAR up to NEAR_SLOTS, MID up to MID_SLOTS, FAR up to FAR_SLOTS and
+// FARTHEST beyond (behind slots like the ahead slot of the same index; the bands ordered within PER_SIDE), 0 out of
+// range; TunnelSlotMeshVertexCount is the rings' ribbons ((N + 1) samples x 2 sides each), two end rings at the
 // nearest segment count, a quad per dot (rows x dots per gap x gap slots) and a quad per chevron (2 walls x chevrons
-// per gap x gap slots). The 8-lane total stays within the SDD's fixed budget of 80,000 vertices (section 4.7), a limit
-// set by the design, not a figure moved to follow the code
+// per gap x gap slots). The budget is NPC_TUNNEL_VERTEX_BUDGET (SOLTest.Npc.TunnelFarField.SlotMeshBudget)
 bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
     const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
-    TestEqual(TEXT("the two nearest slots of a side at the nearest count"), SOL::NPC_TUNNEL_RING_NEAREST_SLOTS, 2);
-    TestEqual(TEXT("near band up to slot 3 (guide thinning)"), SOL::NPC_TUNNEL_RING_NEAR_SLOTS, 3);
-    TestEqual(TEXT("mid band up to slot 5 (guide thinning)"), SOL::NPC_TUNNEL_RING_MID_SLOTS, 5);
     TestTrue(TEXT("the level-of-detail bands are ordered within the slots"),
         SOL::NPC_TUNNEL_RING_NEAREST_SLOTS < SOL::NPC_TUNNEL_RING_NEAR_SLOTS
         && SOL::NPC_TUNNEL_RING_NEAR_SLOTS <= SOL::NPC_TUNNEL_RING_MID_SLOTS
-        && SOL::NPC_TUNNEL_RING_MID_SLOTS <= perSide);
+        && SOL::NPC_TUNNEL_RING_MID_SLOTS <= SOL::NPC_TUNNEL_RING_FAR_SLOTS
+        && SOL::NPC_TUNNEL_RING_FAR_SLOTS <= perSide);
+    int32 badSegments = 0;
     for (int32 slot = 0; slot < 2 * perSide; ++slot)
     {
         const int32 k = slot < perSide ? slot : slot - perSide;
-        const int32 expected = k < SOL::NPC_TUNNEL_RING_NEAREST_SLOTS ? 96
-            : k < SOL::NPC_TUNNEL_RING_NEAR_SLOTS ? 48 : k < SOL::NPC_TUNNEL_RING_MID_SLOTS ? 24 : 12;
-        TestEqual(FString::Printf(TEXT("slot %d segments"), slot), RingSegmentsForSlot(slot), expected);
+        const int32 expected = k < SOL::NPC_TUNNEL_RING_NEAREST_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST
+            : k < SOL::NPC_TUNNEL_RING_NEAR_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR
+            : k < SOL::NPC_TUNNEL_RING_MID_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_MID
+            : k < SOL::NPC_TUNNEL_RING_FAR_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_FAR
+            : SOL::NPC_TUNNEL_RING_SEGMENTS_FARTHEST;
+        badSegments += RingSegmentsForSlot(slot) == expected ? 0 : 1;
     }
+    TestEqual(TEXT("every slot's segments by its band"), badSegments, 0);
     TestEqual(TEXT("slot 0 at the nearest count"), RingSegmentsForSlot(0), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST);
     TestEqual(TEXT("slot 2 at the near count"), RingSegmentsForSlot(2), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR);
     TestEqual(TEXT("slot -1: 0"), RingSegmentsForSlot(-1), 0);
@@ -3647,13 +2229,7 @@ bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
     const int32 chevronVertices = 4 * DetailSlotCount() * SOL::NPC_TUNNEL_CHEVRONS_PER_GAP * 2;
     TestEqual(TEXT("vertex count: the formula"), TunnelSlotMeshVertexCount(),
         ringVertices + endRingVertices + dotVertices + chevronVertices);
-    AddInfo(FString::Printf(TEXT("vertex count %d per lane (9,476 before the guide thinning)"),
-        TunnelSlotMeshVertexCount()));
-    // The documented figure (SDD 49 sections 4.7 and 12d, SDD 50 section 16), pinned so it cannot drift silently
-    TestEqual(TEXT("vertex count 2,884 per lane"), TunnelSlotMeshVertexCount(), 2884);
-    constexpr int32 eightLaneVertexBudget = 80000;
-    TestTrue(TEXT("all 8 default lanes within the SDD's fixed vertex budget"),
-        8 * TunnelSlotMeshVertexCount() <= eightLaneVertexBudget);
+    AddInfo(FString::Printf(TEXT("vertex count %d per lane (2,884 before SDD 52)"), TunnelSlotMeshVertexCount()));
     return true;
 }
 
@@ -3663,9 +2239,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathShapeFadesTest, "SOLTest.NpcTu
 
 //////////////////////////////////////////////////////////////////////////
 // 49c (SDD 49 section 12c): the detail near fade by the element's own distance (0 to 0.5 Rt, smoothstep, 1 from 1 Rt,
-// scale free, 0 for bad input); the screen-size fade (projected radius / (k x ribbon half extent), clamped; 0 for bad
-// input); the chevrons' far fade (D22); the filled chevron dart (tip, wings and notch on the edge, the centre and the
-// shaft inside, the notch's rear and the corners beside the tip outside)
+// scale free, 0 for bad input); the chevrons' far fade (D22, kept by SDD 52 D10); the filled chevron dart (tip, wings
+// and notch on the edge, the centre and the shaft inside, the notch's rear and the corners beside the tip outside).
+// The 49c screen-size fades are gone (SDD 52 D10, the pixel-size fade in SOLTest.Npc.TunnelFarField replaces them)
 bool FSOLNpcTunnelMathShapeFadesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -3680,32 +2256,6 @@ bool FSOLNpcTunnelMathShapeFadesTest::RunTest(const FString& /*parameters*/)
     }
     TestEqual(TEXT("near fade: NaN"), TunnelDetailNearFade(NAN, 1.0), 0.0);
     TestEqual(TEXT("near fade: bad radius"), TunnelDetailNearFade(1.0, 0.0), 0.0);
-
-    // The screen fade reaches 1 at NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS half extents (49c: more than one, so the
-    // converging far rings do not pile up into a white vanishing point)
-    const double k = SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS;
-    TestTrue(TEXT("screen fade: more than one half extent"), k > 1.0);
-    TestEqual(TEXT("screen fade 0 at 0 px"), TunnelScreenSizeFade(0.0, 4.0), 0.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("screen fade 0.5"), TunnelScreenSizeFade(2.0 * k, 4.0), 0.5, NPCTUNNEL_TOL);
-    TestEqual(TEXT("screen fade below 1 at one half extent"), TunnelScreenSizeFade(4.0, 4.0), 1.0 / k, NPCTUNNEL_TOL);
-    TestEqual(TEXT("screen fade 1 at k half extents"), TunnelScreenSizeFade(4.0 * k, 4.0), 1.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("screen fade 1 beyond"), TunnelScreenSizeFade(400.0 * k, 4.0), 1.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("screen fade: NaN"), TunnelScreenSizeFade(NAN, 4.0), 0.0);
-    TestEqual(TEXT("screen fade: no half extent"), TunnelScreenSizeFade(4.0, 0.0), 0.0);
-
-    // Review fix (user, 2026-11-13): the end rings are exempt, so a far lane end keeps its 0.5 floor; a repeating
-    // ring's projected radius is Rt x the pixels per metre at its centre (one value round an oblique ring)
-    TestEqual(TEXT("ring screen fade: a tiny end ring stays 1"), TunnelRingScreenFade(true, 1.0e6, 1.0e-9, 4.0), 1.0);
-    TestEqual(TEXT("ring screen fade: an end ring with no half extent stays 1"), TunnelRingScreenFade(true, 1.0e6,
-        1.0e-3, 0.0), 1.0);
-    TestEqual(TEXT("ring screen fade: a far end ring keeps the floor"), TunnelRingScreenFade(true, 1.0e6, 1.0e-9, 4.0)
-        * EndRingAlpha(1.0e8 * 1.0e6, 0.0, 1.0e6), SOL::NPC_TUNNEL_END_RING_MIN_ALPHA, NPCTUNNEL_TOL);
-    TestEqual(TEXT("ring screen fade: a ring is Rt x px per m"), TunnelRingScreenFade(false, 1.0e6, 2.0e-5, 4.0),
-        TunnelScreenSizeFade(20.0, 4.0), NPCTUNNEL_TOL);
-    TestEqual(TEXT("ring screen fade: a tiny ring fades out"), TunnelRingScreenFade(false, 1.0e6, 1.0e-12, 4.0), 0.0,
-        1.0e-6);
-    TestEqual(TEXT("ring screen fade: a large ring is full"), TunnelRingScreenFade(false, 1.0e6, 1.0e-3, 4.0), 1.0,
-        NPCTUNNEL_TOL);
 
     // The chevrons' far fade (D22): full inside the start, gone from the end, falling smoothly, scale free
     const double startRadii = SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII;
@@ -3746,19 +2296,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathTexelCrossfadeTest, "SOLTest.N
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 17c's data path (Q5, section 4.2): ReadTunnelFadeTexel(texels, lane) reads a lane's fade where the lane and
-// point materials read it, row 1 .w of its column (0 out of range or for a buffer shorter than two rows); with that
-// fade the lane line's alpha and its ships' point alpha sum to 1 at every distance, a lane without a tunnel keeps the
-// #38 values exactly, and after the all-zeros upload every lane is back to #38
+// Case 17c's data path (Q5, section 4.2; SDD 52 D6, D7): ReadTunnelFadeTexel(texels, lane) reads a lane's label
+// strength where the lane and point materials read it, row 1 .w of its column (0 out of range or for a buffer shorter
+// than two rows); ReadTunnelDrawFadeTexel reads the draw fade where the tunnel shader reads it, row 3 .z (independent
+// of the strength: a far lane draws with strength 0). With the strength the lane line's alpha and its ships' point
+// alpha still sum to 1 at every distance (the line itself draws on the map only, where every column is zero); a lane
+// with strength 0 keeps the #38 values exactly, so its far ships are hidden in flight (D6); after the all-zeros upload
+// every lane is back to #38
 bool FSOLNpcTunnelMathTexelCrossfadeTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
     const int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
     TArray<FSOLNpcTunnelLaneData> lanes;
-    for (const TPair<int32, double>& laneFade : { TPair<int32, double>(1, 0.25), TPair<int32, double>(4, 1.0) })
+    for (const TPair<int32, double>& laneFade : { TPair<int32, double>(1, 0.25), TPair<int32, double>(4, 1.0),
+        TPair<int32, double>(6, 0.0) })
     {
         FSOLNpcTunnelLaneData data;
         data.Lane = laneFade.Key;
+        data.DrawFade = TunnelDrawFade(true);
         data.FootRelM = FVector3d(1.0e5, 2.0e5, 3.0e5);
         data.TunnelRadiusM = 3.0e6;
         data.Axis = FVector3d(1.0, 0.0, 0.0);
@@ -3774,6 +2329,15 @@ bool FSOLNpcTunnelMathTexelCrossfadeTest::RunTest(const FString& /*parameters*/)
     WriteTunnelTexels(lanes, texels);
     TestEqual(TEXT("lane 1 reads 0.25"), ReadTunnelFadeTexel(texels, 1), 0.25, 1.0e-6);
     TestEqual(TEXT("lane 4 reads 1"), ReadTunnelFadeTexel(texels, 4), 1.0, 1.0e-6);
+    TestEqual(TEXT("lane 6 (far, drawn) reads strength 0"), ReadTunnelFadeTexel(texels, 6), 0.0);
+    TestEqual(TEXT("lane 6 (far) still draws (D7)"), ReadTunnelDrawFadeTexel(texels, 6), 1.0);
+    TestEqual(TEXT("lane 1 draws"), ReadTunnelDrawFadeTexel(texels, 1), 1.0);
+    TestEqual(TEXT("lane 0 (no tunnel) does not draw"), ReadTunnelDrawFadeTexel(texels, 0), 0.0);
+    TestEqual(TEXT("draw fade: lane -1 reads 0"), ReadTunnelDrawFadeTexel(texels, -1), 0.0);
+    TestEqual(TEXT("draw fade: lane 64 reads 0"), ReadTunnelDrawFadeTexel(texels, width), 0.0);
+    TArray<FVector4f> threeRows;
+    threeRows.Init(FVector4f(1.0f, 1.0f, 1.0f, 1.0f), 4 * width - 1);
+    TestEqual(TEXT("draw fade: a buffer shorter than four rows reads 0"), ReadTunnelDrawFadeTexel(threeRows, 1), 0.0);
     TestEqual(TEXT("lane 0 reads 0"), ReadTunnelFadeTexel(texels, 0), 0.0);
     TestEqual(TEXT("lane 63 reads 0"), ReadTunnelFadeTexel(texels, width - 1), 0.0);
     TestEqual(TEXT("lane -1 reads 0"), ReadTunnelFadeTexel(texels, -1), 0.0);
@@ -3798,7 +2362,11 @@ bool FSOLNpcTunnelMathTexelCrossfadeTest::RunTest(const FString& /*parameters*/)
                 TestEqual(label + TEXT(": sum 1"), line + point, 1.0, NPCTUNNEL_TOL);
                 if (lane != 1 && lane != 4)
                 {
-                    TestEqual(label + TEXT(": no tunnel, the #38 line"), line, SOLNpcLane::LaneLineFade(d, radiusM));
+                    TestEqual(label + TEXT(": strength 0, the #38 line"), line, SOLNpcLane::LaneLineFade(d, radiusM));
+                }
+                if (lane == 6 && inRadii >= SOL::NPC_LANE_FADE_FAR_RADII)
+                {
+                    TestEqual(label + TEXT(": strength 0, far ships hidden (D6)"), point, 0.0, NPCTUNNEL_TOL);
                 }
                 if (lane == 4)
                 {
