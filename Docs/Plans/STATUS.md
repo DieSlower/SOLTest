@@ -62,7 +62,7 @@ Finished rows move to Done, started rows to In progress.
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 3b5b | #51 | Placeholder main thruster effect for the player ship and all NPC ships (consumes #50's per-ship thrust state); needs grill-me | S-M | #50 |
+| 3b5b | #51 | Placeholder main thruster effect for the player ship and all NPC ships (consumes #50's per-ship thrust state). Grill-me done (D1-D10, 2026-11-20); [SDD](../SDDs/51-thruster-plume.md) and [plan](51-thruster-plume-plan.md) drafted, open questions Q1-Q26 (SDD 51 section 11) await the user; asset creation needs approval | S-M | #50 |
 | 3b5d | #53 | Lane network: more lanes, planet to next-closest planet, fastest A-to-Z routing, distance on/off, future stations and asteroids; also revisits the tunnel vertex budget and active-tunnel cap left interim by #52 (D15); needs grill-me | M-L | #50 (related #52) |
 | 3b6 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b7 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
