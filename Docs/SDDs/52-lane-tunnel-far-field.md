@@ -96,7 +96,7 @@ Answers to the open questions Q1-Q14 (user, 2026-11-18); where one changes a num
 | Lane line | `ASOLNpcVisuals`, `M_SOLNpcLanes`, `SOLNpcLane.ush` | Line alpha `LaneLineFade(d, R) x (1 - F)`; lane-ship point alpha `1 - LaneLineFade x (1 - F)` (SDD 38 D9, SDD 49 Q5: the two sum to 1, a lane is never empty); the map shows the lines (SDD 38 D18), tunnels are hidden there (SDD 49 Q6, `F` = 0) |
 | Labels | `PublishLabels`, `UI/SOLLaneTunnelLabel`, `UI/SOLFlightHud` | One label per lane with `F` > 0, strongest by `F`, at most 4; carries the #50 merge readout (SDD 50 section 4.8) |
 
-**Known debt not to re-report** (grep of `Docs/TECH_DEBT.md`): the D21 points cost inside a tunnel (+0.25-0.39 ms
+**Known debt not to re-report** (grep of `Docs/TECH_DEBT.md`): the D21 points cost inside a tunnel (+0.19-0.27 ms
 GPU at 1080p); the tunnel CPU cost at the D14 budget (0.016-0.022 ms on vs off); the labels avoid the previous frame's
 panel boxes and no UMG widgets; `Npc` leaning on the orbit lines' actor-side code (`SetLanesDrawn`); the `Npc <-> Menu`
 folder cycle; the six copies of the smoke view-size helper; the one-eye menu costs.
@@ -557,12 +557,26 @@ strength (T2-all forces it to 1 on every lane, the all-labels and all-points cas
   0.004 off, the same as 49c's forced all-lanes 0.017-0.018, so building every lane every frame (52b) costs nothing
   beyond the old all-lanes case; the labels add 0.008-0.009 ms in T2 (forced label strength in T2-all, the real lane
   in T2-own) and 0.003 ms at T5. Reported per the SDD 49 D20 rule; the user decides (TECH_DEBT entry re-worded).
-- **Points draw (no gate, D6 / D19):** inside the tunnel the D21 cost is +0.38 ms (T2-all, every lane ship forced in by
-  the label strength) and +0.21 ms (T2-own); T5-all +0.05 ms. **The tunnels-off points figure is higher than in SDD 50
-  section 15** in T2 (0.757 against 0.449-0.474 ms; T5 is unchanged, 0.359 against 0.359). It is stable over the three runs
-  (0.748-0.762) but the warm-up gave 1.126 ms for T2-all off and run 3 1.68 ms for T2-all on, and SDD 50 already saw
-  the T2 figure jump between 0.68 and 1.47 ms across runs, so without an interleaved baseline worktree this is not
-  attributed (it may be the 52b point rule, run-to-run GPU state, or noise). Recorded as profiling debt.
+- **Points draw (no gate, D6 / D19): amended 2026-11-20, see the interleaved table below.** The figures first
+  recorded here (+0.38 ms T2-all, +0.21 ms T2-own, tunnels-off T2 0.757 ms against 0.449-0.474 ms in SDD 50 section 15,
+  and the credit to the 52b label-strength rule) were a session / GPU-state effect, not a code regression: the points
+  draw is unchanged by #52.
+
+  *Amendment 2026-11-20, interleaved A/B/C worktree comparison* (d06b96d = before #52 = A, 1611c19 = B, b6e0540 = C, plus
+  a variant and the main tree; 5-7 interleaved runs each, 1920x1080, median ms GPU):
+
+  | Pass | A d06b96d | B 1611c19 | C b6e0540 |
+  |---|---|---|---|
+  | T2-all, points off | 0.520 | 0.521 | 0.522 |
+  | T2-own, points off | 0.538 | 0.537 | 0.544 |
+  | T5-all, points off | 0.357 | 0.360 | 0.364 |
+
+  The tunnels-off T2 points draw is about 0.52 ms at every commit; the same pre-#52 code read 0.449-0.474 ms in the SDD 50
+  session and 0.52 ms now, so cross-session GPU baselines drift by about 10%. The points on-minus-off cost is about
+  +0.27 ms (T2-all) and +0.19 ms (T2-own), the same before and after #52, so the +0.38 / +0.21 ms credited to the 52b
+  rule above is not supported and there is no points regression. Single `ProfileGPU` frames land in a high 0.85-1.5 ms
+  mode 5-30% of the time (the 1.126 / 1.68 ms warm-up and run-3 readings and the 0.757 / 1.133 ms figures in the table
+  above belong to it or to the session state). Only interleaved A/B comparisons are trustworthy.
 - **1M ramp** (`-SOLNpcCount=1M -SOLNpcRamp`, 1280x720, one run): **every stage PASS**; 1M mean 7.22 ms, p95 8.38 ms,
   NPC mean 1.601 ms (SDD 50 section 15: 6.68 / 7.38 / 1.455 at `8b17246`, 7.19 / 8.06 / 1.645 at its base), so within
   the spread of the earlier single runs.
