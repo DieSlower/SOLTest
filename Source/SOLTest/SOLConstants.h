@@ -2695,9 +2695,10 @@ namespace SOL
     inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 80;        // Ring slots ahead and behind the foot point:
                                                                        // the window covers every ring of 1 px or more
                                                                        // at the reference focal (SDD 52 section 4.3)
-    inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 33;      // Dot and chevron gap slots per side: the gap
+    inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 51;      // Dot and chevron gap slots per side: the gap
                                                                        // gate is shut beyond DETAIL_SLOTS - 3 spacings
-                                                                       // at the reference focal (assert below)
+                                                                       // at the reference focal (assert below; 51 is
+                                                                       // the least for the 10 px gone point, 52c)
     inline constexpr double NPC_TUNNEL_REFERENCE_FOCAL_PX = 960.0;     // Focal length in reference px of a 16:9 view
                                                                        // at SHIP_CAMERA_BASE_FOV_DEG (SDD 52 D8)
     inline constexpr double NPC_TUNNEL_RADIUS_FADE_SOLID_PX = 6.0;     // Ring radius fade (SDD 52 D9, reference px):
@@ -2705,21 +2706,24 @@ namespace SOL
     inline constexpr double NPC_TUNNEL_RADIUS_FADE_KNEE_PX = 1.0;      // ...KNEE_ALPHA at this one (log-linear)...
     inline constexpr double NPC_TUNNEL_RADIUS_FADE_KNEE_ALPHA = 0.1;   // ...(90% transparent)...
     inline constexpr double NPC_TUNNEL_RADIUS_FADE_GONE_PX = 0.5;      // ...and 0 at and below this one (log-linear)
-    inline constexpr double NPC_TUNNEL_RING_GAP_FADE_FULL_PX = 3.0;    // Rings full while the on-screen gap to the
-    inline constexpr double NPC_TUNNEL_RING_GAP_FADE_GONE_PX = 2.0;    // next ring is this wide, gone at this (D11)
-    inline constexpr double NPC_TUNNEL_DETAIL_GAP_PX = 20.0;           // Dots and chevrons need about this ring gap
+    inline constexpr double NPC_TUNNEL_RING_GAP_FADE_FULL_PX = 6.0;    // Rings full while the on-screen gap to the
+    inline constexpr double NPC_TUNNEL_RING_GAP_FADE_GONE_PX = 4.0;    // next ring is this wide, gone at this (D11;
+                                                                       // tuned in game 52c, was 3 -> 2 px)
+    inline constexpr double NPC_TUNNEL_DETAIL_GAP_PX = 12.6;           // Dots and chevrons need about this ring gap
                                                                        // (D11), faded in over the band below
-    inline constexpr double NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX = 16.0; // Detail gap gate 0 at and below this gap...
-    inline constexpr double NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX = 25.0; // ...1 from this one (log-linear; start values,
-                                                                       // tuned in game, 20 px the log midpoint)
+    inline constexpr double NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX = 10.0; // Detail gap gate 0 at and below this gap...
+    inline constexpr double NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX = 16.0; // ...1 from this one (log-linear; tuned in game
+                                                                       // 52c, 12.6 px the log midpoint, was 16 -> 25)
     inline constexpr double NPC_TUNNEL_END_RING_MIN_DRAWN_PX = 1.0;    // End rings never drawn below this radius in
                                                                        // reference px (D14; their alpha still fades)
     inline constexpr double NPC_TUNNEL_RIBBON_INNER_MAX_RADIUS_FRACTION = 0.9; // A ring ribbon's inner half reaches
                                                                        // at most this fraction of the ring's on-screen
                                                                        // radius, so a ring smaller than its glow never
                                                                        // folds its quads over the centre
-    inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET = 80000;           // Slot-mesh vertices for VERTEX_BUDGET_LANES
-                                                                       // tunnels (D15, interim: issue #53 revisits)
+    inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET = 100000;          // Slot-mesh vertices for VERTEX_BUDGET_LANES
+                                                                       // tunnels (D15, interim: issue #53 revisits;
+                                                                       // raised from 80,000 in 52c for the 51 detail
+                                                                       // slots, 12,500 per lane)
     inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET_LANES = 8;         // The lane count the budget is for
     inline constexpr double NPC_TUNNEL_END_FADE_SPACINGS = 0.5;        // A ring fades to 0 over this many spacings
                                                                        // before an end ring

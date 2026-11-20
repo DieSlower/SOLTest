@@ -18,9 +18,10 @@
 // written against that contract before the production code existed (part 52a, test first). The ring lattice is flat
 // (S0 = 12 Rt everywhere, D2), drawn by a fixed window of 80 ring slots per side around the camera's foot point, every
 // ring faded by its on-screen radius in 1080p-reference pixels (D8, D9: solid at 6 px, 0.1 at 1 px, gone at 0.5 px,
-// log-linear) and by its on-screen gap to the next ring (D11: 3 -> 2 px); dots and chevrons only where the gap is about
-// 20 px or more (D4, D11, D12); end rings on the pixel curve with a 1 px drawn floor (D14); the label strength keeps
-// the old 100 -> 50 lane radii band while drawing is not gated by it (D7). Rings are identified by their lattice index
+// log-linear) and by its on-screen gap to the next ring (D11: 3 -> 2 px, tuned in 52c to 6 -> 4 px); dots and chevrons
+// only where the gap is about 20 px or more (D4, D11, D12; tuned in 52c to 12.6 px, band 10 -> 16 px); end rings on
+// the pixel curve with a 1 px drawn floor (D14); the label strength keeps the old 100 -> 50 lane radii band while
+// drawing is not gated by it (D7). Rings are identified by their lattice index
 // round((foot arc + x) / S0), never by slot index. Only the numbers the user gave are pinned; the rest is referenced by
 // constant name under invariants.
 
@@ -394,9 +395,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldConstantsTest, "SOLTest.Np
 
 //////////////////////////////////////////////////////////////////////////
 // SDD 52 case 11: the user's numbers pinned (flat 12 Rt spacing tied to the guide thinning, 80 ring slots per side,
-// the D9 curve 6 / 1 / 0.1 / 0.5 px, the D11 gaps 3 -> 2 px and 20 px, the D14 1 px floor, the 1080p reference and
-// its 90-degree focal of 960 px); the open values (detail fade band, detail slots) only under invariants; the ring
-// window covers every ring above the 1 px knee at the reference focal
+// the D9 curve 6 / 1 / 0.1 / 0.5 px, the D11 gaps as tuned in 52c: rings 6 -> 4 px, details 10 -> 16 px round
+// 12.6 px with 51 detail slots, the D14 1 px floor, the interim 100,000 budget, the 1080p reference and its 90-degree
+// focal of 960 px); the ring window covers every ring above the 1 px knee at the reference focal
 bool FSOLNpcTunnelFarFieldConstantsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -427,23 +428,31 @@ bool FSOLNpcTunnelFarFieldConstantsTest::RunTest(const FString& /*parameters*/)
         0.1, NPCFF_TOL);
     TestEqual(TEXT("gone at 0.5 px"), static_cast<double>(SOL::NPC_TUNNEL_RADIUS_FADE_GONE_PX), 0.5, NPCFF_TOL);
 
-    // The D11 gaps: rings 3 -> 2 px; details at 20 px, the fade band around it (open, invariants only)
-    TestEqual(TEXT("ring gap full at 3 px"), static_cast<double>(SOL::NPC_TUNNEL_RING_GAP_FADE_FULL_PX), 3.0,
+    // The D11 gaps as tuned in game by the user (52c, 2026-11-19): rings 6 -> 4 px (were 3 -> 2); details gone at
+    // 10 px, full at 16 px, the gate at their log midpoint 12.6 px (were 16 / 25 round 20 px)
+    TestEqual(TEXT("ring gap full at 6 px"), static_cast<double>(SOL::NPC_TUNNEL_RING_GAP_FADE_FULL_PX), 6.0,
         NPCFF_TOL);
-    TestEqual(TEXT("ring gap gone at 2 px"), static_cast<double>(SOL::NPC_TUNNEL_RING_GAP_FADE_GONE_PX), 2.0,
+    TestEqual(TEXT("ring gap gone at 4 px"), static_cast<double>(SOL::NPC_TUNNEL_RING_GAP_FADE_GONE_PX), 4.0,
         NPCFF_TOL);
-    TestEqual(TEXT("detail gap 20 px"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_GAP_PX), 20.0, NPCFF_TOL);
     const double detailGone = SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX;
     const double detailFull = SOL::NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX;
-    TestTrue(TEXT("detail gap band ordered round 20 px"), detailGone > 0.0 && detailGone < detailFull
+    TestEqual(TEXT("detail gap gone at 10 px"), detailGone, 10.0, NPCFF_TOL);
+    TestEqual(TEXT("detail gap full at 16 px"), detailFull, 16.0, NPCFF_TOL);
+    TestEqual(TEXT("detail gap 12.6 px"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_GAP_PX), 12.6, NPCFF_TOL);
+    TestTrue(TEXT("detail gap at the band's log midpoint (within 1%)"), FMath::Abs(SOL::NPC_TUNNEL_DETAIL_GAP_PX
+        / FMath::Sqrt(detailGone * detailFull) - 1.0) < 0.01);
+    TestTrue(TEXT("detail gap band ordered round the gate"), detailGone > 0.0 && detailGone < detailFull
         && detailGone <= SOL::NPC_TUNNEL_DETAIL_GAP_PX && SOL::NPC_TUNNEL_DETAIL_GAP_PX <= detailFull);
-    TestTrue(TEXT("detail gap band within a factor 2 of 20 px"), detailGone >= 0.5 * SOL::NPC_TUNNEL_DETAIL_GAP_PX
+    TestTrue(TEXT("detail gap band within a factor 2 of the gate"), detailGone >= 0.5 * SOL::NPC_TUNNEL_DETAIL_GAP_PX
         && detailFull <= 2.0 * SOL::NPC_TUNNEL_DETAIL_GAP_PX);
+    TestEqual(TEXT("51 detail slots per side (the least for the 10 px gone point)"),
+        static_cast<int32>(SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE), 51);
 
     // D14 and D15
     TestEqual(TEXT("end ring drawn floor 1 px"), static_cast<double>(SOL::NPC_TUNNEL_END_RING_MIN_DRAWN_PX), 1.0,
         NPCFF_TOL);
-    TestEqual(TEXT("vertex budget 80,000 (interim)"), static_cast<int32>(SOL::NPC_TUNNEL_VERTEX_BUDGET), 80000);
+    // Raised by the user in 52c (2026-11-19, D15 amended, still interim): 51 detail slots = 12,500 vertices per lane
+    TestEqual(TEXT("vertex budget 100,000 (interim)"), static_cast<int32>(SOL::NPC_TUNNEL_VERTEX_BUDGET), 100000);
     TestEqual(TEXT("budget for 8 lanes"), static_cast<int32>(SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES), 8);
 
     // The window reaches every ring above the knee at the reference focal: 80 x 12 Rt >= 960 Rt
@@ -660,8 +669,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldGapFadesTest, "SOLTest.Npc
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// D11: the ring gap fade is 1 from 3 px and 0 at and below 2 px, the detail gate 1 from DETAIL_GAP_FADE_FULL_PX and
-// 0 at and below DETAIL_GAP_FADE_GONE_PX (round 20 px), both continuous and non-decreasing (never a cut); NaN 0, +inf 1
+// D11 (tuned 52c): the ring gap fade is 1 from 6 px and 0 at and below 4 px, the detail gate 1 from
+// DETAIL_GAP_FADE_FULL_PX and 0 at and below DETAIL_GAP_FADE_GONE_PX (round 12.6 px), both continuous and
+// non-decreasing (never a cut); NaN 0, +inf 1
 bool FSOLNpcTunnelFarFieldGapFadesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -669,11 +679,11 @@ bool FSOLNpcTunnelFarFieldGapFadesTest::RunTest(const FString& /*parameters*/)
     const double ringFull = SOL::NPC_TUNNEL_RING_GAP_FADE_FULL_PX;
     const double detailGone = SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX;
     const double detailFull = SOL::NPC_TUNNEL_DETAIL_GAP_FADE_FULL_PX;
+    TestEqual(TEXT("ring: 0 at 4 px"), RingGapFade(4.0), 0.0, NPCFF_TOL);
     TestEqual(TEXT("ring: 0 at 2 px"), RingGapFade(2.0), 0.0, NPCFF_TOL);
-    TestEqual(TEXT("ring: 0 at 1 px"), RingGapFade(1.0), 0.0, NPCFF_TOL);
-    TestEqual(TEXT("ring: 1 at 3 px"), RingGapFade(3.0), 1.0, NPCFF_TOL);
+    TestEqual(TEXT("ring: 1 at 6 px"), RingGapFade(6.0), 1.0, NPCFF_TOL);
     TestEqual(TEXT("ring: 1 at 50 px"), RingGapFade(50.0), 1.0, NPCFF_TOL);
-    TestTrue(TEXT("ring: between at 2.5 px"), RingGapFade(2.5) > 0.0 && RingGapFade(2.5) < 1.0);
+    TestTrue(TEXT("ring: between at 5 px"), RingGapFade(5.0) > 0.0 && RingGapFade(5.0) < 1.0);
     TestEqual(TEXT("ring: NaN"), RingGapFade(NPCFF_NAN), 0.0);
     TestEqual(TEXT("ring: +inf"), RingGapFade(NPCFF_INF), 1.0);
     TestEqual(TEXT("detail: 0 at the gone edge"), DetailGapFade(detailGone), 0.0, NPCFF_TOL);
@@ -683,7 +693,7 @@ bool FSOLNpcTunnelFarFieldGapFadesTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("detail: drawn just above the gone edge"), DetailGapFade(detailGone * 1.01) > 0.0);
     TestEqual(TEXT("detail: NaN"), DetailGapFade(NPCFF_NAN), 0.0);
     TestEqual(TEXT("detail: +inf"), DetailGapFade(NPCFF_INF), 1.0);
-    AddInfo(FString::Printf(TEXT("detail gate at 20 px: %.3f (band %.1f .. %.1f px)"),
+    AddInfo(FString::Printf(TEXT("detail gate at 12.6 px: %.3f (band %.1f .. %.1f px)"),
         DetailGapFade(SOL::NPC_TUNNEL_DETAIL_GAP_PX), detailGone, detailFull));
 
     // Non-decreasing and without a jump on a fine grid round both bands
@@ -706,7 +716,7 @@ bool FSOLNpcTunnelFarFieldGapFadesTest::RunTest(const FString& /*parameters*/)
     }
     TestEqual(TEXT("gap fades non-decreasing"), drops, 0);
     TestTrue(TEXT("gap fades without a jump"), largestStep < 0.01);
-    TestTrue(TEXT("ring band edges as named"), ringGone == 2.0 && ringFull == 3.0);
+    TestTrue(TEXT("ring band edges as named (52c tuning)"), ringGone == 4.0 && ringFull == 6.0);
     return true;
 }
 
@@ -870,7 +880,10 @@ bool FSOLNpcTunnelFarFieldPhaseTest::RunTest(const FString& /*parameters*/)
                     {
                         return other.Index == ring.Index;
                     });
-                    if (match == nullptr || !(FMath::Abs(match->Alpha - ring.Alpha) <= 1.0e-5))
+                    // A ring the other side does not draw has alpha 0 there (52c: with the ring gap gone point at 4 px
+                    // the on-axis rings 48 Rt from a foot on a lattice ring sit exactly at it, alpha about 1e-6)
+                    const double otherAlpha = match != nullptr ? match->Alpha : 0.0;
+                    if (!(FMath::Abs(otherAlpha - ring.Alpha) <= 1.0e-5))
                     {
                         failures.Add(FString::Printf(TEXT("%s h %.1f Rt: ring %lld changes across the wrap"),
                             lane.Name, hRt, static_cast<long long>(ring.Index)));
@@ -1659,7 +1672,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldBudgetTest, "SOLTest.Npc.T
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 52 case 10 (D15): the vertex budget is an int32 constant in SOLConstants.h (80,000 for 8 lanes, interim); the
+// SDD 52 case 10 (D15): the vertex budget is an int32 constant in SOLConstants.h (100,000 for 8 lanes, interim,
+// raised from 80,000 in 52c for the 51 detail slots: 12,500 vertices per lane); the
 // slot mesh count follows the formula (ring ribbons, two end rings at the nearest count, dot and chevron quads) and 8
 // lanes fit the budget; 160 ring slots; segments by slot from the nearest count down, the same ahead and behind
 bool FSOLNpcTunnelFarFieldBudgetTest::RunTest(const FString& /*parameters*/)

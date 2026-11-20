@@ -35,6 +35,11 @@ and a fixed aspect it is the same at 1280x720, 1920x1080 and 3840x2160, so the l
 | `NPC_TUNNEL_VERTEX_BUDGET_LANES` | int32 | 8 | pinned, the lane count the budget is for |
 | Ring LOD bands (`NPC_TUNNEL_RING_*_SLOTS`, `_SEGMENTS_*`) | | implementer (SDD 4.3 suggests 96 / 48 / 24 / 12 / 8 at slots 0-1 / 2 / 3-4 / 5-9 / 10+) | invariants: slot 0 at `_SEGMENTS_NEAREST`, non-increasing per side, > 0, ahead = behind; budget |
 
+> **Amended 2026-11-19 (part 52c, the user's in-game tuning, SDD 52 section 13):** ring gap fade full 6 / gone 4 px (was
+> 3 / 2); detail gap band gone 10 / full 16 px with `NPC_TUNNEL_DETAIL_GAP_PX` 12.6 at the log midpoint (outside the
+> 20 px invariant above, by the user's decision); 51 detail slots per side; `NPC_TUNNEL_VERTEX_BUDGET` 100,000 for 8 lanes
+> (12,500 vertices per lane; D15 amended, still interim). The tests pin these values.
+
 May be removed by the implementer (D10, the tests never name them): `NPC_TUNNEL_DEPTH_FADE_*`,
 `NPC_TUNNEL_DETAIL_FADE_START/END_RADII`, `NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS`, `NPC_TUNNEL_END_RING_MIN_ALPHA`.
 Kept and used: `NPC_LANE_REFERENCE_HEIGHT_PX` (1080), the chevron far fade (13-30 Rt, D22), the near fade, the end

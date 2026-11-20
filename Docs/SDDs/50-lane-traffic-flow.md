@@ -1110,7 +1110,7 @@ Temporary screenshots and captures are deleted once looked at; only the README g
   `-handover-px`), and the tiers make every lane ship within the Mid radius plus the lane's hand-over margin a CPU ship,
   so none is dropped (`-handover-once`). What remains is the one-frame reference-ring switch at `T_leg / 2` (section 4.6).
 - **R4 Temporal cull efficiency:** speed bound 150 -> up to 300 km/s and the capsule `R` -> `2 Rw` (up to about 6x)
-  wake lane chunks more often; CPU gate.
+  wake lane chunks more often; CPU gate (amended 2026-11-19: the tunnel CPU on vs off gate is now 0.025 ms, SDD 52 D18).
 - **R5 Density near the ends:** `1 / v` piles ships near the end rings (about 15x mid-lane), and about 1 % of lane ships
   are in a U-turn at any time; near Earth more lane ships fall inside the Mid and Full radii (budgets hold them).
 - **R6 #49 semantics:** the tunnel radius now comes from the in-wall count (about 3 % narrower on Earth - Mars) and the
@@ -1521,7 +1521,7 @@ Both changes were built after part 50e, test first, and are uncommitted at the t
 - The tunnel density as a whole (how many rings to keep) is decided separately under ticket #52. *Decided by SDD 52
   (issue #52): a flat 12 tunnel radii lattice at every distance, drawn as a moving window with pixel-size and gap fades.
   The slot counts and the 2,884-vertex mesh above are replaced (80 ring slots and 33 detail slots per side, 9,620
-  vertices per lane).*
+  vertices per lane; since the 52c tuning 51 detail slots, 12,500 vertices per lane).*
 
 **Verification (as built):** full suite 2017 / 2017; smokes NpcTunnel 39 / 39, NpcTraffic 19 / 19, NpcLanes 35 / 35,
 LaneMerge 15 / 15, AutoLanes 13 / 13, Hud 45 / 45 at 1280x720, 1920x1080 and 2560x1440; `GameUserSettings.ini`

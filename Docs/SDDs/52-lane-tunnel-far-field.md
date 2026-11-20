@@ -9,8 +9,9 @@ and SDD 50 (D23 guide thinning, the merge readout in the tunnel label, the secti
 **Persistence change: none planned.** `SOL::Settings::SAVE_VERSION` stays 13 and `KEY_BINDING_LAYOUT_VERSION` stays 10.
 No setting, key binding or `UPROPERTY` of a save class changes. If the work shows that one is needed, stop and report.
 Status: **parts 52a (pure math, flat lattice and fades) and 52b (shader, component, lane line, mirror) implemented
-2026-11-18, both uncommitted, with the 52b review fixes applied (section 12); 52c (tuning, profile, gallery, review)
-next.
+2026-11-18 (committed in `1611c19`), with the 52b review fixes applied (section 12); 52c (the user's in-game tuning
+K1-K3, the vertex budget raise, profile, gallery, docs) done 2026-11-19, uncommitted (section 13); the whole-ticket
+adversarial review is the last step.
 Grill-me done (D1-D5), questions Q1-Q14 answered by the user (D6-D19, 2026-11-18). The end-ring floor point is closed:
 the user chose to rebuild `M_SOLNpcTunnel.uasset` with a proper new parameter (D16 amended). The vertex budget is
 interim and revisited in #53 (D15).** The shader is back on the C++ math, so the "HLSL mirrors the C++" rule
@@ -58,25 +59,29 @@ Answers to the open questions Q1-Q14 (user, 2026-11-18); where one changes a num
   look and the window size are the same at every resolution.
 - **D9 (Q4): The curve.** Solid (alpha 1) at **6 px**, **1 px = 90% transparent** (alpha 0.1), gone at **0.5 px**,
   **log-linear** between those points; the constants are tuned in game. This supersedes D3's 3 px = 50% point.
+  *Kept as is after the in-game tuning (user, 2026-11-19, 52c K1).*
 - **D10 (Q5): The pixel rule replaces** the 10-half-extent screen fade, the depth floor 0.2 and the 256-512 Rt detail
   fade. The D22 13-30 Rt chevron far fade **stays**.
 - **D11 (Q6): Gap fades.** Rings fade as the ring gap shrinks from **3 to 2 px**; dots and chevrons draw only when the
   ring gap is **at least 20 px** (fading in around it). All constants, tuned in game. The lattice is **never
-  subsampled** (rings beyond the limit fade, none are skipped).
+  subsampled** (rings beyond the limit fade, none are skipped). *Tuned by the user in game (2026-11-19, 52c, section
+  13): rings **6 -> 4 px**; dots and chevrons gone at **10 px**, full at **16 px**, the gate at the 12.6 px log midpoint.*
 - **D12 (Q7): Dots fade by their ring's radius on screen; chevrons by their world length on screen.**
 - **D13 (Q8): The vertex shader places the window**; no per-frame mesh rebuild and no CPU window start.
 - **D14 (Q9): End rings follow the pixel curve** with a **1 px drawn floor**; they are no longer exempt from it.
 - **D15 (Q10): Vertex budget deferred to ticket #53** (lane network: more lanes, planet to next-closest planet, fastest
   A-to-Z routing, distance on/off, future stations and asteroids). #52 keeps **80,000 for 8 lanes as an INTERIM** and
   moves the number into `SOLConstants.h` (`NPC_TUNNEL_VERTEX_BUDGET`); the budget and the active-tunnel cap are
-  revisited in #53.
+  revisited in #53. *Amended by the user (2026-11-19, 52c): raised to **100,000 for 8 lanes, still interim**, because
+  the tuned detail gap band (K3, gone at 10 px) needs 51 detail slots per side (the coverage `static_assert`), so the
+  slot mesh is 12,500 vertices per lane = 100,000 for 8 (it was 9,620 / 76,960 with 33 slots); #53 still revisits it.*
 - **D16 (Q11): `M_SOLNpcTunnel.uasset` is not rebuilt**; new parameters go only through free vector components, set at
   runtime. *Amended by the user (2026-11-18, 52b review): the ninth constant, the end-ring minimum drawn radius, gets a
   proper parameter, so the asset is rebuilt once (`Tools/Npc/create_npc_assets.py -SOLRebuild -SOLOnly=M_SOLNpcTunnel`)
   with the new vector `NpcTunnelLayout4` = (end-ring minimum drawn px, ribbon inner fraction, 0, 0); the other far-field
   constants keep riding the freed components, and no constant rides the tunnel texture.*
 - **D17 (Q12): The sparse approach view is judged by screenshots only**; the smoke asserts no minimum ring count.
-- **D18 (Q13): The 0.02 ms CPU on vs off gate stays** (report if missed, SDD 49 D20 rule).
+- **D18 (Q13): The 0.02 ms CPU on vs off gate stays** (report if missed, SDD 49 D20 rule). *Amended by the user, 2026-11-19, after the 52c profile: the gate is relaxed to 0.025 ms (the measured miss was up to 0.003 ms in the T2 views, the labels add 0.008-0.009 ms, and the tunnel update itself equals #49's all-lanes case).*
 - **D19 (Q14): The +0.10 ms points gate is not needed**, since far ships stay hidden (D6).
 
 ## 3. What exists today (code survey, HEAD `d06b96d`)
@@ -213,7 +218,7 @@ the jump map is open (D1). No ship moves, no gameplay changes (SDD 49 D2 stands)
 - **CPU.** The 49c "out-of-range lane builds no frame" cut no longer applies: every lane builds its frame every frame,
   the cost measured in 49c's forced all-lanes case (tunnel update about 0.017 ms at 1080p). The window needs no CPU
   work in the shader option, or one closed form per lane in the CPU option (under 1 us for 8 lanes). The lane line's
-  flight-view work goes away. Gate: D14's 0.02 ms on vs off (section 8).
+  flight-view work goes away. Gate: 0.025 ms on vs off (D18, relaxed from D14's 0.02 ms, section 8).
 - **GPU.** About 55,000 vertices for 8 lanes (provisional, mostly early-out hidden); pixel work: the near rings as
   today plus the far rings at 1-3 px. From inside a tube the gap fade bounds the pile-up at the vanishing point. The
   lane line's flight-view draw goes away. The points draw is not extended to far ships (D6).
@@ -241,8 +246,9 @@ the generated `PLAYER_GUIDE.md`), so the terms of this ticket are defined here.
   fixed to the lane (D2). Replaces the #49 accordion warp, which is superseded (`RingWarp` and friends are gone).
 - **Ring phase:** `frac(foot arc / S0)`, computed directly in double each frame (no accumulated history).
 - **Ring gap (`RingGapPx`):** the on-screen distance between a ring and its next neighbour, in reference pixels. Rings
-  fade as it shrinks from 3 to 2 px, dots and chevrons as it shrinks from 25 to 16 px (D11).
-- **Window (ring slots):** the fixed slot mesh of 80 ring slots and 33 detail slots per side of the player's foot point
+  fade as it shrinks from 6 to 4 px, dots and chevrons as it shrinks from 16 to 10 px (D11 as tuned in 52c; were 3 to
+  2 px and 25 to 16 px).
+- **Window (ring slots):** the fixed slot mesh of 80 ring slots and 51 detail slots (33 before 52c) per side of the player's foot point
   on the lane. The vertex shader places each slot on the lattice (D13), so the window follows the player without a mesh
   rebuild.
 - **Knee:** the 1 px point of the radius fade curve (alpha 0.1), between solid at 6 px and gone at 0.5 px (D9).
@@ -309,7 +315,7 @@ view and the no-label rule per D7, no minimum ring count asserted (D17); `-SOLSm
 - Full suite `Tools\RunTests.bat`; smokes NpcTunnel, NpcLanes, NpcTraffic, LaneMerge, AutoLanes, Overlay, Hud at
   1280x720, 1920x1080 and 4K (the supported resolutions); `GameUserSettings.ini` MD5 unchanged.
 - **Gates at 1920x1080, 1M NPCs, all lanes** (SDD 49 D14, now the normal case): tunnel draw <= 0.15 ms GPU; tunnel
-  update + HUD labels <= 0.02 ms CPU on vs off (`sol.NpcTunnel 0`, SDD 49 D20 method); the points draw against the
+  update + HUD labels <= 0.025 ms CPU on vs off (relaxed from 0.02 ms, D18) (`sol.NpcTunnel 0`, SDD 49 D20 method); the points draw against the
   SDD 50 section 15 baseline, no points gate (D6, D19). Method as SDD 50 section 15 (interleaved runs, baseline worktree at the
   pre-#52 commit, `-SOLSmokeNpcTunnelProfile`).
 - **Recorded only:** 3840x2160 and one XR-4 eye (3840x3744). **VR note: record only, no VR work, no two-eye run**
@@ -476,4 +482,109 @@ Q14 = D19). The only deferral is the vertex budget and active-tunnel cap, handed
   - **TUNING note for 52c (numbers not changed):** the ring gap fade (full 3 px, gone 2 px, D11) is far narrower than a
     ring's drawn glow (ribbon half extent about 12.5 px at 1080p, the core 1.5 px plus the halo), so rings whose gap is
     still above 3 px overlap each other's glow and add up toward the vanishing point. Judge on the 52c screenshots
-    whether the gap fade should start nearer the glow width; any change is the user's call.
+    whether the gap fade should start nearer the glow width; any change is the user's call. *(Decided in 52c: the user
+    widened it to 6 -> 4 px, section 13.)*
+- 2026-11-19: **part 52c** (tuning, budget, profile, gallery, docs; uncommitted): the user's in-game tuning K1-K3 and the
+  vertex budget raise (D9 kept, D11 tuned, D15 amended), tests re-pinned, smokes, profile, gallery; section 13.
+
+## 13. As built: part 52c tuning, profile and gallery (2026-11-19)
+
+### 13.1 Tuning (user decisions from the 1920x1080 variant shots)
+
+| Knob | Before | Decision | Constants |
+|---|---|---|---|
+| K1 ring radius fade (D9) | solid 6 px, 0.1 at 1 px, gone 0.5 px | **kept** | `NPC_TUNNEL_RADIUS_FADE_*` unchanged |
+| K2 ring gap fade (D11) | full 3 px, gone 2 px | **wider: full 6 px, gone 4 px** | `NPC_TUNNEL_RING_GAP_FADE_FULL_PX` 6, `_GONE_PX` 4 |
+| K3 detail gap gate (D11) | gone 16 px, full 25 px, gate 20 px | **lower: gone 10 px, full 16 px, gate 12.6 px** (the log midpoint) | `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX` 10, `_FULL_PX` 16, `NPC_TUNNEL_DETAIL_GAP_PX` 12.6 |
+
+- **K2 consequence:** looking down the axis the ring gap is `f Rt S0 / (d (d + S0))`, 4 px at exactly `d` = 48 tunnel
+  radii (6 px at about 38.5), so from inside a tube the rings beyond about 48 tunnel radii ahead are gone and the view
+  shows a short run of rings (the sparse look of `49-lane-tunnel-inside.png`), which answers the 52b tuning note (the
+  glow pile-up toward the vanishing point).
+- **K3 consequence:** the coverage `static_assert` (`(DETAIL_SLOTS - 3) S0 >= f S0 / (2 GONE)`) needs 51 detail slots per
+  side at a 10 px gone point (was 33 at 16 px), so the slot mesh grows from 9,620 to **12,500 vertices per lane** (rings
+  3,952 + end rings 388 + 102 detail slots x 80): **100,000 for 8 lanes**, over the 80,000 interim budget. The user
+  raised `NPC_TUNNEL_VERTEX_BUDGET` to **100,000 (D15 amended, still interim, #53 revisits)**; the budget is now used to
+  the last vertex. The dot rows' reach for the labels (`IsDotRowInReach`, `f S0 / GONE`) grows from 720 to 1,152 tunnel
+  radii.
+- **Material:** the constants reach the shader through `SOLNpcTunnel::TunnelMaterialVectors()` by name (`Layout0`,
+  `Style3`, `Layout3`), so neither the `.ush`, the mirror nor `M_SOLNpcTunnel.uasset` changed.
+
+### 13.2 Tests re-pinned (only the values the decisions changed)
+
+- `SOLTest.Npc.TunnelFarField.Constants`: ring gap 6 / 4 px (were 3 / 2); detail band pinned at 10 / 16 px with the gate
+  12.6 px at their log midpoint (within 1%), the "band within a factor of 2 of 20 px" row now relative to the gate
+  (10 >= 6.3, 16 <= 25.2); 51 detail slots; budget 100,000.
+- `.GapFades`: the ring rows at 4 / 2 / 6 / 5 px (were 2 / 1 / 3 / 2.5) and the "band edges as named" row.
+- `.DirectPhase`: with the gone point at 4 px, the on-axis rings 48 tunnel radii from a foot on a lattice ring sit
+  exactly at it (alpha about 1e-6 on one side of the wrap, not drawn on the other); a ring the other side does not draw
+  now counts as alpha 0 there (the intent, alphas continuous across the wrap, is unchanged; 10 failures, 2 per lane at
+  h = 0, all this case).
+- `SOLTest.NpcTunnelMath.GuideThinning`: the on-axis 12 Rt pairs stop at slots 2-3 (slot 4 at 55.2 tunnel radii has a
+  3.1 px gap, faded out by K2).
+- `.DotRowSegment`: the reach 720 -> 1,152 tunnel radii, the "nothing to draw" cases moved from 800 / 900 to
+  1,200 / 1,300 tunnel radii.
+- `.SlotMeshBudget` checks the formula against the constant, so only its comment changed. `NpcTunnelMirrorTest` reads
+  every constant by name: no change.
+- Results: `SOLTest.Npc` 237 / 237, full suite **2039 / 2039**. Smokes at 1280x720 and 1920x1080: `-SOLSmokeNpcTunnel`
+  48 / 48, `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeNpcTraffic` 19 / 19; `-SOLSmokeAutoLanes`
+  13 / 13 at 1920x1080 (gallery shot). `GameUserSettings.ini` MD5 `cbcf9b65...` after every run.
+
+### 13.3 Profile (1920x1080 gated, 2560x1440 recorded)
+
+**Method (deviation from section 8, recorded):** the working tree only, no baseline worktree at the pre-#52 commit, so
+the comparison is against the figures recorded in SDD 49 section 12c and SDD 50 section 15 (same flag, arguments and
+machine: `-SOLSmokeNpcTunnel -SOLSmokeNpcTunnelProfile -game -windowed -corelimit=16 -SOLSimDate=2026-11-12T12:00:00Z`,
+1M NPCs, vsync off, RTX 2080 Ti). One discarded warm-up, then three runs at 1920x1080; medians over the 9 `ProfileGPU`
+frames and the three `stat dumpave` averages per state (1 us dump resolution). Since 52b every drawable lane is drawn
+in every pass, so **T2-own now draws all 8 tunnels** (it drew 1 before) and differs from T2-all only in the label
+strength (T2-all forces it to 1 on every lane, the all-labels and all-points case).
+
+| Pass | Tunnel draw (ms GPU) | After-motion-blur pass / compose | Tunnel draw before (SDD 50 s15 / SDD 49 12c) | CPU tunnel + labels on vs off (per run) | Points on / off |
+|---|---|---|---|---|---|
+| T2-all | 0.033 (0.032-0.036) | 0.048 / 0.030 | 0.034 / 0.039 | 0.031 - 0.008 = **0.023** (0.022, 0.023, 0.022) | 1.133 / 0.757 |
+| T2-own | 0.036 (0.035-0.037) | 0.052 / 0.037 | 0.031 / 0.033 (1 tunnel then) | 0.029 - 0.008 = **0.021** (0.020, 0.019, 0.022) | 0.967 / 0.756 |
+| T5-all | 0.041 (0.041) | 0.057 / 0.038 | 0.021 / 0.021 | 0.025 - 0.009 = **0.016** (0.015, 0.017, 0.016) | 0.406 / 0.359 |
+
+- **Tunnel draw <= 0.15 ms GPU (SDD 49 D14): PASS**, worst 0.041 ms (0.057 ms for the whole after-motion-blur pass that
+  holds it, under 0.10 with the compose). *Noise:* in run 3 the T5-all after-motion-blur pass read 0.604 ms (median
+  of its three frames; runs 1-2 0.059 / 0.056) while the tunnel draw inside it stayed 0.041 ms, so the time was outside
+  the tunnel draw; a fourth run to re-check gave 0.058 ms (tunnel 0.041), so it did not recur. T2 is unchanged within noise; **T5-all doubled (0.021 -> 0.041 ms)**: at the
+  Earth start the window now reaches every lane's rings out to the 0.5 px gone point instead of stopping at 12 slots and
+  the 49c screen fade, so more far rings draw (several lanes end at Earth; a likely cause, not traced per draw). T2-own +0.005 ms for 8 tunnels instead of 1.
+- **CPU on vs off <= 0.025 ms (D18, relaxed from 0.02 ms by the user on 2026-11-19): gate passes** (the measurement below missed the original 0.02 ms by up to 0.003 ms in the T2 views)** (T2-all 0.022-0.023,
+  T2-own 0.019-0.022, T5-all 0.015-0.017; 49c measured 0.016-0.022). The tunnel scope alone is 0.017-0.018 ms on vs
+  0.004 off, the same as 49c's forced all-lanes 0.017-0.018, so building every lane every frame (52b) costs nothing
+  beyond the old all-lanes case; the labels add 0.008-0.009 ms in T2 (forced label strength in T2-all, the real lane
+  in T2-own) and 0.003 ms at T5. Reported per the SDD 49 D20 rule; the user decides (TECH_DEBT entry re-worded).
+- **Points draw (no gate, D6 / D19):** inside the tunnel the D21 cost is +0.38 ms (T2-all, every lane ship forced in by
+  the label strength) and +0.21 ms (T2-own); T5-all +0.05 ms. **The tunnels-off points figure is higher than in SDD 50
+  section 15** in T2 (0.757 against 0.449-0.474 ms; T5 is unchanged, 0.359 against 0.359). It is stable over the three runs
+  (0.748-0.762) but the warm-up gave 1.126 ms for T2-all off and run 3 1.68 ms for T2-all on, and SDD 50 already saw
+  the T2 figure jump between 0.68 and 1.47 ms across runs, so without an interleaved baseline worktree this is not
+  attributed (it may be the 52b point rule, run-to-run GPU state, or noise). Recorded as profiling debt.
+- **1M ramp** (`-SOLNpcCount=1M -SOLNpcRamp`, 1280x720, one run): **every stage PASS**; 1M mean 7.22 ms, p95 8.38 ms,
+  NPC mean 1.601 ms (SDD 50 section 15: 6.68 / 7.38 / 1.455 at `8b17246`, 7.19 / 8.06 / 1.645 at its base), so within
+  the spread of the earlier single runs.
+
+**Recorded only, 2560x1440 (one-eye 4K proxy, one run; VR record only, no VR work):**
+
+| Pass | Tunnel draw | After-motion-blur pass / compose | CPU tunnel + labels on / off | Points on / off |
+|---|---|---|---|---|
+| T2-all | 0.036 | 0.051 / 0.046 | 0.028 / 0.009 | 1.281 / 0.729 |
+| T2-own | 0.035 | 0.051 / 0.045 | 0.027 / 0.008 | 1.292 / 0.630 |
+| T5-all | 0.049 | 0.064 / 0.064 | 0.025 / 0.009 | 0.432 / 0.312 |
+
+Against SDD 50 section 15 at 2560x1440 (tunnel draw 0.045 / 0.038 / 0.027): T2 within noise, T5-all +0.022 ms like
+1080p. Not measured: 3840x2160 and the XR-4 eye (3840x3744), left for the next VR-era profile.
+
+### 13.4 Gallery (D5)
+
+Reshot at 1920x1080 from the smokes on the working tree, optimised 24-bit PNGs, same file names:
+`49-lane-tunnel-approach.png` (T1, 75 lane radii beside the lane's middle), `49-lane-tunnel-inside.png` (T2, on the
+axis toward Mars, full label with the merge readout), `49-lane-tunnel-earth.png` (T5b), `50-lane-traffic-flow.png`
+(`-SOLSmokeNpcTraffic` V1a, 1M NPCs), `50-lane-merge-readout.png` (`-SOLSmokeLaneMerge` quarter-axis, MATCHED),
+`50-lane-auto-hold.png` (`-SOLSmokeAutoLanes` hold, the `LANE` tag). New: `52-lane-tunnel-far-field.png` (F1000, 1,000
+tunnel radii beside the Earth-Mars quarter point) and `52-lane-tunnel-approach.png` (F300). README captions rewritten
+(rings at every distance, the dashed lines on the map only); the "before thinning / pre-#52" notes on these shots are
+gone (the two #38 shots keep theirs, they were not reshot).

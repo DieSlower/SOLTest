@@ -1039,7 +1039,9 @@ bool FSOLNpcTunnelMathGuideThinningTest::RunTest(const FString& /*parameters*/)
             && FMath::Abs(ahead.AxialOffsetM - 7.2 * rt) <= 1.0e-6 * rt);
         TestEqual(TEXT("phase 0.4: 12 Rt apart (6 x the pre-thinning 2 Rt)"), ahead.AxialOffsetM - behind.AxialOffsetM,
             keep * NPCTUNNEL_PRE_THIN_BASE_SPACING_RADII * rt, 1.0e-6 * rt);
-        for (int32 slot = 1; slot + 1 < FMath::Min(perSide, 5); ++slot)
+        // Slots 1-3 (19.2 to 43.2 Rt): since the 52c ring gap fade (gone at 4 px) the on-axis ring at slot 4 (55.2 Rt,
+        // gap about 3.1 px at the reference focal) is faded out, so the pairs stop at slots 2 and 3 (was 3 and 4)
+        for (int32 slot = 1; slot + 1 < FMath::Min(perSide, 4); ++slot)
         {
             FSOLNpcTunnelRing nearer;
             FSOLNpcTunnelRing farther;
@@ -1869,7 +1871,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathDotRowSegmentTest, "SOLTest.Np
 // row's straight segment along the tube, viewpoint-relative: foot + x Axis + NPC_TUNNEL_DOT_RADIUS_SCALE x Rt x
 // WallDirection(basis, DotRowAngleDeg(row)) for x from max(end arc A, -X) to min(end arc B, X), X = sqrt(max(0,
 // reach^2 - h^2)), h = |foot|, the reach where the dots end: since SDD 52 the gap gate's, NPC_TUNNEL_REFERENCE_FOCAL_PX
-// x S0 / NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX of true distance (720 Rt; RingGapPx never exceeds f S0 / d, so no dot
+// x S0 / NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX of true distance (1,152 Rt since the 52c tuning moved the gone point
+// from 16 to 10 px, was 720 Rt; RingGapPx never exceeds f S0 / d, so no dot
 // passes the gate beyond it at a focal up to the reference); false when that range is empty, the row is out of range,
 // the basis invalid or the tunnel radius bad; IsDotRowInReach gates the published rows by the same reach on the lane
 // segment distance (52b review)
@@ -1879,8 +1882,9 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
     const double rt = 1.0e6;
     const double detailEnd = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX * NpcTunnelS0(rt)
         / SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX;
-    TestTrue(TEXT("the reach is beyond 300 Rt and within 800 Rt (the cases below)"), detailEnd > 300.0 * rt
-        && detailEnd < 800.0 * rt);
+    // 52c: the "nothing to draw" distances moved from 800 / 900 Rt to 1,200 / 1,300 Rt with the reach (720 -> 1,152 Rt)
+    TestTrue(TEXT("the reach is beyond 300 Rt and within 1,200 Rt (the cases below)"), detailEnd > 300.0 * rt
+        && detailEnd < 1200.0 * rt);
     const double dotRadius = SOL::NPC_TUNNEL_DOT_RADIUS_SCALE * rt;
     const FSOLNpcTunnelBasis basis = TunnelBasis(FVector3d::ZeroVector, FVector3d(1.0e12, 0.0, 0.0));
     const double tol = NPCTUNNEL_TOL * detailEnd;
@@ -1935,10 +1939,10 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
     // Nothing to draw
     FVector3d start;
     FVector3d end;
-    TestFalse(TEXT("800 Rt off the axis: no dots"), TunnelDotRowSegmentRelM(FVector3d(0.0, 800.0 * rt, 0.0), basis,
+    TestFalse(TEXT("1,200 Rt off the axis: no dots"), TunnelDotRowSegmentRelM(FVector3d(0.0, 1200.0 * rt, 0.0), basis,
         rt, -1.0e4 * rt, 1.0e4 * rt, 0, start, end));
     TestFalse(TEXT("tunnel beyond the dots' reach"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt,
-        800.0 * rt, 900.0 * rt, 0, start, end));
+        1200.0 * rt, 1300.0 * rt, 0, start, end));
     TestFalse(TEXT("crossed end arcs"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, 20.0 * rt,
         -10.0 * rt, 0, start, end));
     TestFalse(TEXT("row -1"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, -10.0 * rt, 20.0 * rt, -1,
@@ -1951,7 +1955,7 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
         20.0 * rt, 0, start, end));
 
     // 49c: the batch writes every row's segment (all rows, capped by the outputs), 0 when empty. Off the axis by
-    // sqrt(13) Rt the dots reach about 720 Rt, so both end rings clip: each row runs from end ring A to end ring B at
+    // sqrt(13) Rt the dots reach about 1,152 Rt, so both end rings clip: each row runs from end ring A to end ring B at
     // its own clock angle, and matches the single-row function
     FVector3d starts[SOL::NPC_TUNNEL_DOT_ROWS];
     FVector3d ends[SOL::NPC_TUNNEL_DOT_ROWS];

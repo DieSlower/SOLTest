@@ -244,19 +244,27 @@ The NPC lane lines (issue #38) seen from 3 AU above the Sun with a million NPC s
 
 ![Approaching the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-approach.png)
 
-The lane guidance tunnel (issue #49) seen from 75 lane radii beside the Earth-Mars lane, where the tunnel is half faded in: the lane's dashed lines are handing over to a string of faint rings along the lane, which grow brighter as the player closes in. *(Pre-#52 layout, as built in #49: since the #50 guide thinning only every 6th ring is drawn, and since issue #52 the dashed lines are map only and the rings show at every distance, one every 12 tunnel radii, fading by their size on screen; the gallery is reshot in part 52c.)*
+The lane guidance tunnel (issues #49 and #52) seen from 75 lane radii beside the middle of the Earth-Mars lane: a string of cyan rings, one every 12 tunnel radii, runs along the lane, bright near the player and fading as each ring gets smaller and the rings crowd together on screen toward the far end, with the green and red guide dots between them. There are no dashed lane lines in the flight view any more (they are drawn on the map only); the rings show the lane at every distance.
 
 ![Inside the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-inside.png)
 
-On the Earth-Mars tunnel's axis looking toward Mars (as built in #49; since the #50 guide thinning only every 6th ring is drawn, each about 4.5 times farther than the one before, with dots and chevrons at each ring and halfway): cyan rings receding toward Mars, closer together on screen with distance, keep right shown by green guide dots and chevrons on the right wall (outbound) and red ones on the left (inbound), and the wall label in its compact one-line form (the lane and the distance to the nearer end ring).
+On the Earth-Mars tunnel's axis a quarter of the way from Earth, looking toward Mars: the rings, 12 tunnel radii apart, recede toward Mars and fade out once they crowd within a few pixels of each other on screen, so a short run of rings leads into the distance; keep right is shown by green guide dots and chevrons on the right wall (outbound) and red ones on the left (inbound). The wall label names the lane, the distance to each end and the ships using it, and its last line is the traffic merge readout (TOO SLOW: the player is nearly at rest against 141.57 km/s of traffic).
 
 ![Lane tunnels meeting at Earth](Docs/Images/49-lane-tunnel-earth.png)
 
-40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet (as built in #49, so it shows the ring layout before the #50 guide thinning, which draws only every 6th ring; since #50 the end rings also sit three tunnel radii out, so the lane U-turns clear the planet). Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
+40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's end ring and first rings rise above Earth's upper edge, the planet hiding their lower parts; on the left the Venus-Earth tunnel's rings lead in to its end ring three tunnel radii outside the planet (so the lane ships' U-turns clear it). Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
+
+![A lane tunnel seen from 1,000 tunnel radii](Docs/Images/52-lane-tunnel-far-field.png)
+
+The far field (issue #52) from 1,000 tunnel radii beside the Earth-Mars lane, looking down at it: the lane is a faint line of rings each about 1 pixel in radius, with very faint guide dots between them (the gap between rings is about 11 px here, where the dots only begin to fade in), the rings fading out along the lane by their size on screen (solid at 6 px radius, 10% at 1 px, gone at 0.5 px). From about 1,900 tunnel radii away nothing of a lane is drawn, so far lanes do not clutter the view.
+
+![A lane tunnel seen from 300 tunnel radii](Docs/Images/52-lane-tunnel-approach.png)
+
+The same lane from 300 tunnel radii: the rings are a few pixels across and the guide dots appear between them once the gap between rings on screen is wide enough (from about 10 px, fully at 16 px), so the tunnel reads as one continuous chain from far away to inside.
 
 ![Lane traffic flowing through the Earth-Mars tunnel](Docs/Images/50-lane-traffic-flow.png)
 
-Lane traffic (issue #50) a quarter of the way from Earth to Mars, looking toward Mars with 1M NPC ships (the shot shows the ring layout before the #50 guide thinning; the tunnel now draws only every 6th ring): the lane's ships keep right, outbound on the right half of the tunnel (green chevrons) and inbound on the left (red), fastest near the axis and slowest at the wall, and a quarter of the traffic flies in the halo outside the rings. The player is barely moving, so the merge readout under the speed card says TOO SLOW against the 136 km/s of traffic here.
+Lane traffic (issue #50) a quarter of the way from Earth to Mars, looking toward Mars with 1M NPC ships: the lane's ships keep right, outbound on the right half of the tunnel (green chevrons) and inbound on the left (red), fastest near the axis and slowest at the wall, and a quarter of the traffic flies in the halo outside the rings. The rings are 12 tunnel radii apart, and only the few near the player are drawn before they crowd together on screen. The player is barely moving, so the merge readout on the wall label's last line says TOO SLOW against the 134 km/s of traffic here.
 
 ![The merge readout in the tunnel label](Docs/Images/50-lane-merge-readout.png)
 
@@ -273,11 +281,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 145.0 h |
+| Work time (wall-clock) | 145.9 h |
 | Time spent answering questions | 11.7 h |
-| Tokens | 8,339.1M |
-| Notional API price | $3,297 |
-| Subagents dispatched | 630 |
+| Tokens | 8,393.9M |
+| Notional API price | $3,314 |
+| Subagents dispatched | 633 |
 <!-- METRICS:END -->
 
 ## Documentation map

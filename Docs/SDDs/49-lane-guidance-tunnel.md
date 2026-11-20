@@ -65,7 +65,7 @@ it.
   *Amended by SDD 52 (issue #52, D2 / D9 / D10, part 52b):* the spacing is a **flat 12 tunnel radii everywhere** (a
   lattice fixed to the lane, no accordion). The 10-half-extent screen fade, the depth fade (floor 0.2) and the 256-512
   Rt detail fade are replaced by the pixel-radius fade (solid at 6 reference px, alpha 0.1 at 1 px, gone at 0.5 px,
-  log-linear) and the ring gap fades (rings 3 -> 2 px, dots and chevrons 16 -> 25 px).
+  log-linear) and the ring gap fades (rings 3 -> 2 px, dots and chevrons 16 -> 25 px; tuned in 52c to 6 -> 4 px and 10 -> 16 px).
 - **D8: Width from traffic, empty lanes kept.** The tunnel radius follows the lane's ship count on the #38 scale (100
   to 100,000 ships, `LaneTrafficWeight`), mapped to **1x .. 3x a base radius**. **An empty lane never vanishes:** it
   still gets a tunnel at the minimum width (the player may be inside it). The far line of an empty lane stays undrawn,
@@ -94,6 +94,7 @@ it.
   (Q9):* the follow-up chose the continuous "accordion" scale (SDD 38 D15 amendment D, `b5bae2c`); section 4.5 applies
   the same principle to the rings. *Superseded by SDD 52 (issue #52, D2):* the rings use a flat lattice, not the
   accordion; the shader no longer evaluates `exp(2t)`.
+- *Amendment 2026-11-19 (SDD 52 D18): the CPU gate below is now 0.025 ms on vs off, set by the user for #52; history left as written.*
 - **D14: Budget gate at 1920x1080**, all lanes in range, 1M NPCs present: **<= 0.15 ms GPU, <= 0.02 ms CPU**. 4K
   (3840x2160) and one XR-4 eye (3840x3744) are measured and **recorded only** (no VR work, no two-eye run). Review
   items 9 and 11 apply; the method follows #38 (section 4.13 of SDD 38).
@@ -377,7 +378,7 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
 ### 4.7 Renderer (`USOLNpcTunnelComponent`, `M_SOLNpcTunnel`)
 
 > **Amended by SDD 52 (issue #52, part 52b):** the slot counts and LOD bands below are replaced (80 ring slots and 33
-> detail slots per side, five ring bands, 9,620 vertices per lane, interim budget `NPC_TUNNEL_VERTEX_BUDGET` 80,000 for 8
+> detail slots per side, five ring bands, 9,620 vertices per lane, interim budget `NPC_TUNNEL_VERTEX_BUDGET` 80,000 for 8 (52c: 51 detail slots, 12,500 vertices per lane, budget raised to 100,000, still interim)
 > lanes, SDD 52 section 4.3). Every drawable lane gets an instance and builds its frame every frame (the "out-of-range
 > lane builds no frame" cut is gone), the texture is uploaded every frame while tunnels draw, and the per-lane ring
 > phases and last foot arcs are gone (the phase is computed directly each frame). Texture rows now: row 0 foot relative
@@ -974,7 +975,7 @@ the design applies it follow.
   case 12.
 - **Q11: Dots and chevrons far away. They fade out between 256 and 512 tunnel radii**; rings alone reach the end ring.
   Applied: 4.5, case 10. *Replaced by SDD 52 D10 / D11: the 256-512 Rt detail fade is gone. Dots fade by their ring's
-  on-screen radius, chevrons by their world length, and both are gated by the ring gap (16 -> 25 px).*
+  on-screen radius, chevrons by their world length, and both are gated by the ring gap (16 -> 25 px, tuned in 52c to 10 -> 16 px).*
 - **Also stated by the user (D16):** some ships may travel just outside the tunnel, along it (#50); the display needs
   nothing special for them.
 

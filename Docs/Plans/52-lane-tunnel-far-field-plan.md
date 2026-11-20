@@ -4,7 +4,8 @@
 
 **Issue:** [#52](https://github.com/DieSlower/SOLTest/issues/52). SDD:
 [`SDDs/52-lane-tunnel-far-field.md`](../SDDs/52-lane-tunnel-far-field.md).
-Status: **52a and 52b implemented (2026-11-18, uncommitted), 52b review fixes applied, 52c next.** Q1-Q14 answered by the user (SDD 52 D6-D19); the 52a test contract
+Status: **52a and 52b implemented (2026-11-18, committed in `1611c19`), 52b review fixes applied, 52c (tuning,
+profile, docs, gallery) done 2026-11-19 (uncommitted); the whole-ticket review is left.** Q1-Q14 answered by the user (SDD 52 D6-D19); the 52a test contract
 is [`52a-tunnel-far-field-contract.md`](52a-tunnel-far-field-contract.md), its tests `SOLTest.Npc.TunnelFarField.*`. The vertex budget (80,000 for 8 lanes) is interim, revisited in #53 (D15).
 **Persistence: none.** `SAVE_VERSION` 13 and `KEY_BINDING_LAYOUT_VERSION` 10 stay; any finding that needs a change is
 stopped and reported.
@@ -99,6 +100,23 @@ behaviour. Not done: the profile run and the in-game tuning (52c).
    shots.
 5. Whole-ticket adversarial review; fixes; full suite and smokes; close #52.
 
+**52c progress (2026-11-19): steps 1-4 done, step 5's review left to the main session.** Details in SDD 52 section 13.
+
+- Step 1: tuning shots (variants K1-K3 at 1920x1080, scratch only); the user's decisions: K1 radius fade kept (6 / 1 /
+  0.5 px), K2 ring gap fade 6 -> 4 px (was 3 -> 2), K3 detail gap band 10 -> 16 px with the gate at 12.6 px (was
+  16 -> 25 round 20), which needs 51 detail slots per side (was 33), so the user raised the interim vertex budget to
+  100,000 for 8 lanes (12,500 per lane; D15 amended, #53 still revisits). Applied in `SOLConstants.h`; re-pinned
+  `TunnelFarField.Constants` and `.GapFades`, `.SlotMeshBudget`'s comment, `NpcTunnelMath.DotRowSegment` (reach 720 ->
+  1,152 Rt) and `.GuideThinning` (on-axis ahead pairs stop at slots 2-3), and `TunnelFarField.DirectPhase` (a ring the
+  other side does not draw counts as alpha 0). The mirror and the material read the constants by name, no change.
+- Step 2: profile at 1920x1080 (three runs plus a discarded warm-up) and 2560x1440 (record only) on the working tree,
+  compared with the SDD 49 section 12c and SDD 50 section 15 figures (no new baseline worktree; SDD 52 section 13).
+- Step 3: `GAME_MECHANICS.md` (ring gap, detail band and slots, dot reach), SDD 49 / 50 notes, `TECH_DEBT.md` (window
+  ends at the 1 px knee; wider aspect re-worded with 51 slots and the 100,000 budget; the points and CPU items
+  re-measured). The in-game Info text quotes no tuned number, so it is unchanged.
+- Step 4: README gallery reshot at 1920x1080 (`49-lane-tunnel-approach/inside/earth.png`, `50-lane-*.png`) and two
+  new shots `52-lane-tunnel-far-field.png` (1,000 tunnel radii) and `52-lane-tunnel-approach.png` (300 tunnel radii).
+
 ## Tests to re-validate
 
 - `SOLTest.NpcTunnelMath.*`: `Constants`, `SlotMesh`, `GuideThinning`, the spacing, warp, phase, coverage, cap /
@@ -110,7 +128,7 @@ behaviour. Not done: the profile run and the in-game tuning (52c).
 
 ## Performance gates
 
-At 1920x1080, 1M NPCs, all lanes: tunnel draw <= 0.15 ms GPU; tunnel update + labels <= 0.02 ms CPU on vs off
+At 1920x1080, 1M NPCs, all lanes: tunnel draw <= 0.15 ms GPU; tunnel update + labels <= 0.025 ms CPU on vs off (relaxed from 0.02 ms by the user, 2026-11-19)
 (D18); no points gate needed, far ships hidden (D6, D19). 3840x2160 and one XR-4 eye (3840x3744): **recorded only; VR note: no VR work, no
 two-eye run.**
 
@@ -134,3 +152,5 @@ clutter, chevrons under the ring glow, low-segment far rings, the 8-lane budget,
   (`RingRibbonInnerExtentPx`), label dot rows of every drawn lane in reach (`IsDotRowInReach`), segment distance once
   per lane, the vertex budget warning, test pins (end rings at 0.7 / 0.5 px, far end rings gone, mirror at the longest
   lane), doc corrections; the gap fade versus glow width is a tuning note for 52c.
+- 2026-11-19: 52c: the user's tuning (K1 kept, K2 ring gap 6 -> 4 px, K3 detail band 10 -> 16 px, 51 detail slots,
+  budget 100,000 for 8 lanes, D15 amended), tests re-pinned, profile, gallery reshoot plus two far-field shots, docs.
