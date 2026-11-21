@@ -2642,6 +2642,93 @@ namespace SOL
         FLinearColor(1.0f, 0.4f, 0.2f),                                // Faction 1: orange
     };
 
+    // Thruster plume (SDD 51 sections 4.2-4.9, contract Docs/Plans/51-thruster-math-contract.md): the main-engine
+    // plume's scalars, colour ramp keys, shock diamonds, gas bursts, ribbon history and the per-hull nozzle and burst
+    // port table, read by Visuals/SOLThrusterMath. Start values, tuned in part 51f; the plume material's HLSL mirror
+    // (part 51b) must follow any change to the ramp, brightness or knot constants
+    namespace Thruster
+    {
+        inline constexpr double G_REF = WAR_POWER_PULSE_G;         // Main-engine G of a full plume (Q23)
+        inline constexpr double PLUME_MIN_G = 0.01;                // Plume off below this main-engine G (Q25)
+        inline constexpr double LENGTH_EXPONENT = 0.8;             // L_p = L_hull x^0.8, x = G / G_REF
+        inline constexpr double BRIGHTNESS_EXPONENT = 0.5;         // b = x^0.5
+
+        // Colour scalar c(G) (Q9): 0 up to BLUE_END, a smoothstep to YELLOW_C at YELLOW_G, linear to 1 at G_REF
+        inline constexpr double COLOUR_BLUE_END_G = 2.5;
+        inline constexpr double COLOUR_YELLOW_G = 3.0;
+        inline constexpr double COLOUR_YELLOW_C = 0.35;
+
+        // Colour ramp keys PlumeColour(c) (D4, the chosen mock-up): rim (outer) and core colours at c = 0,
+        // COLOUR_YELLOW_C and 1
+        inline constexpr FLinearColor RIM_BLUE = FLinearColor(0.35f, 0.60f, 1.00f);
+        inline constexpr FLinearColor CORE_BLUE = FLinearColor(0.80f, 0.90f, 1.00f);
+        inline constexpr FLinearColor RIM_YELLOW = FLinearColor(1.00f, 0.80f, 0.35f);
+        inline constexpr FLinearColor CORE_YELLOW = FLinearColor(1.00f, 0.96f, 0.82f);
+        inline constexpr FLinearColor RIM_RED = FLinearColor(1.00f, 0.38f, 0.10f);
+        inline constexpr FLinearColor CORE_RED = FLinearColor(1.00f, 0.82f, 0.55f);
+
+        // Shock diamonds (section 4.4): spacing S = FACTOR r_n (1 + GAIN b), knot k at k S while k S <= ZONE L_p, its
+        // strength DECAY^(k-1), at most MAX_KNOTS
+        inline constexpr double SHOCK_SPACING_FACTOR = 2.0;
+        inline constexpr double SHOCK_BRIGHTNESS_GAIN = 0.6;
+        inline constexpr double SHOCK_DECAY = 0.82;
+        inline constexpr double SHOCK_ZONE = 0.8;
+        inline constexpr int32 SHOCK_MAX_KNOTS = 8;
+        inline constexpr double TAIL_RADIUS_RATIO = 0.35;          // Cone tail radius over the nozzle radius (Q11)
+        inline constexpr double GLOW_MIN_DRAWN_PX = 1.0;           // A shown glow is drawn at least this big (Q33)
+
+        // Gas bursts (section 4.6, Q32): strength ramps from BURST_MIN_G to BURST_REF_G, length L_hull / DIVISOR x s
+        inline constexpr double BURST_MIN_G = 0.05;
+        inline constexpr double BURST_REF_G = 1.5;
+        inline constexpr double BURST_LENGTH_HULL_DIVISOR = 6.0;
+
+        // Ribbon (section 4.8, Q12, Q24, Q29): history size and age, length at full age over the plume, ships per
+        // QualityPreset (Low, Medium, High, Epic, Cinematic; Cinematic has no cap at all)
+        inline constexpr int32 RIBBON_SAMPLES = 24;
+        inline constexpr double RIBBON_MAX_AGE_S = 1.0;
+        inline constexpr double RIBBON_LENGTH_FACTOR = 3.0;
+        inline constexpr int32 RIBBON_COUNT_UNLIMITED = MAX_int32;
+        inline constexpr int32 RIBBON_COUNTS_BY_QUALITY[] = { 0, 8, 16, 32, RIBBON_COUNT_UNLIMITED };
+
+        // Per-hull nozzle table (section 4.9, Q11, Q18), hull frame metres (X nose, Y right, Z top): NPC faction 0
+        // cone and faction 1 box with one nozzle on the aft centre; the player with one nozzle on each engine
+        // cylinder's aft face
+        inline constexpr double NPC_HULL_LENGTH_M = SOL::NPC_HULL_LENGTH_M;
+        inline constexpr double NPC_NOZZLE_RADIUS_M = 1.5;         // Provisional (Q11)
+        inline constexpr double NPC_NOZZLE_X_M = -0.5 * NPC_HULL_LENGTH_M;
+        inline constexpr double PLAYER_HULL_LENGTH_M = 20.0;
+        inline constexpr double PLAYER_NOZZLE_RADIUS_M = 0.8;
+        inline constexpr double PLAYER_NOZZLE_X_M = -8.0;
+        inline constexpr double PLAYER_NOZZLE_Y_M = 2.2;           // One nozzle at +Y, one at -Y
+        inline constexpr double PLAYER_NOZZLE_Z_M = -0.2;
+
+        // Burst port table (Q31, provisional positions on the placeholder hulls, hull frame metres): a bow pair at
+        // (BOW_X, +-BOW_Y, 0) exhausting +X for reverse thrust, and 4 side ports: (SIDE_X, +-SIDE_Y, 0) for lateral
+        // thrust and (SIDE_X, 0, +-SIDE_Z) for vertical thrust, each exhausting outward; no stern ports
+        inline constexpr int32 BURST_PORT_COUNT = 6;
+        inline constexpr double NPC_CONE_BOW_PORT_X_M = 7.5;       // Faction 0 cone: radius (15 m - x) / 5
+        inline constexpr double NPC_CONE_BOW_PORT_Y_M = 1.5;
+        inline constexpr double NPC_CONE_SIDE_PORT_X_M = -7.5;
+        inline constexpr double NPC_CONE_SIDE_PORT_Y_M = 4.5;
+        inline constexpr double NPC_CONE_SIDE_PORT_Z_M = 4.5;
+        inline constexpr double NPC_BOX_BOW_PORT_X_M = 15.0;       // Faction 1 box: 30 x 15 x 5.4 m
+        inline constexpr double NPC_BOX_BOW_PORT_Y_M = 3.75;
+        inline constexpr double NPC_BOX_SIDE_PORT_X_M = 0.0;
+        inline constexpr double NPC_BOX_SIDE_PORT_Y_M = 7.5;
+        inline constexpr double NPC_BOX_SIDE_PORT_Z_M = 2.7;
+        inline constexpr double PLAYER_BOW_PORT_X_M = 8.0;         // Player: on the nose cone and the fuselage
+        inline constexpr double PLAYER_BOW_PORT_Y_M = 1.2;
+        inline constexpr double PLAYER_SIDE_PORT_X_M = 0.5;
+        inline constexpr double PLAYER_SIDE_PORT_Y_M = 1.5;
+        inline constexpr double PLAYER_SIDE_PORT_Z_M = 1.5;
+
+        static_assert(COLOUR_BLUE_END_G < COLOUR_YELLOW_G && COLOUR_YELLOW_G < G_REF, "the colour keys are ordered");
+        static_assert(COLOUR_YELLOW_C > 0.0 && COLOUR_YELLOW_C < 1.0, "the yellow key lies inside the ramp");
+        static_assert(RIBBON_SAMPLES >= 16 && RIBBON_SAMPLES <= 32, "the ribbon history holds 16-32 samples");
+        static_assert(BURST_MIN_G < BURST_REF_G, "the burst ramp rises");
+        static_assert(UE_ARRAY_COUNT(RIBBON_COUNTS_BY_QUALITY) == 5, "one ribbon count per quality preset");
+    }
+
     // NPC lane lines (SDD 38 sections 4.4-4.7, issue #38): each lane with traffic is two dashed hologram lines
     // (outbound A -> B on the right of its travel, inbound on the left), faded out close up where the ships resolve.
     // SOLNpcLaneMath is the CPU mirror of the lane material; a change here must change the shader too

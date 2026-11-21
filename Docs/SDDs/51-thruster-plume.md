@@ -283,10 +283,13 @@ shader; no save data, settings or key bindings; no audio (D9).
 
 Signatures and expected values are in the [test contract](../Plans/51-thruster-math-contract.md): `PlumeFraction`,
 `PlumeLengthM`, `PlumeBrightness`, `PlumeColourScalar`, `PlumeColour`, `ShockSpacingM`, `ShockKnots`,
-`LaneThrustLocalG`, `FSOLThrustMean`, `ThrustAxes`, `BurstExhaustDir`, `BurstStrength`, `FocalRefPx`, `PixelLength`,
-`LodAlpha`, `PlumeMaxDistanceM`, `GlowDrawnPx`, `FSOLPlumeHistory`, `RibbonDriftMps`, `RibbonPoint`, `RibbonAlpha`,
-`RibbonWidthM`, `SelectRibbonShips`, `RibbonCountForQuality`, `PlayerHasRibbon`, `PlumeLightIntensity`,
-`PlumeLightColour`, `HullThrusters`.
+`LaneThrustLocalG`, `FSOLThrustMean`, `ThrustAxes`, `BurstExhaustDir`, `BurstStrength`, `BurstLengthM`, `FocalRefPx`,
+`PixelLength`, `LodAlpha`, `PlumeMaxDistanceM`, `GlowDrawnPx`, `FSOLPlumeHistory`, `RibbonDriftMps`, `RibbonPoint`,
+`RibbonAlpha`, `RibbonWidthM`, `SelectRibbonShips`, `RibbonCountForQuality`, `PlayerHasRibbon`, `PlumeLightIntensity`,
+`PlumeLightColour`, `HullThrusters`, `PlumeAllowed`, `PlayerLightEnabled`. `LaneThrustLocalG` takes the thrust
+direction and the hull basis in one frame; the caller passes Unreal axes so that +Y (top x forward) is the hull's
+right. The burst port table (Q31) is constants only in 51a (`SOL::Thruster::*_PORT_*`, provisional positions on the
+placeholder hulls); 51g assembles it.
 
 ## 5. SDD sections that change
 
@@ -329,8 +332,10 @@ expected values, no implementation):
     table.
 12. `MaterialMirror` (51b): the HLSL mirror equals the C++ ramp, brightness and knots at sample points.
 13. `GasBursts`: the direction mapping, independence from the main plume, the threshold and clamp (threshold and
-    reference as test parameters, start values 0.05 G and 1.5 G, Q32).
-14. `PlayerLight`: intensity proportional to `b`, zero when off, colour equal to the ramp's rim colour.
+    reference as test parameters, start values 0.05 G and 1.5 G, Q32); `BurstLengthM` (hull length / 6 x strength,
+    strength clamped, Q32); `PlumeAllowed` (no plume or burst on dot-drawn ships, Q27).
+14. `PlayerLight`: intensity proportional to `b`, zero when off, colour equal to the ramp's rim colour;
+    `PlayerLightEnabled` (on in VR at every quality, otherwise off only at Low, Q28).
 
 Re-validate: `SOLTest.NpcTrafficMath.ThrustState` (contract unchanged), `SOLTest.NpcRail.*` and `SOLTest.Npc.HullFlip.*`
 (the Collect pass changes), the flight and War power tests (`FSOLShipStateFragment` gains a field).
@@ -444,3 +449,5 @@ from the existing `QualityPreset` (Q12).
 - 2026-11-21: the user's answers to Q27-Q33 folded in: hull-drawn ships only for plumes and bursts (Q27), player light
   gating (Q28), uncapped Cinematic ribbons (Q29), smoothed NPC burst acceleration (Q30), burst port table and size
   (Q31, Q32), 1 px glow floor (Q33). No open questions remain.
+- 2026-11-21: part 51a: sections 4.14 and 7 list `BurstLengthM`, `PlumeAllowed` and `PlayerLightEnabled` like the
+  contract; the frame note on `LaneThrustLocalG` and the 51a burst port constants added to 4.14.
