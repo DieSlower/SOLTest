@@ -945,6 +945,8 @@ namespace SOLMenuText
             "on lanes between the planets, in clusters around bodies and the asteroid belt, and in battles a few "
             "kilometres from you. Ships near you fly and fight with full AI; farther ones follow simpler motion and "
             "are drawn as points, or not at all along a far lane, whose tunnel stands for them (see the overlays). "
+            "An NPC hull drawn near you shows a blue-white engine plume while its main engine burns; it goes dark "
+            "while the ship coasts or flips over mid-lane. "
             "Ctrl+F2 shows or hides the stats overlay. "
             "Ctrl+F1 does the same as Esc, for "
             "Play-In-Editor, where Esc stops the game."),

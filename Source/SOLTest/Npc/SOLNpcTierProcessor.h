@@ -33,6 +33,9 @@ struct FSOLNpcCpuShip
     FVector3f HeadingTop = FVector3f::ZeroVector;     // Hull body top (ecliptic, not yet orthogonal to the heading):
                                                       // a Full ship's attitude up, else a lane ship's LaneHullBasis
                                                       // top or the radial up hint (SOLNpcRail::HullUpHint)
+    FVector3f ThrustLocalG = FVector3f::ZeroVector;   // Plume thrust in G in the drawn hull frame (X nose, Y right, Z
+                                                      // top, Unreal axes; SDD 51 section 4.2): hull-drawn ships inside
+                                                      // the plume gate only, else zero; transient, never saved
     uint8 bHidden = 0;                                // Dead (waiting to respawn): not drawn
     int32 NpcIndex = INDEX_NONE;                      // Population index (stable owner key for pooled meshes)
     float RailDistanceM = 0.0f;                       // Bare-rail distance from the viewpoint (the GPU far layer's
@@ -92,6 +95,8 @@ public:
         double InstancedRadiusM = 0.0;                // Budgeted
         double RenderHysteresis = 0.0;
         double PixelAngleRad = 0.0;                   // One pixel's angle on screen (Mid-to-Far snap gate)
+        double PlumeGateM = 0.0;                      // Collect: plume thrust only for hull-drawn ships nearer than
+                                                      // this (SOLThruster::PlumeMaxDistanceM of the view, SDD 51 4.2)
         bool bMidBudgetForced = false;                // The Mid budget shrank the Mid radius (demotions are forced)
     };
 

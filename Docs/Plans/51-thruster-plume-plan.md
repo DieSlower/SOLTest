@@ -70,6 +70,26 @@ checked by eye yet.
 3. Smokes: `-SOLSmokeNpcTraffic`, `-SOLSmokeLaneMerge`, `-SOLSmokeAutoLanes`; screenshots of a lane showing burn, dark
    flip window, turn and brake.
 
+**51c status (2026-11-21): built, not committed.** Thrust plumbing and renderer as in SDD 51 sections 4.2 and 4.10
+(as-built notes): `FSOLNpcCpuShip::ThrustLocalG` set in the Collect pass inside `ViewPlumeGateM` (Mid lane ships: rail
+thrust; Full ships: rail thrust plus the AI's achieved deviation acceleration, `FSOLNpcAttitudeFragment::
+AchievedAccelMps2` from the Full AI Scatter; Mid non-lane: none), thruster hull meshes on both hull layers with the
+per-instance plume floats and a range-limited upload, `sol.NpcPlumes` A/B cvar. Tests first: `SOLTest.NpcThrust.*`
+(new `Tests/NpcThrustTest.cpp`) and `SOLTest.NpcRail.LaneThrust`; re-validated `NpcRail.*`, `Npc.HullFlip.*`,
+`NpcTrafficMath.ThrustState`, `Thruster.*`, `NpcAiMath.*` (98 green). Docs: GAME_MECHANICS row "NPC thruster plume",
+one Info line on the Demo paragraph, ARCHITECTURE. Smoke `-SOLSmokeThruster` (`Npc/SOLThrusterSmoke.{h,cpp}`) 5/5 at 1M
+(burning ship b 0.489, L 9.56 m at 1.63 G, coasting dark, no plume on 5,490 dot-drawn ship-frames, the cvar round trip,
+175k hull / pool ship-frames equal to `PlumeInstance`); `-SOLSmokeNpcTraffic` 19/19 with
+`-SOLSimDate=2026-11-12T12:00:00Z` (undated it fails 2 V5 checks with `sol.NpcPlumes 0` too: date-dependent, not #51).
+At default radii every gated lane ship is Full (the gate, about 48 km at the speed-widened FOV, lies inside the 50 km
+Full radius), so the Mid branch is not reached by the smoke. Screenshot `Docs/Images/51-npc-thruster-plume.png`.
+Profile `-SOLSmokeThrusterProfile` (A B B A x 4, 3 runs each, A minus B): NPC redraw +0.051-0.053 ms with default
+combat (about 700 lit of 1,300 hulls), +0.089-0.116 ms with combat off (1,450 lit of 2,000; at the 0.10 ms gate, mostly
+the placement ParallelFor's game-thread share: 2,000 hulls make only 2 tasks of 1,024); Collect +0.03-0.05 ms; GPU frame
+mean at most +0.03 ms (spawn) and +0.05 ms (lane view, only 1 hull: not a busy lane) against the 0.20 ms gate. Not yet
+done: the adversarial review, the busy-lane GPU view and the lane screenshots of burn / flip / turn / brake (lanes are
+sparse near the viewpoint), the gate decision on the combat-off case.
+
 ### 51d: player plume and hull light
 
 1. `ThrustLocalG` on `FSOLShipStateFragment` from the flight processor: substep time-weighted mean (Q8), War power

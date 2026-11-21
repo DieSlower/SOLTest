@@ -180,6 +180,13 @@ private:
     // Returns the angle one screen pixel spans, from the player camera (the Mid-to-Far snap gate)
     double ViewPixelAngleRad() const;
 
+    // Returns the plume gate: hull-drawn ships nearer than this get their plume thrust in the Collect pass (SDD 51
+    // section 4.2, SOLThruster::PlumeMaxDistanceM of the view)
+    double ViewPlumeGateM() const;
+
+    // Writes the player camera's horizontal FOV (degrees) and the viewport size (px), with reference fallbacks
+    void ViewCamera(double& outFovDeg, FVector2D& outViewportPx) const;
+
     // Resolves the layout's body names and fills the group table (battles around the current anchor)
     void BuildGroups(const SOLNpcScale::FLayout& layout, const SOLNpcScale::FBattleParams& battle);
 

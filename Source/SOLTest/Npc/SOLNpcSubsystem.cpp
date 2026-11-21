@@ -19,6 +19,7 @@
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
+#include "Visuals/SOLThrusterMath.h"
 
 #include "Algo/BinarySearch.h"
 #include "Async/ParallelFor.h"
@@ -413,22 +414,53 @@ void USOLNpcSubsystem::FaceBattle(const int32 battleIndex)
 // Returns the angle one screen pixel spans, from the player camera (the Mid-to-Far snap gate, SDD 18 section 3.7)
 double USOLNpcSubsystem::ViewPixelAngleRad() const
 {
-    double fovDeg = SOL::SHIP_CAMERA_BASE_FOV_DEG;
-    double viewportWidth = SOL::NPC_REFERENCE_VIEWPORT_WIDTH_PX;
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+
+    // The camera's FOV is horizontal: the view width over the viewport's pixel width (square pixels)
+    return 2.0 * FMath::Tan(FMath::DegreesToRadians(fovDeg) * 0.5) / viewportPx.X;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the distance beyond which no NPC plume can reach the cone's low pixel edge (SDD 51 section 4.2): the longest
+// plume (the hull length) at the view's 1080p-reference focal length
+double USOLNpcSubsystem::ViewPlumeGateM() const
+{
+    // The plume A/B switch (sol.NpcPlumes 0, owned by ASOLNpcVisuals) also skips the thrust, so its baseline Collect
+    // pass is the pre-#51 one
+    static const IConsoleVariable* const plumeCvar = IConsoleManager::Get().FindConsoleVariable(SOL::NPC_PLUME_CVAR);
+    if (plumeCvar != nullptr && plumeCvar->GetInt() == 0)
+    {
+        return 0.0;
+    }
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+    return SOLThruster::PlumeMaxDistanceM(SOL::Thruster::NPC_HULL_LENGTH_M,
+        SOLThruster::FocalRefPx(fovDeg, viewportPx.X / viewportPx.Y), SOL::Thruster::CONE_FADE_LOW_PX);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the player camera's horizontal FOV and the viewport size (the reference 16:9 view without either)
+void USOLNpcSubsystem::ViewCamera(double& outFovDeg, FVector2D& outViewportPx) const
+{
+    outFovDeg = SOL::SHIP_CAMERA_BASE_FOV_DEG;
+    outViewportPx = FVector2D(SOL::NPC_REFERENCE_VIEWPORT_WIDTH_PX, SOL::NPC_LANE_REFERENCE_HEIGHT_PX);
     const APlayerController* controller = GetWorld()->GetFirstPlayerController();
     if (controller != nullptr && controller->PlayerCameraManager != nullptr)
     {
-        fovDeg = controller->PlayerCameraManager->GetFOVAngle();
+        outFovDeg = controller->PlayerCameraManager->GetFOVAngle();
     }
     if (GetWorld()->GetGameViewport() != nullptr)
     {
         FVector2D size;
         GetWorld()->GetGameViewport()->GetViewportSize(size);
-        viewportWidth = size.X > 0.0 ? size.X : viewportWidth;
+        if (size.X > 0.0 && size.Y > 0.0)
+        {
+            outViewportPx = size;
+        }
     }
-
-    // The camera's FOV is horizontal: the view width over the viewport's pixel width (square pixels)
-    return 2.0 * FMath::Tan(FMath::DegreesToRadians(fovDeg) * 0.5) / viewportWidth;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -999,6 +1031,7 @@ void USOLNpcSubsystem::Update()
     inputs.FullRadiusM = FMath::Min(inputs.FullRadiusM, inputs.MidRadiusM);
     inputs.bMidBudgetForced = inputs.MidRadiusM < mOptions.MidAiRadiusM;
     inputs.PixelAngleRad = ViewPixelAngleRad();
+    inputs.PlumeGateM = ViewPlumeGateM();
     ParallelFor(2, [this, &inputs, budgetDistancesM](const int32 tier)
     {
         if (tier == 0)

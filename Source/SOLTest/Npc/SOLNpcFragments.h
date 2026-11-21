@@ -78,6 +78,8 @@ struct FSOLNpcAttitudeFragment : public FMassFragment
 
     FQuat4d Orientation = FQuat4d(0.0, 0.0, 0.0, 0.0);     // Ship-local -> universe axes; zero until set
     FVector3d AngularVelocityRadPerS = FVector3d::ZeroVector; // Ship-local axes: X roll, Y pitch, Z yaw
+    FVector3f AchievedAccelMps2 = FVector3f::ZeroVector;      // Last step's deviation acceleration (universe axes), the
+                                                              // Full plume's AI share (SDD 51 section 4.2); transient
 };
 
 /** The ship's group (lane, cluster or battle) as a const shared fragment, so chunks are grouped and culled by group. */

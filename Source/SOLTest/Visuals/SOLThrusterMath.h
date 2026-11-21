@@ -114,6 +114,14 @@ struct FSOLRibbonCandidate
     bool bRibbonFading = false; // The ship still has ribbon samples ageing out
 };
 
+// The plume floats of one hull-drawn ship (SOLThruster::PlumeInstance; SOL::ThrusterMaterialParams 0-2)
+struct FSOLPlumeInstance
+{
+    float Colour = 0.0f;        // c in [0, 1]
+    float Brightness = 0.0f;    // b in [0, 1]; 0 = no plume
+    float LengthM = 0.0f;       // True plume length L_p (the true hull length's, never the drawn size, Q14)
+};
+
 // The hulls with a nozzle table (SOLThruster::HullThrusters)
 enum class ESOLHullKind : uint8
 {
@@ -177,6 +185,23 @@ namespace SOLThruster
     // the hull's right
     SOLTEST_API FVector3f LaneThrustLocalG(const FSOLLaneThrustState& state, const FVector3d& hullForward,
         const FVector3d& hullTop);
+
+    // Returns a thrust acceleration (m/s^2) in G on a hull basis (forward, right = top x forward, top), the forward
+    // normalised and the top made orthogonal to it and normalised first (an NPC's drawn top is not yet orthogonal);
+    // zero for a non-finite input, a zero forward, or a top that is zero or parallel to the forward. All vectors in one
+    // frame: pass Unreal axes so +Y is the hull's right (part 51c)
+    SOLTEST_API FVector3f HullThrustLocalG(const FVector3d& thrustMps2, const FVector3d& hullForward,
+        const FVector3d& hullTop);
+
+    // Returns the plume floats of a hull-drawn ship (part 51c): PlumeColourScalar, PlumeBrightness and PlumeLengthM of
+    // the true hull length; all zero when the plume is off, when its true length is under CONE_FADE_LOW_PX on screen
+    // (PixelLength; the material's alpha is 0 there) and for a non-finite or non-positive distance or focal length
+    SOLTEST_API FSOLPlumeInstance PlumeInstance(double gMain, bool bWarPower, double hullLengthM, double distanceM,
+        double focalRefPx);
+
+    // Writes a ship's per-ship floats in the SOL::ThrusterMaterialParams layout into out (at most out.Num()): c, b and
+    // the true plume length, the three burst floats zero (gas bursts are part 51g)
+    SOLTEST_API void PlumeCustomData(const FSOLPlumeInstance& plume, TArrayView<float> out);
 
     // Returns the main and burst axes of a hull-frame thrust in G; a non-finite component zeroes its own two axes
     SOLTEST_API FSOLThrustAxes ThrustAxes(const FVector3f& thrustLocalG);

@@ -296,6 +296,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeNpcTraffic = MakeUnique<FSOLNpcTrafficSmoke>();
         mSmokeNpcTraffic->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_THRUSTER))
+    {
+        mSmokeThruster = MakeUnique<FSOLThrusterSmoke>();
+        mSmokeThruster->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_MERGE))
     {
         mSmokeLaneMerge = MakeUnique<FSOLLaneMergeSmoke>();
@@ -389,6 +394,7 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
+        || mSmokeThruster.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
@@ -456,6 +462,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeNpcLanes.Reset();
     mSmokeNpcTunnel.Reset();
     mSmokeNpcTraffic.Reset();
+    mSmokeThruster.Reset();
     mSmokeLaneMerge.Reset();
     mSmokeAutoLanes.Reset();
     mSmokeMap.Reset();
@@ -512,6 +519,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeNpcTraffic.IsValid() && mSmokeNpcTraffic->Update(*this, deltaSeconds))
     {
         mSmokeNpcTraffic.Reset();
+    }
+    if (mSmokeThruster.IsValid() && mSmokeThruster->Update(*this, deltaSeconds))
+    {
+        mSmokeThruster.Reset();
     }
     if (mSmokeLaneMerge.IsValid() && mSmokeLaneMerge->Update(*this, deltaSeconds))
     {
@@ -1035,6 +1046,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
+        || mSmokeThruster.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()

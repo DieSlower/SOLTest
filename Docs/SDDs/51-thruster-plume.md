@@ -110,6 +110,17 @@ with one dynamic light (Q17). Nothing moves differently, no gameplay changes, no
   longest possible plume (the hull length, at `G_REF`) falls under the cone's lower fade threshold: about 58 km for a 30 m
   hull at the 0.5 px start value (29 km at 1 px). Today that is inside the 50 km Full-AI radius except at the 0.5 px fade
   edge, so the Mid rail thrust matters mainly for ships pushed out of the 4,000 Full budget.
+- **As built in 51c:** a Full ship's position is its rail plus the deviation its AI flies, so its achieved
+  acceleration is **the lane rail's thrust plus the AI's deviation acceleration**: the Full step flies the deviation
+  only (in the rail frame), and a Full lane ship sitting on its rail mid-burn would otherwise read about 0 G although
+  nearly every visible plume is on a Full ship (the gate lies inside the 50 km Full radius). The Full AI Scatter stores
+  `SOLNpcAi::AchievedAccelMps2` (the step's deviation velocity change over the frame, zero on a respawn) in a transient
+  `FVector3f AchievedAccelMps2` on `FSOLNpcAttitudeFragment` (Full ships only, never saved); the Collect pass adds
+  `SOLNpcRail::LaneThrustMps2` (the rail's `LaneThrustAt` as a vector, zero in Coast, Flip and on non-lane rails) and
+  projects the sum with `SOLThruster::HullThrustLocalG` on the **drawn** hull basis in Unreal axes (the top made
+  orthogonal first; +Y right as drawn). A Mid ship uses the rail thrust alone; a Full cluster or battle ship its AI
+  share alone. The gate `PlumeGateM` is `PlumeMaxDistanceM(30 m, FocalRefPx(camera FOV, viewport aspect), 0.5 px)`,
+  computed once per frame by `USOLNpcSubsystem::ViewPlumeGateM`.
 - **Player (Q7, Q8):** the flight processor's achieved `ThrustAccelWorldMps2`, rotated into the ship frame with each
   substep's attitude, **time-weighted mean of the step's substeps, no extra smoothing** (tuned in 51f). A transient
   `FVector3f ThrustLocalG` in `FSOLShipStateFragment` (a plain field, not a `UPROPERTY`, never saved). `GLoadG` is not
@@ -265,6 +276,19 @@ Q11)**; player, `PLAYER_HULL_LENGTH_M` **20 m**, 2 nozzles at the engine cylinde
   meshes are new assets (`THRUSTER_NPC_HULL_MESH_FACTION_0/1`, a generated cone / box of the engine Cone / Cube's size
   and pivot in slot `Hull` plus slots
   `Plume`, `Glow`, `Burst`); `NPC_HULL_MESH_FACTION_0/1` are unchanged until 51c switches to them.
+- **As built in 51c** (`Npc/SOLNpcVisuals.cpp`): both hull layers draw the thruster meshes; the plain engine shapes
+  stay loaded as the A/B baseline behind the developer cvar `sol.NpcPlumes 0` (`SOL::NPC_PLUME_CVAR`; the hull ISMs
+  then carry no custom floats at all, and `ViewPlumeGateM` returns 0 so the Collect pass skips the thrust, as before
+  #51). The placement
+  ParallelFor writes `SOLThruster::PlumeInstance` (c, b, true `L_p`; all zero under the cone's 0.5 px low edge, where
+  the material's alpha is 0 anyway) through `PlumeCustomData` (bursts 0 until 51g) into a per-faction scratch and
+  notes per task the lowest and highest slot with a plume. Only the union of this and last frame's plume slot ranges is
+  uploaded (one ranged `SetCustomData` per faction; every instance outside it already holds zeros, slots past this
+  frame's use are written as zeros, a shrink rebuild or a cvar switch resets the bookkeeping); the range spans the
+  slots between the first and last ship with a plume, usually far fewer than the 20,000 hulls since the near (Full)
+  ships are collected together in chunk order. A pool mesh gets
+  `SetCustomPrimitiveDataFloatArray` (sent to the render thread only when the floats change). NPCs never fly War power,
+  so `c` follows the G ramp.
 
 ### 4.11 Assets (Q20)
 
@@ -476,3 +500,10 @@ from the existing `QualityPreset` (Q12).
   contract; the frame note on `LaneThrustLocalG` and the 51a burst port constants added to 4.14.
 - 2026-11-21: part 51b: the as-built custom-data layout (true plume length in metres, signed burst strengths) in 4.10,
   the ribbon material, Niagara layout and instruction counts in 4.11.
+- 2026-11-21: part 51c: the as-built NPC thrust source in 4.2 (a Full ship's achieved acceleration is its lane rail's
+  thrust plus its AI's deviation acceleration) and the renderer path in 4.10 (range-limited custom-data upload,
+  `sol.NpcPlumes` A/B cvar); new glue functions `SOLThruster::HullThrustLocalG`, `PlumeInstance`, `PlumeCustomData`,
+  `SOLNpcRail::LaneThrustMps2`, `SOLNpcAi::AchievedAccelMps2`, tested in `SOLTest.NpcThrust.*` and
+  `SOLTest.NpcRail.LaneThrust`.
+
+- 51c decision (user): combat-off NPC redraw CPU gate relaxed to 0.12 ms (combat-on stays 0.10 ms); Full lane ship plume = rail thrust plus AI correction.

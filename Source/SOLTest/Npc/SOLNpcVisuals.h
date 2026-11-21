@@ -8,6 +8,7 @@
 #include "Npc/SOLNpcLaneMath.h"
 #include "Npc/SOLNpcTierProcessor.h"
 #include "UI/SOLHudShapeMath.h"
+#include "Visuals/SOLThrusterMath.h"
 
 #include "CoreMinimal.h"
 #include "Engine/Texture2D.h"
@@ -47,6 +48,11 @@ class USOLSettingsSubsystem;
  *   shrinks again when it stays far above the use.
  * - Mesh: a small pool of static mesh components for the closest ships; a slot that changes ship resets its scene
  *   velocity, so it has no motion vector from the previous owner.
+ * - Plumes (SDD 51, part 51c): both hull layers draw the thruster hull meshes, whose plume, glow and burst sections
+ *   read per-ship floats (SOL::ThrusterMaterialParams: c, b, the true plume length; bursts zero until 51g) from the
+ *   instance custom data (ISMs) or the custom primitive data (pool), written in the placement pass from each ship's
+ *   ThrustLocalG; only instances with a plume this frame or last are rewritten. Dot-drawn ships get none (Q27); the
+ *   material fades and collapses a section by its true pixel size. sol.NpcPlumes 0 draws the plain shapes (A/B).
  * - Lane lines (SDD 38): each lane with ships is a pair of flowing dashed hologram lines, one world-space ribbon mesh
  *   built once per population (LaneLines, M_SOLNpcLanes) and placed on the GPU from the group texture, whose free .w
  *   channels carry the lane radius and traffic weight (ship counts from a histogram folded into the rail fill). The
@@ -109,6 +115,14 @@ public:
     // verification)
     double GetGpuRailEpochS() const { return mGpuRailEpochS; }
 
+    // Reads the plume floats the component drawing a CPU ship (index into USOLNpcSubsystem::GetCpuShips) holds since
+    // the last redraw: its hull instance's custom data or its pool mesh's custom primitive data (SDD 51 section 4.10);
+    // false for a ship not drawn with a hull (verification, -SOLSmokeThruster)
+    bool GetPushedPlume(int32 cpuShipIndex, FSOLPlumeInstance& outPlume) const;
+
+    // Returns the 1080p-reference focal length the last redraw judged the plumes' pixel size with (verification)
+    double GetPlumeFocalRefPx() const { return mPlumeFocalRefPx; }
+
 protected:
 
     // Loads the assets, builds the block mesh and subscribes to NPC updates
@@ -162,6 +176,17 @@ private:
     // Returns the world size of one pixel at a render distance (cm), from the player camera and the viewport size
     double PixelWorldCm(double distanceCm) const;
 
+    // Writes the player camera's horizontal FOV (degrees) and the viewport size (px), with reference fallbacks
+    void ViewCamera(double& outFovDeg, FVector2D& outViewportPx) const;
+
+    // Switches the hull ISMs and the mesh pool between the thruster hull meshes (plumes drawn) and the plain engine
+    // shapes (sol.NpcPlumes 0, the A/B baseline); a switch back on rewrites every instance's plume floats
+    void ApplyPlumeMeshes(bool bPlumes);
+
+    // Writes the plume floats of the hull instances this frame or last frame had a plume on (the union of both
+    // nonzero ranges; every instance outside it already holds zeros)
+    void UploadHullPlumes(int32 faction, int32 range);
+
     UPROPERTY(VisibleAnywhere, Category = "SOL|Npc")
     TObjectPtr<UInstancedStaticMeshComponent> FarPoints;
 
@@ -182,6 +207,12 @@ private:
 
     UPROPERTY(VisibleAnywhere, Category = "SOL|Npc")
     TObjectPtr<USOLNpcTunnelComponent> Tunnels;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UStaticMesh> PlumeHullMeshes[2];       // Per faction: the hull plus plume, glow and burst sections
+
+    UPROPERTY(Transient)
+    TObjectPtr<UStaticMesh> PlainHullMeshes[2];       // Per faction: the engine shape alone (sol.NpcPlumes 0)
 
     UPROPERTY(Transient)
     TObjectPtr<UStaticMesh> PointBlockMesh;
@@ -240,6 +271,16 @@ private:
     TArray<FVector4f> mPointRelM;                     // Scratch: each Point-tier CPU ship's drawn position relative to
                                                       // the viewpoint, w 1 when the CPU draws it (the Mid hand-over)
     TArray<int32> mMeshPoolOwners;                    // NPC index each pool mesh showed last frame (INDEX_NONE: none)
+    TArray<float> mHullPlumeData[2];                  // Scratch per faction: SOL::ThrusterMaterialParams floats per
+                                                      // instance slot, reused every frame (SDD 51 section 4.10)
+    TArray<FIntPoint> mPlumeBlockRanges[2];           // Scratch: per placement task, the lowest and highest slot with a
+                                                      // plume (X > Y: none)
+    FIntPoint mPlumeRange[2] = { FIntPoint(1, 0), FIntPoint(1, 0) };        // This frame's lowest and highest slot
+                                                                            // with a plume (X > Y: none)
+    FIntPoint mPlumeWrittenRange[2] = { FIntPoint(1, 0), FIntPoint(1, 0) }; // Last frame's: outside it every
+                                                                            // instance holds zeros
+    double mPlumeFocalRefPx = 0.0;                    // 1080p-reference focal length of the last redraw
+    bool mArePlumeMeshes = true;                      // The thruster hull meshes are applied (sol.NpcPlumes)
     TArray<int32> mLaneShipCounts;                    // Lane ships per lane of the population (SDD 38 D13)
     FSOLNpcLaneFrame mLaneFrame;                      // This frame's lanes (sized once per population)
     FSOLGlowScaleFeed mLaneGlowFeed;                  // HUD glow scale last pushed to the lane material (SDD 37)

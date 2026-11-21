@@ -9,6 +9,8 @@
 #include "Npc/SOLNpcFragments.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "SOLConstants.h"
+#include "Universe/SOLRenderPlacement.h"
+#include "Visuals/SOLThrusterMath.h"
 
 #include "Algo/Sort.h"
 #include "Async/ParallelFor.h"
@@ -486,11 +488,13 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
         // the radial up hint, so a lane ship's hand-offs keep its roll. Motion is evaluated only without an attitude
         ship.HeadingDirection = FVector3f::ZeroVector;
         ship.HeadingTop = FVector3f::ZeroVector;
+        ship.ThrustLocalG = FVector3f::ZeroVector;
         if (state.RenderTier != NPC_RENDER_POINT)
         {
             const FQuat4d* const orientation = view.Attitudes != nullptr ? &view.Attitudes[entity].Orientation
                 : nullptr;
-            if (orientation != nullptr && orientation->SizeSquared() > 0.0)
+            const bool bAttitude = orientation != nullptr && orientation->SizeSquared() > 0.0;
+            if (bAttitude)
             {
                 ship.HeadingDirection = FVector3f(orientation->GetForwardVector());
                 ship.HeadingTop = FVector3f(orientation->GetUpVector());
@@ -503,6 +507,25 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
                 ship.HeadingDirection = FVector3f(SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(motion,
                     view.Deviations[entity].DeviationVelocityMps), upHint));
                 ship.HeadingTop = FVector3f(SOLNpcRail::HullUpHint(motion, upHint).GetSafeNormal());
+            }
+
+            // Plume thrust (SDD 51 section 4.2, Q2 / Q3), hull-drawn ships inside the plume gate only: the lane rail's
+            // thrust (zero through Coast and the flip window; zero for non-lane rails, which have no thrust model),
+            // plus on a Full ship its AI's achieved deviation acceleration (the ship's whole achieved acceleration),
+            // projected on the drawn hull frame in Unreal axes (+Y right, as the hull is drawn)
+            if (FVector3d::DistSquared(state.PositionM, mInputs.ViewpointM) < FMath::Square(mInputs.PlumeGateM))
+            {
+                FVector3d thrustMps2 = SOLNpcRail::LaneThrustMps2(view.Rails[entity].Rail, frame, ship.NpcIndex);
+                if (bAttitude)
+                {
+                    thrustMps2 += FVector3d(view.Attitudes[entity].AchievedAccelMps2);
+                }
+                if (!thrustMps2.IsZero())
+                {
+                    ship.ThrustLocalG = SOLThruster::HullThrustLocalG(SOLRender::EclipticToUnreal(thrustMps2),
+                        SOLRender::EclipticToUnreal(FVector3d(ship.HeadingDirection)),
+                        SOLRender::EclipticToUnreal(FVector3d(ship.HeadingTop)));
+                }
             }
         }
 

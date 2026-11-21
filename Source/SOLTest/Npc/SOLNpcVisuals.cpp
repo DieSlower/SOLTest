@@ -52,6 +52,14 @@ namespace
         TEXT("1: NPC lane lines drawn while the Lanes overlay row is shown; 0: never drawn and every lane ship's far "
             "point drawn as before (A/B profiling, SDD 38)"));
 
+    // Developer A/B switch for the plume cost (SDD 51 part 51c): the plain hull shapes against the thruster meshes
+    TAutoConsoleVariable<int32> CVarSOLNpcPlumes(SOL::NPC_PLUME_CVAR, 1,
+        TEXT("1: NPC hulls drawn with their thruster plume sections (SDD 51); 0: the plain engine shapes and no plume "
+            "floats (A/B profiling)"));
+
+    // Per-ship plume floats per hull instance (SOL::ThrusterMaterialParams)
+    constexpr int32 PLUME_FLOATS = SOL::ThrusterMaterialParams::CUSTOM_DATA_FLOATS;
+
     // Material parameter names of M_SOLNpcPoints and M_SOLNpcHull (Tools/Npc/create_npc_assets.py)
     const FName PARAM_RAIL_TEX(TEXT("NpcRailTex"));
     const FName PARAM_GROUP_TEX(TEXT("NpcGroupTex"));
@@ -127,6 +135,8 @@ ASOLNpcVisuals::ASOLNpcVisuals()
     }
     FarPoints->NumCustomDataFloats = 1;
     CpuPoints->NumCustomDataFloats = 1;
+    HullsFaction0->NumCustomDataFloats = PLUME_FLOATS;
+    HullsFaction1->NumCustomDataFloats = PLUME_FLOATS;
 
     // Lane lines (SDD 38): one never-culled ribbon component at the origin, its mesh built per population
     LaneLines = CreateDefaultSubobject<USOLOrbitLineComponent>(TEXT("LaneLines"));
@@ -205,9 +215,22 @@ void ASOLNpcVisuals::BeginPlay()
     Anchor = GetWorld()->GetSubsystem<USOLAnchorSubsystem>();
     UMaterialInterface* pointMaterial = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::NPC_POINTS_MATERIAL);
     UMaterialInterface* hullMaterial = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::NPC_HULL_MATERIAL);
+    // Hull meshes: the thruster meshes (hull slot 0 plus the plume, glow and burst sections, SDD 51 section 4.10) and
+    // the plain engine shapes they were generated from (the sol.NpcPlumes 0 baseline, same size and pivot)
+    PlumeHullMeshes[0] = LoadObject<UStaticMesh>(nullptr, SOL::Paths::THRUSTER_NPC_HULL_MESH_FACTION_0);
+    PlumeHullMeshes[1] = LoadObject<UStaticMesh>(nullptr, SOL::Paths::THRUSTER_NPC_HULL_MESH_FACTION_1);
+    PlainHullMeshes[0] = LoadObject<UStaticMesh>(nullptr, SOL::Paths::NPC_HULL_MESH_FACTION_0);
+    PlainHullMeshes[1] = LoadObject<UStaticMesh>(nullptr, SOL::Paths::NPC_HULL_MESH_FACTION_1);
+    if (PlumeHullMeshes[0] == nullptr || PlumeHullMeshes[1] == nullptr)
+    {
+        UE_LOG(LogSOL, Warning, TEXT("NpcVisuals %s: thruster hull meshes missing; NPC plumes not drawn"), *GetName());
+        PlumeHullMeshes[0] = PlainHullMeshes[0];
+        PlumeHullMeshes[1] = PlainHullMeshes[1];
+    }
+    mArePlumeMeshes = CVarSOLNpcPlumes.GetValueOnGameThread() != 0;
     UStaticMesh* hullMeshes[2] = {
-        LoadObject<UStaticMesh>(nullptr, SOL::Paths::NPC_HULL_MESH_FACTION_0),
-        LoadObject<UStaticMesh>(nullptr, SOL::Paths::NPC_HULL_MESH_FACTION_1),
+        mArePlumeMeshes ? PlumeHullMeshes[0].Get() : PlainHullMeshes[0].Get(),
+        mArePlumeMeshes ? PlumeHullMeshes[1].Get() : PlainHullMeshes[1].Get(),
     };
     if (Npcs == nullptr || Anchor == nullptr || pointMaterial == nullptr || hullMaterial == nullptr
         || hullMeshes[0] == nullptr || hullMeshes[1] == nullptr)
@@ -261,6 +284,7 @@ void ASOLNpcVisuals::BeginPlay()
         hulls[faction]->SetStaticMesh(hullMeshes[faction]);
         hulls[faction]->SetMaterial(0, tint);
         hulls[faction]->SetHasPerInstancePrevTransforms(true);
+        hulls[faction]->SetNumCustomDataFloats(mArePlumeMeshes ? PLUME_FLOATS : 0);
     }
     MeshPool.Reserve(NPC_MESH_POOL_SIZE);
     for (int32 slot = 0; slot < NPC_MESH_POOL_SIZE; ++slot)
@@ -327,8 +351,35 @@ void ASOLNpcVisuals::Redraw()
     {
         ReepochRails();
     }
+    const bool bPlumes = CVarSOLNpcPlumes.GetValueOnGameThread() != 0;
+    if (bPlumes != mArePlumeMeshes)
+    {
+        ApplyPlumeMeshes(bPlumes);
+    }
     UpdateFarPoints();
     UpdateCpuShips();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Switches the hull layers between the thruster meshes with their plume floats and the plain shapes without any
+void ASOLNpcVisuals::ApplyPlumeMeshes(const bool bPlumes)
+{
+    mArePlumeMeshes = bPlumes;
+    const TObjectPtr<UStaticMesh>* meshes = bPlumes ? PlumeHullMeshes : PlainHullMeshes;
+    UInstancedStaticMeshComponent* hulls[2] = { HullsFaction0, HullsFaction1 };
+    for (int32 faction = 0; faction < 2; ++faction)
+    {
+        hulls[faction]->SetStaticMesh(meshes[faction]);
+
+        // The baseline carries no custom floats at all (its instances upload as before #51); switching back on
+        // re-creates them zeroed, so nothing is stale and the next upload writes only this frame's plumes
+        hulls[faction]->SetNumCustomDataFloats(bPlumes ? PLUME_FLOATS : 0);
+        mPlumeWrittenRange[faction] = FIntPoint(1, 0);
+    }
+    for (int32 slot = 0; slot < MeshPool.Num(); ++slot)
+    {
+        MeshPool[slot]->SetStaticMesh(meshes[slot & 1]);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -768,6 +819,19 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const double lengthCm = SOL::NPC_HULL_LENGTH_M * SOL::METERS_TO_CM;
     const double pixelPerCm = PixelWorldCm(1.0);
     const FVector viewRenderCm(origin.UniverseToRenderCm(viewpointM));
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+    mPlumeFocalRefPx = SOLThruster::FocalRefPx(fovDeg, viewportPx.X / viewportPx.Y);
+    const bool bPlumes = mArePlumeMeshes;
+
+    // Returns a hull-drawn ship's plume floats from its main-engine thrust and its true hull length at a render
+    // distance (SDD 51 sections 4.3, 4.5; dot-drawn ships never get here, Q27)
+    const auto shipPlume = [this, bPlumes](const FSOLNpcCpuShip& ship, const double distanceCm)
+    {
+        return bPlumes ? SOLThruster::PlumeInstance(ship.ThrustLocalG.X, false, SOL::Thruster::NPC_HULL_LENGTH_M,
+            distanceCm / SOL::METERS_TO_CM, mPlumeFocalRefPx) : FSOLPlumeInstance();
+    };
     const float gpuHideRadiusM = static_cast<float>(Npcs->GetStats().MidRadiusM);
     int32 meshSlots[2] = { 0, 1 };
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UpdateCpuShips);
@@ -865,6 +929,10 @@ void ASOLNpcVisuals::UpdateCpuShips()
             UStaticMeshComponent* mesh = MeshPool[poolSlot];
             meshSlots[faction] += 2;
             mesh->SetWorldTransform(HullTransform(locationCm, rotation, faction, lengthCm));
+            float plume[PLUME_FLOATS];
+            SOLThruster::PlumeCustomData(shipPlume(ship, (locationCm - viewRenderCm).Size()),
+                MakeArrayView(plume, PLUME_FLOATS));
+            mesh->SetCustomPrimitiveDataFloatArray(0, MakeArrayView(plume, PLUME_FLOATS));
             if (mMeshPoolOwners[poolSlot] != ship.NpcIndex)
             {
                 // A new owner: no motion vector from where the previous ship was
@@ -878,17 +946,21 @@ void ASOLNpcVisuals::UpdateCpuShips()
         mShipSlots[index] = instanceCounts[faction]++;
     }
     cpuTexels.SetNumUninitialized(pointCount, EAllowShrinking::No);
+    const int32 blockCount = FMath::DivideAndRoundUp(ships.Num(), SHIPS_PER_TASK);
     for (int32 faction = 0; faction < 2; ++faction)
     {
         mHullTransforms[faction].SetNumUninitialized(instanceCounts[faction], EAllowShrinking::No);
         mHullPrevTransforms[faction].SetNumUninitialized(instanceCounts[faction], EAllowShrinking::No);
+        mHullPlumeData[faction].SetNumUninitialized(instanceCounts[faction] * PLUME_FLOATS, EAllowShrinking::No);
+        mPlumeBlockRanges[faction].SetNumUninitialized(blockCount, EAllowShrinking::No);
     }
 
     // Parallel pass: point texels and instanced hulls (never smaller than a few pixels, previous transform from the
-    // ship's own last position)
+    // ship's own last position) with their plume floats; each task notes its lowest and highest slot with a plume
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::PlaceShips);
-    ParallelFor(FMath::DivideAndRoundUp(ships.Num(), SHIPS_PER_TASK), [&](const int32 block)
+    ParallelFor(blockCount, [&](const int32 block)
     {
+        FIntPoint plumeRanges[2] = { FIntPoint(MAX_int32, INDEX_NONE), FIntPoint(MAX_int32, INDEX_NONE) };
         const int32 end = FMath::Min((block + 1) * SHIPS_PER_TASK, ships.Num());
         for (int32 index = block * SHIPS_PER_TASK; index < end; ++index)
         {
@@ -912,8 +984,32 @@ void ASOLNpcVisuals::UpdateCpuShips()
             const double sizeCm = FMath::Max(lengthCm, SOL::NPC_HULL_MIN_PIXELS * pixelPerCm * distanceCm);
             mHullTransforms[faction][slot] = HullTransform(locationCm, rotation, faction, sizeCm);
             mHullPrevTransforms[faction][slot] = HullTransform(prevLocationCm, rotation, faction, sizeCm);
+
+            // Plume floats (SDD 51 section 4.10): the true plume, judged by its true size, not the inflated hull's
+            const FSOLPlumeInstance plume = shipPlume(ship, distanceCm);
+            SOLThruster::PlumeCustomData(plume, MakeArrayView(mHullPlumeData[faction].GetData() + slot * PLUME_FLOATS,
+                PLUME_FLOATS));
+            if (plume.Brightness > 0.0f)
+            {
+                plumeRanges[faction].X = FMath::Min(plumeRanges[faction].X, slot);
+                plumeRanges[faction].Y = FMath::Max(plumeRanges[faction].Y, slot);
+            }
         }
+        mPlumeBlockRanges[0][block] = plumeRanges[0];
+        mPlumeBlockRanges[1][block] = plumeRanges[1];
     });
+
+    // This frame's plume slot range per faction, from the tasks' ranges
+    for (int32 faction = 0; faction < 2; ++faction)
+    {
+        FIntPoint range(MAX_int32, INDEX_NONE);
+        for (const FIntPoint& blockRange : mPlumeBlockRanges[faction])
+        {
+            range.X = FMath::Min(range.X, blockRange.X);
+            range.Y = FMath::Max(range.Y, blockRange.Y);
+        }
+        mPlumeRange[faction] = range.X <= range.Y ? range : FIntPoint(1, 0);
+    }
 
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UploadShips);
 
@@ -976,6 +1072,7 @@ void ASOLNpcVisuals::UploadHulls(const int32 faction)
         hulls->ClearInstances();
         capacity = 0;
         mHullUsed[faction] = 0;
+        mPlumeWrittenRange[faction] = FIntPoint(1, 0);    // The rebuilt instances' floats are all zero
         if (used > 0)
         {
             TArray<FTransform> added;
@@ -998,6 +1095,7 @@ void ASOLNpcVisuals::UploadHulls(const int32 faction)
     // when neither frame shows a hull
     const int32 range = FMath::Max(used, mHullUsed[faction]);
     mHullUsed[faction] = used;
+    UploadHullPlumes(faction, range);
     if (range == 0)
     {
         return;
@@ -1016,21 +1114,103 @@ void ASOLNpcVisuals::UploadHulls(const int32 faction)
 // Returns the world size of one pixel at a render distance (cm), from the player camera
 double ASOLNpcVisuals::PixelWorldCm(const double distanceCm) const
 {
-    double fovDeg = 90.0;
-    double viewportWidth = 1920.0;
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+
+    // The camera's FOV is horizontal, so one pixel spans the view width over the viewport's pixel width (square
+    // pixels, any aspect)
+    return 2.0 * distanceCm * FMath::Tan(FMath::DegreesToRadians(fovDeg) * 0.5) / viewportPx.X;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the player camera's horizontal FOV and the viewport size (90 degrees and 1920 x 1080 without either)
+void ASOLNpcVisuals::ViewCamera(double& outFovDeg, FVector2D& outViewportPx) const
+{
+    outFovDeg = 90.0;
+    outViewportPx = FVector2D(SOL::NPC_REFERENCE_VIEWPORT_WIDTH_PX, SOL::NPC_LANE_REFERENCE_HEIGHT_PX);
     const APlayerController* controller = GetWorld()->GetFirstPlayerController();
     if (controller != nullptr && controller->PlayerCameraManager != nullptr)
     {
-        fovDeg = controller->PlayerCameraManager->GetFOVAngle();
+        outFovDeg = controller->PlayerCameraManager->GetFOVAngle();
     }
     if (GetWorld()->GetGameViewport() != nullptr)
     {
         FVector2D size;
         GetWorld()->GetGameViewport()->GetViewportSize(size);
-        viewportWidth = size.X > 0.0 ? size.X : viewportWidth;
+        if (size.X > 0.0 && size.Y > 0.0)
+        {
+            outViewportPx = size;
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the plume floats of the slots with a plume this frame or last (outside that union every instance holds
+// zeros); the hidden slots past this frame's use hold zeros
+void ASOLNpcVisuals::UploadHullPlumes(const int32 faction, const int32 range)
+{
+    UInstancedStaticMeshComponent* hulls = faction == 0 ? HullsFaction0.Get() : HullsFaction1.Get();
+    TArray<float>& data = mHullPlumeData[faction];
+    const FIntPoint now = mPlumeRange[faction];
+    const FIntPoint written = mPlumeWrittenRange[faction];
+    mPlumeWrittenRange[faction] = now;
+    const int32 low = now.X <= now.Y ? (written.X <= written.Y ? FMath::Min(now.X, written.X) : now.X) : written.X;
+    const int32 high = FMath::Min(now.X <= now.Y ? (written.X <= written.Y ? FMath::Max(now.Y, written.Y) : now.Y)
+        : written.Y, hulls->GetInstanceCount() - 1);
+    if (low > high || hulls->NumCustomDataFloats != PLUME_FLOATS)
+    {
+        return;
     }
 
-    // The camera's FOV is horizontal, so one pixel spans the view width over the viewport's pixel width (square
-    // pixels, any aspect)
-    return 2.0 * distanceCm * FMath::Tan(FMath::DegreesToRadians(fovDeg) * 0.5) / viewportWidth;
+    // Slots past this frame's ships (hidden this frame, or stale after a mesh switch) are written as zeros
+    const int32 usedFloats = data.Num();
+    const int32 neededFloats = FMath::Max(range, high + 1) * PLUME_FLOATS;
+    if (neededFloats > usedFloats)
+    {
+        data.SetNumUninitialized(neededFloats, EAllowShrinking::No);
+        FMemory::Memzero(data.GetData() + usedFloats, (neededFloats - usedFloats) * sizeof(float));
+    }
+    hulls->SetCustomData(low, high, TConstArrayView<float>(data.GetData() + low * PLUME_FLOATS,
+        (high - low + 1) * PLUME_FLOATS), false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Reads the plume floats the component drawing a CPU ship holds (its pool mesh, else its hull instance)
+bool ASOLNpcVisuals::GetPushedPlume(const int32 cpuShipIndex, FSOLPlumeInstance& outPlume) const
+{
+    namespace P = SOL::ThrusterMaterialParams;
+    if (Npcs == nullptr || !Npcs->GetCpuShips().IsValidIndex(cpuShipIndex) || !mShipSlots.IsValidIndex(cpuShipIndex))
+    {
+        return false;
+    }
+    const FSOLNpcCpuShip& ship = Npcs->GetCpuShips()[cpuShipIndex];
+    if (ship.bHidden != 0 || ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point))
+    {
+        return false;
+    }
+    const float* data = nullptr;
+    const int32 poolSlot = ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Mesh)
+        ? mMeshPoolOwners.IndexOfByKey(ship.NpcIndex) : INDEX_NONE;
+    if (poolSlot != INDEX_NONE)
+    {
+        const TArray<float>& primitive = MeshPool[poolSlot]->GetCustomPrimitiveData().Data;
+        data = primitive.Num() >= PLUME_FLOATS ? primitive.GetData() : nullptr;
+    }
+    else
+    {
+        const UInstancedStaticMeshComponent* hulls = (ship.Faction & 1) == 0 ? HullsFaction0.Get()
+            : HullsFaction1.Get();
+        const int32 slot = mShipSlots[cpuShipIndex];
+        data = slot != INDEX_NONE && (slot + 1) * PLUME_FLOATS <= hulls->PerInstanceSMCustomData.Num()
+            ? hulls->PerInstanceSMCustomData.GetData() + slot * PLUME_FLOATS : nullptr;
+    }
+    if (data == nullptr)
+    {
+        return false;
+    }
+    outPlume.Colour = data[P::CUSTOM_COLOUR];
+    outPlume.Brightness = data[P::CUSTOM_BRIGHTNESS];
+    outPlume.LengthM = data[P::CUSTOM_PLUME_LENGTH_M];
+    return true;
 }

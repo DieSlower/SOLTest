@@ -2243,4 +2243,102 @@ bool FSOLNpcRailCpuPointHandOverTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailLaneThrustTest, "SOLTest.NpcRail.LaneThrust",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// SDD 51 section 4.2 (Q2, part 51c): LaneThrustMps2(rail, frame, npc index) is a lane rail's thrust acceleration at the
+// frame's rail time, SOLLaneTraffic::LaneThrustAt(profile, lane frame, LaneShipFromRail, the NPC index as the key, t):
+// AccelMps2 x Direction for Accelerate, Brake and Turn, the zero vector for Coast and the whole Flip window, for cluster
+// and battle rails and for a lane rail whose group has no lane frame or profile. Over a cycle every thrust kind of a
+// burning ship occurs, the burns at the ship's own peak acceleration
+bool FSOLNpcRailLaneThrustTest::RunTest(const FString& /*parameters*/)
+{
+    const FNpcRailWorld world = NpcRailMakeWorld();
+    const FSOLNpcRailFrame frame0 = NpcRailFrameAt(world, 0.0);
+    if (!TestTrue(TEXT("one lane frame"), frame0.LaneProfile.Num() >= 1 && frame0.LaneFrame.Num() >= 1))
+    {
+        return false;
+    }
+    const FSOLLaneProfile& profile = frame0.LaneProfile[0];
+    const FSOLLaneFrame& laneFrame = frame0.LaneFrame[0];
+    for (int32 specIndex = 0; specIndex < static_cast<int32>(UE_ARRAY_COUNT(NPCRAIL_SPECS)); ++specIndex)
+    {
+        const FSOLNpcRail rail = NpcRailLane(world, NPCRAIL_SPECS[specIndex]);
+        const FSOLLaneShip ship = SOLNpcRail::LaneShipFromRail(rail);
+        const FSOLLaneCycle cycle = NpcRailCycleOf(profile, rail);
+        const int32 npcIndex = 23 + 7919 * specIndex;
+        const FString label = FString::Printf(TEXT("spec %d"), specIndex);
+
+        // 400 times spread over the cycle plus 16 in each U-turn: equal to the pure thrust, zero exactly when it does
+        // not thrust
+        int32 failures = 0;
+        FString firstFailure;
+        int32 kinds[5] = {};
+        for (int32 sample = 0; sample < 432; ++sample)
+        {
+            const double tau = sample < 400 ? cycle.CycleS * (static_cast<double>(sample) + 0.5) / 400.0
+                : (sample < 416 ? cycle.LegS : 2.0 * cycle.LegS + cycle.TurnS)
+                    + cycle.TurnS * (static_cast<double>(sample % 16) + 0.5) / 16.0;
+            FSOLNpcRailFrame frame = frame0;
+            frame.RailTimeS = NpcRailTimeAt(rail, cycle, tau);
+            const FSOLLaneThrustState state = SOLLaneTraffic::LaneThrustAt(profile, laneFrame, ship,
+                static_cast<uint32>(npcIndex), frame.RailTimeS);
+            const bool bThrusts = state.Thrust == ESOLLaneThrust::Accelerate || state.Thrust == ESOLLaneThrust::Brake
+                || state.Thrust == ESOLLaneThrust::Turn;
+            const FVector3d expected = bThrusts ? state.Direction * state.AccelMps2 : FVector3d::ZeroVector;
+            const FVector3d thrust = SOLNpcRail::LaneThrustMps2(rail, frame, npcIndex);
+            ++kinds[static_cast<int32>(state.Thrust)];
+            const bool bExactZero = !bThrusts && thrust == FVector3d::ZeroVector;
+            if ((bThrusts && (thrust - expected).GetAbsMax() > 1.0e-9) || (!bThrusts && !bExactZero))
+            {
+                if (failures == 0)
+                {
+                    firstFailure = FString::Printf(TEXT("tau %.3f kind %d: (%.6f, %.6f, %.6f) vs (%.6f, %.6f, %.6f)"),
+                        tau, static_cast<int32>(state.Thrust), thrust.X, thrust.Y, thrust.Z, expected.X, expected.Y,
+                        expected.Z);
+                }
+                ++failures;
+            }
+        }
+        TestEqual(label + FString::Printf(TEXT(": = AccelMps2 x Direction while thrusting, else 0 (first failure: %s)"),
+            *firstFailure), failures, 0);
+        TestTrue(label + TEXT(": the samples see Accelerate, Brake and Turn"),
+            kinds[static_cast<int32>(ESOLLaneThrust::Accelerate)] > 0
+            && kinds[static_cast<int32>(ESOLLaneThrust::Brake)] > 0
+            && kinds[static_cast<int32>(ESOLLaneThrust::Turn)] > 0);
+
+        // The burn's magnitude is the ship's peak acceleration (0.825-1.65 G on the default lanes, Q23 table)
+        FSOLNpcRailFrame burnFrame = frame0;
+        burnFrame.RailTimeS = NpcRailTimeAt(rail, cycle, 0.5 * ship.AccelS);
+        const double burnG = SOLNpcRail::LaneThrustMps2(rail, burnFrame, npcIndex).Size() / SOL::STANDARD_GRAVITY_MPS2;
+        TestTrue(label + FString::Printf(TEXT(": mid-burn thrust %.4f G is positive and at most the lane peak"), burnG),
+            burnG > 0.0 && burnG <= SOL::NPC_LANE_PEAK_ACCEL_G + 1.0e-9);
+
+        // The middle of the outbound flip window: zero
+        FSOLNpcRailFrame flipFrame = frame0;
+        flipFrame.RailTimeS = NpcRailTimeAt(rail, cycle, 0.5 * cycle.LegS);
+        TestTrue(label + TEXT(": the flip window's middle is a Flip and gives 0"),
+            SOLLaneTraffic::LaneThrustAt(profile, laneFrame, ship, static_cast<uint32>(npcIndex),
+                flipFrame.RailTimeS).Thrust == ESOLLaneThrust::Flip
+            && SOLNpcRail::LaneThrustMps2(rail, flipFrame, npcIndex) == FVector3d::ZeroVector);
+
+        // No lane frame or profile for the rail's group: zero
+        FSOLNpcRailFrame noLane = burnFrame;
+        noLane.LaneFrame.Reset();
+        TestTrue(label + TEXT(": no lane frame gives 0"),
+            SOLNpcRail::LaneThrustMps2(rail, noLane, npcIndex) == FVector3d::ZeroVector);
+        FSOLNpcRailFrame noProfile = burnFrame;
+        noProfile.LaneProfile.Reset();
+        TestTrue(label + TEXT(": no lane profile gives 0"),
+            SOLNpcRail::LaneThrustMps2(rail, noProfile, npcIndex) == FVector3d::ZeroVector);
+    }
+
+    // Cluster and battle rails have no thrust model (Q3)
+    TestTrue(TEXT("cluster rail: 0"),
+        SOLNpcRail::LaneThrustMps2(NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f), frame0, 5) == FVector3d::ZeroVector);
+    TestTrue(TEXT("battle rail: 0"), SOLNpcRail::LaneThrustMps2(NpcRailBattle(), frame0, 6) == FVector3d::ZeroVector);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

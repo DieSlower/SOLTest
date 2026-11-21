@@ -145,6 +145,12 @@ namespace SOLNpcRail
     // Mid / Full paths (the NPC index keys the roll and the flip side)
     SOLTEST_API FSOLNpcRailMotion Motion(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, int32 npcIndex);
 
+    // Returns a lane rail's thrust acceleration (m/s^2, ecliptic) at the frame's rail time (SDD 51 section 4.2, Q2):
+    // SOLLaneTraffic::LaneThrustAt's AccelMps2 x Direction (the NPC index as the key) for Accelerate, Brake and Turn;
+    // the zero vector for Coast and the whole Flip window, for cluster and battle rails and for a group without a lane
+    // frame or profile
+    SOLTEST_API FVector3d LaneThrustMps2(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, int32 npcIndex);
+
     // Returns the vector a Mid / Full hull heads along from a Motion result (the SOLNpcAi::HullForward input; D17 /
     // D21): with a lane hull facing, that facing scaled by max(rail speed, wall speed), plus the deviation velocity, so
     // the hull faces its thrust on the rail and a large AI deviation still turns it; without one (cluster and battle

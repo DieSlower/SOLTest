@@ -147,8 +147,12 @@ void USOLNpcFullAiProcessor::ScatterChunk(const FChunkView& view) const
             continue;
         }
 
-        // Position = rail plus deviation, so it moves by the deviation's change
+        // Position = rail plus deviation, so it moves by the deviation's change; the step's achieved acceleration
+        // feeds the plume (SDD 51 section 4.2), none on a respawn (the deviation was reset, not flown)
         FSOLNpcDeviationFragment& deviation = view.Deviations[entity];
+        view.Attitudes[entity].AchievedAccelMps2 = ship->bRespawned != 0 ? FVector3f::ZeroVector
+            : FVector3f(SOLNpcAi::AchievedAccelMps2(deviation.DeviationVelocityMps, ship->NewDeviationVelocityMps,
+                mInputs.RealDeltaS));
         view.States[entity].PositionM += ship->NewDeviationM - deviation.DeviationM;
         deviation.DeviationM = ship->NewDeviationM;
         deviation.DeviationVelocityMps = ship->NewDeviationVelocityMps;

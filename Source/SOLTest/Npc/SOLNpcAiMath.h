@@ -112,6 +112,11 @@ namespace SOLNpcAi
     // Returns the Mid tier's point-mass acceleration budget: the lateral thrust, at most the class cap
     SOLTEST_API double MidReturnAccelMps2(const FClassParams& shipClass);
 
+    // Returns a Full ship's achieved acceleration over its step, (after - before) / dt in the rail frame (the plume's
+    // deviation share, SDD 51 section 4.2); zero for dt <= 0, a non-finite dt or a non-finite velocity
+    SOLTEST_API FVector3d AchievedAccelMps2(const FVector3d& velocityBeforeMps, const FVector3d& velocityAfterMps,
+        double dtS);
+
     // Returns the guidance parameters of a Mid ship's return to its rail
     SOLTEST_API FSOLGuidanceParams MidReturnGuidanceParams(const FClassParams& shipClass);
 

@@ -1950,6 +1950,12 @@ namespace SOL
         // With -SOLSmokeNpcTunnel (-game only): T2 and T5 cost captures, all lanes forced, sol.NpcTunnel 0 / 1 (49c)
         inline constexpr const TCHAR* SMOKE_NPC_TUNNEL_PROFILE = TEXT("SOLSmokeNpcTunnelProfile");
         inline constexpr const TCHAR* SMOKE_NPC_TRAFFIC = TEXT("SOLSmokeNpcTraffic");  // Lane traffic (SDD 50), quit
+        // NPC thruster plumes on lane ships against their rail thrust, the mesh switch and a screenshot (SDD 51 part
+        // 51c), then quit
+        inline constexpr const TCHAR* SMOKE_THRUSTER = TEXT("SOLSmokeThruster");
+        // With -SOLSmokeThruster (-game only): interleaved sol.NpcPlumes 1 / 0 cost windows at the Earth spawn view and
+        // in a lane view instead of the checks (SDD 51 section 4.12)
+        inline constexpr const TCHAR* SMOKE_THRUSTER_PROFILE = TEXT("SOLSmokeThrusterProfile");
         inline constexpr const TCHAR* SMOKE_LANE_MERGE = TEXT("SOLSmokeLaneMerge");    // Lane merge readout (SDD 50
                                                                                          // V6), quit
         // The sim date -SOLSmokeLaneMerge starts at unless -SOLSimDate= is given: the planets' places decide which
@@ -2869,6 +2875,8 @@ namespace SOL
     inline constexpr int32 NPC_LANE_TRANSLUCENCY_SORT_PRIORITY = 1;    // Order within the after-motion-blur pass only
                                                                        // (the far points draw in the normal pass)
     inline constexpr const TCHAR* NPC_LANE_CVAR = TEXT("sol.NpcLanes"); // 0 hides the lane lines (A/B profiling, D20)
+    // 0 draws the NPC hulls as the plain engine shapes without plume floats (A/B profiling, SDD 51 part 51c)
+    inline constexpr const TCHAR* NPC_PLUME_CVAR = TEXT("sol.NpcPlumes");
     static_assert(NPC_LANE_FADE_FAR_RADII > NPC_LANE_FADE_NEAR_RADII && NPC_LANE_FADE_NEAR_RADII > 1.0,
         "the lane fade band runs outward from the near radii");
     static_assert(NPC_LANE_TRAFFIC_HIGH > NPC_LANE_TRAFFIC_LOW && NPC_LANE_TRAFFIC_LOW > 0,

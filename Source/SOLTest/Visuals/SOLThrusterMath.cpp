@@ -324,6 +324,63 @@ FVector3f SOLThruster::LaneThrustLocalG(const FSOLLaneThrustState& state, const 
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a thrust acceleration in G on an orthonormalised hull basis (zero for a bad input or a degenerate basis)
+FVector3f SOLThruster::HullThrustLocalG(const FVector3d& thrustMps2, const FVector3d& hullForward,
+    const FVector3d& hullTop)
+{
+    if (!PlumeIsFiniteD(thrustMps2) || !PlumeIsFiniteD(hullForward) || !PlumeIsFiniteD(hullTop))
+    {
+        return FVector3f::ZeroVector;
+    }
+
+    // Orthonormal basis: the unit forward, the top's part orthogonal to it, right = top x forward
+    const FVector3d forward = hullForward.GetSafeNormal();
+    const FVector3d top = (hullTop - FVector3d::DotProduct(hullTop, forward) * forward).GetSafeNormal();
+    if (forward.IsZero() || top.IsZero())
+    {
+        return FVector3f::ZeroVector;
+    }
+    const FVector3d right = FVector3d::CrossProduct(top, forward);
+    const FVector3d thrustG = thrustMps2 / SOL::STANDARD_GRAVITY_MPS2;
+    return FVector3f(static_cast<float>(FVector3d::DotProduct(thrustG, forward)),
+        static_cast<float>(FVector3d::DotProduct(thrustG, right)),
+        static_cast<float>(FVector3d::DotProduct(thrustG, top)));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a hull-drawn ship's plume floats (zero when off or under the cone's low pixel edge)
+FSOLPlumeInstance SOLThruster::PlumeInstance(const double gMain, const bool bWarPower, const double hullLengthM,
+    const double distanceM, const double focalRefPx)
+{
+    const double lengthM = PlumeLengthM(hullLengthM, gMain);
+    if (!(lengthM > 0.0) || PixelLength(lengthM, distanceM, focalRefPx) < SOL::Thruster::CONE_FADE_LOW_PX)
+    {
+        return FSOLPlumeInstance();
+    }
+    FSOLPlumeInstance plume;
+    plume.Colour = static_cast<float>(PlumeColourScalar(gMain, bWarPower));
+    plume.Brightness = static_cast<float>(PlumeBrightness(gMain));
+    plume.LengthM = static_cast<float>(lengthM);
+    return plume;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the per-ship floats in the material layout (bursts zero), at most out.Num() of them
+void SOLThruster::PlumeCustomData(const FSOLPlumeInstance& plume, TArrayView<float> out)
+{
+    namespace P = SOL::ThrusterMaterialParams;
+    float values[P::CUSTOM_DATA_FLOATS] = {};
+    values[P::CUSTOM_COLOUR] = plume.Colour;
+    values[P::CUSTOM_BRIGHTNESS] = plume.Brightness;
+    values[P::CUSTOM_PLUME_LENGTH_M] = plume.LengthM;
+    const int32 count = FMath::Min(out.Num(), static_cast<int32>(P::CUSTOM_DATA_FLOATS));
+    for (int32 index = 0; index < count; ++index)
+    {
+        out[index] = values[index];
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the positive and negative parts of each hull axis; a non-finite component gives 0 on both of its axes
 FSOLThrustAxes SOLThruster::ThrustAxes(const FVector3f& thrustLocalG)
 {

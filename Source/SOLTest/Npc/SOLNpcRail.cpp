@@ -386,6 +386,23 @@ FSOLNpcRailMotion SOLNpcRail::Motion(const FSOLNpcRail& rail, const FSOLNpcRailF
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a lane rail's thrust acceleration at the frame's rail time (zero while coasting or flipping, and off-lane)
+FVector3d SOLNpcRail::LaneThrustMps2(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const int32 npcIndex)
+{
+    if (!RailHasLaneFrame(rail, frame))
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FSOLLaneThrustState state = SOLLaneTraffic::LaneThrustAt(frame.LaneProfile[rail.Group],
+        frame.LaneFrame[rail.Group], LaneShipFromRail(rail), static_cast<uint32>(npcIndex), frame.RailTimeS);
+    const bool bThrusts = state.Thrust == ESOLLaneThrust::Accelerate || state.Thrust == ESOLLaneThrust::Brake
+        || state.Thrust == ESOLLaneThrust::Turn;
+    const FVector3d thrustMps2 = state.Direction * state.AccelMps2;
+    return bThrusts && !thrustMps2.ContainsNaN() && FMath::IsFinite(thrustMps2.SizeSquared()) ? thrustMps2
+        : FVector3d::ZeroVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the hull heading vector from a Motion result: the lane hull facing at rail speed (never below the wall
 // speed), else the rail velocity, plus the deviation velocity
 FVector3d SOLNpcRail::HullHeadingVelocityMps(const FSOLNpcRailMotion& motion, const FVector3d& deviationVelocityMps)

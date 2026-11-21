@@ -25,6 +25,7 @@
 #include "Npc/SOLNpcLaneSmoke.h"
 #include "Npc/SOLNpcTrafficSmoke.h"
 #include "Npc/SOLNpcTunnelSmoke.h"
+#include "Npc/SOLThrusterSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHoloMenuProfileSmoke.h"
@@ -1003,6 +1004,7 @@ private:
     TUniquePtr<FSOLNpcLaneSmoke> mSmokeNpcLanes;            // Verification-only NPC lane-line script (SDD 38)
     TUniquePtr<FSOLNpcTunnelSmoke> mSmokeNpcTunnel;         // Verification-only NPC lane tunnel script (SDD 49)
     TUniquePtr<FSOLNpcTrafficSmoke> mSmokeNpcTraffic;       // Verification-only NPC lane traffic script (SDD 50)
+    TUniquePtr<FSOLThrusterSmoke> mSmokeThruster;           // Verification-only NPC thruster plume script (SDD 51)
     TUniquePtr<FSOLLaneMergeSmoke> mSmokeLaneMerge;         // Verification-only lane merge readout script (V6)
     TUniquePtr<FSOLAutoLanesSmoke> mSmokeAutoLanes;         // Verification-only AUTO lane rules script (V7)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)

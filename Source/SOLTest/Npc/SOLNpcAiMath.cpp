@@ -122,6 +122,19 @@ double SOLNpcAi::MidReturnAccelMps2(const FClassParams& shipClass)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the velocity change over dt per second (zero for a bad dt or velocity)
+FVector3d SOLNpcAi::AchievedAccelMps2(const FVector3d& velocityBeforeMps, const FVector3d& velocityAfterMps,
+    const double dtS)
+{
+    const FVector3d accelMps2 = (velocityAfterMps - velocityBeforeMps) / dtS;
+    if (!(dtS > 0.0) || !FMath::IsFinite(dtS) || accelMps2.ContainsNaN() || !FMath::IsFinite(accelMps2.SizeSquared()))
+    {
+        return FVector3d::ZeroVector;
+    }
+    return accelMps2;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the guidance parameters of a Mid ship's return to its rail
 FSOLGuidanceParams SOLNpcAi::MidReturnGuidanceParams(const FClassParams& shipClass)
 {
