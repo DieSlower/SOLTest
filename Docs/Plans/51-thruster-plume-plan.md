@@ -48,6 +48,16 @@ order).
 2. The material mirror `.ush` and contract case 12 (`MaterialMirror`), test first.
 3. Run the script headless; record the compiled instruction counts.
 
+**51b status (2026-11-21): built, not committed.** `Tools/Fx/create_thruster_assets.py` (run with
+`-AllowCommandletRendering` so the HLSL compiles; `-SOLRebuild`, `-SOLOnly=`; idempotent, a second run changes nothing)
+builds under `/Game/SOL/Fx`: `T_SOLThrusterNoise`, `M_SOLThrusterPlume`, `M_SOLThrusterGlow`, `M_SOLThrusterBurst`,
+`M_SOLThrusterTrail`, `SM_SOLNpcHullCone`, `SM_SOLNpcHullBox` (burst sections built here from the Q31 port table, so
+51g need not re-run the script), `SM_SOLPlayerThrusters`, `NS_SOLThrusterTrails`. Shader `Shaders/Private/SOLThruster.ush`,
+float mirror `Visuals/SOLThrusterMirror.h`, tests `SOLTest.Thruster.MaterialMirror` (case 12) and
+`SOLTest.Thruster.MaterialAssets` in `Tests/ThrusterMirrorTest.cpp`. Instruction counts (VS / PS): plume 632 / 165, glow
+296 / 134, burst 462 / 118, trail 153 / 96. As-built layout in SDD 51 sections 4.10 and 4.11. Not wired, so nothing is
+checked by eye yet.
+
 ### 51c: NPC plumes
 
 1. Thrust plumbing (`opus`, high): `ThrustLocalG` per CPU ship (Q2): the rail thrust vector in the Collect pass for Mid
@@ -134,3 +144,4 @@ additive and translucent overdraw in busy lanes, the burst / light scope increas
   added as scope increases; Q27-Q33 open.
 - 2026-11-21: Q27-Q33 answered and folded in (plumes and bursts only on hull-drawn ships, light gating, uncapped
   Cinematic ribbons, smoothed NPC burst acceleration, burst port table, burst size, 1 px glow floor); nothing blocked.
+- 2026-11-21: part 51b built (assets, shader, mirror and tests); status under 51b.

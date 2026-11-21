@@ -15,8 +15,7 @@
 
 // Tests for the issue #51 thruster plume math (SOLThruster, SDD 51 sections 4.2-4.9 and 7), written against the test
 // contract Docs/Plans/51-thruster-math-contract.md before the production code existed (part 51a, test first). One
-// automation test per contract case; case 12 (MaterialMirror) belongs to part 51b and is added once the HLSL mirror
-// exists. Tolerances follow the contract: lengths 1e-3 m, scalars 1e-4, unless a case states otherwise. Hull frame:
+// automation test per contract case; case 12 (MaterialMirror, part 51b) is in Tests/ThrusterMirrorTest.cpp. Tolerances follow the contract: lengths 1e-3 m, scalars 1e-4, unless a case states otherwise. Hull frame:
 // X nose, Y right, Z top (UE axes). Values the contract marks as parameters (the LOD bands, the ribbon radius, the
 // burst threshold) are passed as arguments here, so tuning them later does not touch this file.
 

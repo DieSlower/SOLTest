@@ -255,6 +255,16 @@ Q11)**; player, `PLAYER_HULL_LENGTH_M` **20 m**, 2 nozzles at the engine cylinde
   already have fixed bounds, so WPO growth is safe.
 - **Ribbons:** one array-fed Niagara ribbon system (D1 applies to the ribbons only, Q1), fed from the history arrays of
   the ribbon set.
+- **As built in 51b** (`SOL::ThrusterMaterialParams`, header of `Shaders/Private/SOLThruster.ush`): the 6 per-ship
+  floats are, in order, `c`, `b`, the **true plume length in metres** (not a scale: the vertex stage re-places every
+  thruster vertex in true metres from its anchor, which undoes both the non-uniform hull instance scale and the 3 px
+  inflation without the CPU knowing either, Q14), the reverse burst strength in [0, 1], and the signed
+  lateral and vertical strengths in [-1, 1] (right minus left, up minus down; `BurstStrength` is applied on the CPU).
+  The material reads per-instance custom data plus the same index of custom primitive data, so the ISMs, the mesh pool
+  and the player use one material each. An idle or sub-fade section collapses onto its anchor (no pixels). The NPC hull
+  meshes are new assets (`THRUSTER_NPC_HULL_MESH_FACTION_0/1`, a generated cone / box of the engine Cone / Cube's size
+  and pivot in slot `Hull` plus slots
+  `Plume`, `Glow`, `Burst`); `NPC_HULL_MESH_FACTION_0/1` are unchanged until 51c switches to them.
 
 ### 4.11 Assets (Q20)
 
@@ -264,6 +274,19 @@ burst sections of the NPC hull meshes, the player's plume meshes and `NS_SOLThru
 after the 51a pure math tests are green**. Never by hand, CC0 only (D10). Paths in `SOL::Paths` (STYLE_GUIDE section
 7); folders added to the cook-list gap (TECH_DEBT line 59). The ramp, brightness and knot formulas are mirrored by C++
 pure functions pinned by tests (the `SOLNpcTunnelMirror.h` pattern: a `.ush` included by a Custom node).
+
+**As built in 51b** (2026-11-21): the script also builds **`M_SOLThrusterTrail`** (additive, Niagara ribbon usage), the
+material the ribbon renderer needs, which this list had left out. The noise texture `T_SOLThrusterNoise` is a seeded,
+periodic value-noise fBm written by the script (R streaks, G / B puffs). The tunables reach the materials as vector
+parameters whose defaults the script reads from `SOL::Thruster` (`SOLThrusterMirror::MaterialVectors` packs the same
+values; `SOLTest.Thruster.MaterialAssets` fails if the asset defaults drift). `NS_SOLThrusterTrails`: one CPU-sim
+emitter, a one-shot burst of `TrailMaxPoints` (825 = 33 trails x 25 points at Epic) never-dying particles, point `i`
+reading element `i` (`Particles.UniqueID`) of the `TrailPositionsCm` / `TrailColours` / `TrailWidthsCm` arrays, width
+and alpha 0 past `TrailPointCount`, ribbon id the int `Particles.TrailRibbon = i / TrailPointsPerTrail` (25: the 24
+samples plus the live nozzle exit), link order `i % 25`. Compiled instruction counts (the editor's shader platform,
+`MaterialEditingLibrary.get_statistics` in the script's run): plume VS 632 / PS 165, glow VS 296 / PS 134, burst VS 462 / PS 118, trail VS
+153 / PS 96; the plume's vertex cost over 20,000 hulls is the first thing 51c/51g must profile. Assets are
+compile-checked only: nothing is drawn until 51c-51e, so the look is unverified by eye.
 
 ### 4.12 Per-frame cost and gates (Q21)
 
@@ -451,3 +474,5 @@ from the existing `QualityPreset` (Q12).
   (Q31, Q32), 1 px glow floor (Q33). No open questions remain.
 - 2026-11-21: part 51a: sections 4.14 and 7 list `BurstLengthM`, `PlumeAllowed` and `PlayerLightEnabled` like the
   contract; the frame note on `LaneThrustLocalG` and the 51a burst port constants added to 4.14.
+- 2026-11-21: part 51b: the as-built custom-data layout (true plume length in metres, signed burst strengths) in 4.10,
+  the ribbon material, Niagara layout and instruction counts in 4.11.

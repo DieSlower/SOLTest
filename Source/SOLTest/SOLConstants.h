@@ -2068,6 +2068,23 @@ namespace SOL
         inline constexpr const TCHAR* NPC_TUNNEL_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcTunnel.M_SOLNpcTunnel");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_0 = TEXT("/Engine/BasicShapes/Cone.Cone");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_1 = TEXT("/Engine/BasicShapes/Cube.Cube");
+        // Thruster plume (SDD 51 section 4.11), built by Tools/Fx/create_thruster_assets.py (keep both in sync): the
+        // plume, glow, gas-burst and ribbon materials, the generated noise texture, the NPC placeholder hulls with their
+        // plume / glow / burst sections (a generated cone and box of the same size and pivot as the two meshes above,
+        // plus the thruster sections), the player's thruster mesh and the ribbon system. Not drawn until parts 51c-51e
+        // wire them
+        inline constexpr const TCHAR* THRUSTER_PLUME_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterPlume.M_SOLThrusterPlume");
+        inline constexpr const TCHAR* THRUSTER_GLOW_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterGlow.M_SOLThrusterGlow");
+        inline constexpr const TCHAR* THRUSTER_BURST_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterBurst.M_SOLThrusterBurst");
+        inline constexpr const TCHAR* THRUSTER_TRAIL_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterTrail.M_SOLThrusterTrail");
+        inline constexpr const TCHAR* THRUSTER_NOISE_TEXTURE = TEXT("/Game/SOL/Fx/T_SOLThrusterNoise.T_SOLThrusterNoise");
+        inline constexpr const TCHAR* THRUSTER_NPC_HULL_MESH_FACTION_0 =
+            TEXT("/Game/SOL/Fx/SM_SOLNpcHullCone.SM_SOLNpcHullCone");
+        inline constexpr const TCHAR* THRUSTER_NPC_HULL_MESH_FACTION_1 =
+            TEXT("/Game/SOL/Fx/SM_SOLNpcHullBox.SM_SOLNpcHullBox");
+        inline constexpr const TCHAR* THRUSTER_PLAYER_MESH = TEXT("/Game/SOL/Fx/SM_SOLPlayerThrusters.SM_SOLPlayerThrusters");
+        inline constexpr const TCHAR* THRUSTER_TRAILS_NIAGARA_SYSTEM =
+            TEXT("/Game/SOL/Fx/NS_SOLThrusterTrails.NS_SOLThrusterTrails");
         inline constexpr const TCHAR* COMBAT_BOLT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLBolts.NS_SOLBolts");
         inline constexpr const TCHAR* COMBAT_IMPACT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLImpact.NS_SOLImpact");
         inline constexpr const TCHAR* COMBAT_SHIELD_BREAK_NIAGARA_SYSTEM =
@@ -2722,11 +2739,106 @@ namespace SOL
         inline constexpr double PLAYER_SIDE_PORT_Y_M = 1.5;
         inline constexpr double PLAYER_SIDE_PORT_Z_M = 1.5;
 
+        // Material look (section 4.4, Q25 start values, tuned in part 51f). They reach the thruster materials as the
+        // vector parameters of SOL::ThrusterMaterialParams (SOLThrusterMirror::MaterialVectors, the asset defaults
+        // written by Tools/Fx/create_thruster_assets.py), so Shaders/Private/SOLThruster.ush keeps no copy
+        inline constexpr double SHOCK_KNOT_HALF_LENGTH = 0.35;     // Rhombus half-length over the knot spacing S
+        inline constexpr double SHOCK_KNOT_HALF_WIDTH = 0.6;       // Rhombus half-width over the local cone radius
+        inline constexpr double SHOCK_KNOT_GAIN = 1.6;             // Knot brightness added on the core, at strength 1
+        inline constexpr double PLUME_EMISSIVE = 6.0;              // Plume emissive scale at b = 1 (exposure-relative)
+        inline constexpr double PLUME_CORE_POWER = 4.0;            // Core weight = facing^power (white-hot centre line)
+        inline constexpr double STREAK_STRENGTH = 0.45;            // Depth of the panning noise streaks
+        inline constexpr double STREAK_TILES_AROUND = 3.0;         // Noise tiles around the cone
+        inline constexpr double STREAK_TILE_LENGTH_RADII = 6.0;    // One noise tile along the cone, in nozzle radii
+        inline constexpr double STREAK_PAN_TILES_PER_S = 2.5;      // Streak pan rate at b = 1, proportional to b
+        inline constexpr double CONE_FADE_LOW_PX = 0.5;            // Cone and burst alpha 0 at this length (ref px)...
+        inline constexpr double CONE_FADE_HIGH_PX = 1.0;           // ...rising linearly to 1 here (section 4.5)
+        inline constexpr double GLOW_DIAMETER_NOZZLE_RADII = 2.5;  // Nozzle glow diameter (Q25)
+        inline constexpr double GLOW_FADE_LOW_PX = 0.5;            // Glow alpha 0 at this true diameter (ref px)...
+        inline constexpr double GLOW_FADE_HIGH_PX = 1.0;           // ...1 here (Q13)
+        inline constexpr double GLOW_EMISSIVE = 4.0;               // Glow emissive scale at b = 1
+        inline constexpr double BURST_MAX_OPACITY = 0.25;          // Gas burst opacity at strength 1 (Q32)
+        inline constexpr double BURST_BASE_RADIUS_LENGTHS = 0.12;  // Puff radius at the port, in burst lengths...
+        inline constexpr double BURST_TAIL_RADIUS_LENGTHS = 0.4;   // ...and at its end (the gas spreads)
+        inline constexpr double BURST_FLICKER_HZ = 9.0;            // Puff flicker rate (per-instance phase)
+        inline constexpr double BURST_FLICKER_DEPTH = 0.35;        // Fraction of the opacity the flicker takes away
+        inline constexpr double BURST_EMISSIVE = 0.6;              // Grey-white gas, faintly self-lit (unlit material)
+        inline constexpr FLinearColor BURST_COLOUR = FLinearColor(0.82f, 0.85f, 0.90f);
+        inline constexpr double TRAIL_EMISSIVE = 3.0;              // Ribbon emissive scale (colour and alpha per point)
+        // Ribbon points per trail in NS_SOLThrusterTrails: the history plus the live nozzle exit as the head
+        inline constexpr int32 RIBBON_POINTS_PER_TRAIL = RIBBON_SAMPLES + 1;
+
         static_assert(COLOUR_BLUE_END_G < COLOUR_YELLOW_G && COLOUR_YELLOW_G < G_REF, "the colour keys are ordered");
+        static_assert(SHOCK_KNOT_HALF_LENGTH < 0.5, "neighbouring knots never overlap (one knot per pixel)");
+        static_assert(CONE_FADE_LOW_PX < CONE_FADE_HIGH_PX && GLOW_FADE_LOW_PX < GLOW_FADE_HIGH_PX,
+            "the pixel fades rise");
         static_assert(COLOUR_YELLOW_C > 0.0 && COLOUR_YELLOW_C < 1.0, "the yellow key lies inside the ramp");
         static_assert(RIBBON_SAMPLES >= 16 && RIBBON_SAMPLES <= 32, "the ribbon history holds 16-32 samples");
         static_assert(BURST_MIN_G < BURST_REF_G, "the burst ramp rises");
         static_assert(UE_ARRAY_COUNT(RIBBON_COUNTS_BY_QUALITY) == 5, "one ribbon count per quality preset");
+    }
+
+    // Thruster materials and meshes (SDD 51 sections 4.4-4.6, 4.10; Paths::THRUSTER_*): the per-ship floats the plume,
+    // glow and burst sections read, the mesh material slots and the vector parameters (defaults from SOL::Thruster)
+    namespace ThrusterMaterialParams
+    {
+        // Per-ship floats: per-instance custom data on the hull ISMs, custom primitive data on a single mesh component
+        // (the mesh pool, the player); the material reads the sum of both, so either source works
+        inline constexpr int32 CUSTOM_COLOUR = 0;                  // c in [0, 1]
+        inline constexpr int32 CUSTOM_BRIGHTNESS = 1;              // b in [0, 1]; 0 = no plume, no glow
+        inline constexpr int32 CUSTOM_PLUME_LENGTH_M = 2;          // True plume length L_p in metres (not the drawn
+                                                                   // scale: the material undoes the hull inflation)
+        inline constexpr int32 CUSTOM_BURST_REVERSE = 3;           // Reverse burst strength in [0, 1] (bow ports)
+        inline constexpr int32 CUSTOM_BURST_LATERAL = 4;           // Right minus left burst strength in [-1, 1]: > 0
+                                                                   // fires the left-side port (gas -Y)
+        inline constexpr int32 CUSTOM_BURST_VERTICAL = 5;          // Up minus down burst strength in [-1, 1]: > 0
+                                                                   // fires the bottom port (gas -Z)
+        inline constexpr int32 CUSTOM_DATA_FLOATS = 6;
+
+        // Material slot names of the thruster meshes (the player mesh has no hull slot)
+        inline constexpr const TCHAR* SLOT_HULL = TEXT("Hull");
+        inline constexpr const TCHAR* SLOT_PLUME = TEXT("Plume");
+        inline constexpr const TCHAR* SLOT_GLOW = TEXT("Glow");
+        inline constexpr const TCHAR* SLOT_BURST = TEXT("Burst");
+
+        // Vector parameters (SOLThrusterMirror::MaterialVectors packs them; Shaders/Private/SOLThruster.ush reads them)
+        inline constexpr const TCHAR* RIM_0 = TEXT("ThrusterRim0");            // RIM_BLUE, RIM_YELLOW, RIM_RED
+        inline constexpr const TCHAR* RIM_1 = TEXT("ThrusterRim1");
+        inline constexpr const TCHAR* RIM_2 = TEXT("ThrusterRim2");
+        inline constexpr const TCHAR* CORE_0 = TEXT("ThrusterCore0");          // CORE_BLUE, CORE_YELLOW, CORE_RED
+        inline constexpr const TCHAR* CORE_1 = TEXT("ThrusterCore1");
+        inline constexpr const TCHAR* CORE_2 = TEXT("ThrusterCore2");
+        inline constexpr const TCHAR* RAMP = TEXT("ThrusterRamp");             // (yellow c, 0, 0, 0)
+        inline constexpr const TCHAR* SHOCK = TEXT("ThrusterShock");           // (spacing factor, gain, decay, zone)
+        inline constexpr const TCHAR* SHAPE = TEXT("ThrusterShape");           // (max knots, tail ratio, knot half
+                                                                               //  length, knot half width)
+        inline constexpr const TCHAR* LOOK = TEXT("ThrusterLook");             // (emissive, core power, knot gain,
+                                                                               //  streak strength)
+        inline constexpr const TCHAR* STREAK = TEXT("ThrusterStreak");         // (tiles around, tile length radii,
+                                                                               //  pan tiles/s, 0)
+        inline constexpr const TCHAR* FADE = TEXT("ThrusterFade");             // (cone low px, high px, ref height, 0)
+        inline constexpr const TCHAR* GLOW = TEXT("ThrusterGlow");             // (diameter radii, min drawn px,
+                                                                               //  emissive, ref height)
+        inline constexpr const TCHAR* GLOW_FADE = TEXT("ThrusterGlowFade");    // (low px, high px, 0, 0)
+        inline constexpr const TCHAR* BURST = TEXT("ThrusterBurst");           // (max opacity, flicker Hz, flicker
+                                                                               //  depth, emissive)
+        inline constexpr const TCHAR* BURST_SHAPE = TEXT("ThrusterBurstShape"); // (base radius, tail radius in
+                                                                               //  lengths, low px, high px)
+        inline constexpr const TCHAR* BURST_COLOUR = TEXT("ThrusterBurstColour");
+        inline constexpr const TCHAR* TRAIL = TEXT("ThrusterTrail");           // (emissive, 0, 0, 0)
+        inline constexpr const TCHAR* NOISE_TEXTURE = TEXT("ThrusterNoise");   // Texture parameter
+    }
+
+    // Niagara User Parameter names of Paths::THRUSTER_TRAILS_NIAGARA_SYSTEM (SDD 51 section 4.8): one CPU-sim particle
+    // per ribbon point, fed from arrays; point i belongs to trail i / POINTS_PER_TRAIL (link order i % it)
+    namespace ThrusterTrailParams
+    {
+        inline constexpr const TCHAR* POSITIONS_CM = TEXT("TrailPositionsCm");  // Float3 array: component-local cm
+        inline constexpr const TCHAR* COLOURS = TEXT("TrailColours");           // Colour array: rgb, a = alpha
+        inline constexpr const TCHAR* WIDTHS_CM = TEXT("TrailWidthsCm");        // Float array: ribbon width (cm)
+        inline constexpr const TCHAR* POINT_COUNT = TEXT("TrailPointCount");    // Live points of the arrays
+        inline constexpr const TCHAR* MAX_POINTS = TEXT("TrailMaxPoints");      // Particles spawned once
+        inline constexpr const TCHAR* POINTS_PER_TRAIL = TEXT("TrailPointsPerTrail"); // Thruster::RIBBON_POINTS_PER_TRAIL
     }
 
     // NPC lane lines (SDD 38 sections 4.4-4.7, issue #38): each lane with traffic is two dashed hologram lines
