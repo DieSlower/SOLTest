@@ -635,3 +635,35 @@ bool SOLThruster::PlayerLightEnabled(const int32 qualityPreset, const bool bVR)
 {
     return bVR || PlumeClampQuality(qualityPreset) > 0;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a world thrust in the ship frame of an attitude (zero for a non-finite input)
+FVector3d SOLThruster::ShipThrustLocalMps2(const FQuat4d& orientation, const FVector3d& thrustWorldMps2)
+{
+    if (thrustWorldMps2.ContainsNaN() || !FMath::IsFinite(orientation.X) || !FMath::IsFinite(orientation.Y)
+        || !FMath::IsFinite(orientation.Z) || !FMath::IsFinite(orientation.W))
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d local = orientation.UnrotateVector(thrustWorldMps2);
+    return local.ContainsNaN() ? FVector3d::ZeroVector : local;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the player's plume floats from the forward G on its hull and its hull light from the uncut brightness
+FSOLPlayerPlume SOLThruster::PlayerPlume(const FVector3f& thrustLocalG, const bool bWarPower, const double distanceM,
+    const double focalRefPx, const bool bLightEnabled)
+{
+    FSOLPlayerPlume result;
+    const double gMain = static_cast<double>(thrustLocalG.X);
+    result.Plume = PlumeInstance(gMain, bWarPower, SOL::Thruster::PLAYER_HULL_LENGTH_M, distanceM, focalRefPx);
+    const float brightness = static_cast<float>(PlumeBrightness(gMain));
+    result.bLightVisible = bLightEnabled && brightness > 0.0f;
+    if (result.bLightVisible)
+    {
+        result.LightIntensityCd = PlumeLightIntensity(brightness,
+            static_cast<float>(SOL::Thruster::PLAYER_LIGHT_MAX_INTENSITY_CD));
+        result.LightColour = PlumeLightColour(PlumeColourScalar(gMain, bWarPower));
+    }
+    return result;
+}

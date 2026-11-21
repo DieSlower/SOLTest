@@ -122,6 +122,15 @@ struct FSOLPlumeInstance
     float LengthM = 0.0f;       // True plume length L_p (the true hull length's, never the drawn size, Q14)
 };
 
+// The player's plume floats and hull light of one frame (SOLThruster::PlayerPlume, part 51d)
+struct FSOLPlayerPlume
+{
+    FSOLPlumeInstance Plume;                        // Both nozzles' floats (they share c, b and L_p)
+    float LightIntensityCd = 0.0f;                  // Hull light intensity; 0 while hidden
+    FLinearColor LightColour = FLinearColor::Black; // The ramp's rim colour at c while visible
+    bool bLightVisible = false;                     // Enabled and b > 0
+};
+
 // The hulls with a nozzle table (SOLThruster::HullThrusters)
 enum class ESOLHullKind : uint8
 {
@@ -278,4 +287,14 @@ namespace SOLThruster
 
     // Returns whether the player hull light is on (Q28): always in VR, else at every preset above Low
     SOLTEST_API bool PlayerLightEnabled(int32 qualityPreset, bool bVR);
+
+    // Returns a world thrust (m/s^2) in the ship frame of an attitude (ship-local -> universe, Unreal-handed: X nose,
+    // Y right, Z top); zero for a non-finite input (part 51d: each flight substep's thrust, then FSOLThrustMean)
+    SOLTEST_API FVector3d ShipThrustLocalMps2(const FQuat4d& orientation, const FVector3d& thrustWorldMps2);
+
+    // Returns the player's plume floats (PlumeInstance of the forward G on the PLAYER_HULL_LENGTH_M hull) and hull
+    // light (visible when bLightEnabled and PlumeBrightness of the forward G > 0, PlumeLightIntensity of it with
+    // PLAYER_LIGHT_MAX_INTENSITY_CD, PlumeLightColour of the plume's c; not cut by the pixel size) (part 51d)
+    SOLTEST_API FSOLPlayerPlume PlayerPlume(const FVector3f& thrustLocalG, bool bWarPower, double distanceM,
+        double focalRefPx, bool bLightEnabled);
 }

@@ -37,10 +37,12 @@
 
 #include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
@@ -49,6 +51,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerInput.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -60,10 +63,14 @@
 
 namespace
 {
-    // Placeholder ship look: light grey-blue hull, darker trim, orange engine glow (linear colors)
+    // Placeholder ship look: light grey-blue hull, darker trim (linear colors); the engines glow by their thrust
+    // (SDD 51 part 51d)
     const FLinearColor SHIP_HULL_COLOR(0.55f, 0.6f, 0.68f);
     const FLinearColor SHIP_TRIM_COLOR(0.12f, 0.15f, 0.2f);
-    const FLinearColor SHIP_ENGINE_GLOW(8.0f, 3.2f, 0.8f);
+
+    // Developer A/B switch of the player's plume mesh and hull light (SDD 51 part 51d)
+    TAutoConsoleVariable<int32> CVarSOLPlayerPlume(SOL::PLAYER_PLUME_CVAR, 1,
+        TEXT("1: the player ship shows its thruster plumes and hull light (SDD 51); 0: neither (A/B profiling)"));
 
     // Viewport layer of the F3 speed panel (above the HUD canvas)
     constexpr int32 SPEED_PANEL_Z_ORDER = 10;
@@ -86,7 +93,6 @@ namespace
     {
         Hull,
         Trim,
-        Glow,
         Count,
     };
 
@@ -117,10 +123,6 @@ namespace
             FVector(1.6, 1.6, 4.0) },                                                              // Engine R
         { ESOLShipPartShape::Cylinder, ESOLShipPartLook::Trim, FVector(-600.0, -220.0, -20.0), SHIP_ALONG_X,
             FVector(1.6, 1.6, 4.0) },                                                              // Engine L
-        { ESOLShipPartShape::Sphere, ESOLShipPartLook::Glow, FVector(-805.0, 220.0, -20.0), FRotator::ZeroRotator,
-            FVector(0.5, 1.3, 1.3) },                                                              // Glow R
-        { ESOLShipPartShape::Sphere, ESOLShipPartLook::Glow, FVector(-805.0, -220.0, -20.0), FRotator::ZeroRotator,
-            FVector(0.5, 1.3, 1.3) },                                                              // Glow L
     };
 
     //////////////////////////////////////////////////////////////////////////
@@ -197,6 +199,22 @@ ASOLShipPawn::ASOLShipPawn()
     FillLight->SetIntensity(SOL::SUN_ILLUMINANCE_LUX * SOL::SHIP_FILL_LIGHT_FRACTION);
     FillLight->SetCastShadows(false);
     FillLight->LightingChannels.bChannel1 = true;   // The ship is on channel 1 (SDD 16, 16d)
+
+    // Hull light (SDD 51 section 4.7, Q17, Q28): an unshadowed point light aft of the nozzles on channel 2, which only
+    // the hull parts share, so the plume lights its own hull and nothing else; hidden until the plume burns
+    PlumeLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("PlumeLight"));
+    PlumeLight->SetupAttachment(ShipRoot);
+    PlumeLight->SetMobility(EComponentMobility::Movable);
+    const double lightXM = SOL::Thruster::PLAYER_NOZZLE_X_M - SOL::Thruster::PLAYER_LIGHT_AFT_OF_NOZZLES_M;
+    PlumeLight->SetRelativeLocation(FVector(lightXM, 0.0, SOL::Thruster::PLAYER_NOZZLE_Z_M) * SOL::METERS_TO_CM);
+    PlumeLight->SetIntensityUnits(ELightUnits::Candelas);
+    PlumeLight->SetIntensity(0.0f);
+    PlumeLight->SetAttenuationRadius(static_cast<float>(SOL::Thruster::PLAYER_LIGHT_RADIUS_M * SOL::METERS_TO_CM));
+    PlumeLight->SetCastShadows(false);
+    PlumeLight->LightingChannels.bChannel0 = false;
+    PlumeLight->LightingChannels.bChannel1 = false;
+    PlumeLight->LightingChannels.bChannel2 = true;
+    PlumeLight->SetVisibility(false);
 
     // Space dust speed cues (SDD 43): idle until a player ship exists; drives its own Niagara component
     SpaceDust = CreateDefaultSubobject<USOLSpaceDustComponent>(TEXT("SpaceDust"));
@@ -301,6 +319,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeThruster = MakeUnique<FSOLThrusterSmoke>();
         mSmokeThruster->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_PLAYER_THRUSTER))
+    {
+        mSmokePlayerThruster = MakeUnique<FSOLPlayerThrusterSmoke>();
+        mSmokePlayerThruster->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_MERGE))
     {
         mSmokeLaneMerge = MakeUnique<FSOLLaneMergeSmoke>();
@@ -394,7 +417,7 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
-        || mSmokeThruster.IsValid()
+        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
@@ -463,6 +486,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeNpcTunnel.Reset();
     mSmokeNpcTraffic.Reset();
     mSmokeThruster.Reset();
+    mSmokePlayerThruster.Reset();
     mSmokeLaneMerge.Reset();
     mSmokeAutoLanes.Reset();
     mSmokeMap.Reset();
@@ -523,6 +547,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeThruster.IsValid() && mSmokeThruster->Update(*this, deltaSeconds))
     {
         mSmokeThruster.Reset();
+    }
+    if (mSmokePlayerThruster.IsValid() && mSmokePlayerThruster->Update(*this, deltaSeconds))
+    {
+        mSmokePlayerThruster.Reset();
     }
     if (mSmokeLaneMerge.IsValid() && mSmokeLaneMerge->Update(*this, deltaSeconds))
     {
@@ -1046,7 +1074,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
-        || mSmokeThruster.IsValid()
+        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
@@ -1467,7 +1495,7 @@ bool ASOLShipPawn::IsKeyMappedToBinding(const int32 binding, const FKey& key) co
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the placeholder ship from engine primitives with a light hull and a glowing engine
+// Builds the placeholder ship from engine primitives with a light hull, and its thruster plume mesh
 void ASOLShipPawn::BuildShipMesh()
 {
     UStaticMesh* cube = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_CUBE);
@@ -1475,26 +1503,19 @@ void ASOLShipPawn::BuildShipMesh()
     UStaticMesh* cylinder = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_CYLINDER);
     UStaticMesh* sphere = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_SPHERE);
     UMaterialInterface* hullBase = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::SHIP_HULL_MATERIAL);
-    UMaterialInterface* glowBase = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::BODY_MATERIAL);
-    if (cube == nullptr || cone == nullptr || cylinder == nullptr || sphere == nullptr || hullBase == nullptr
-        || glowBase == nullptr)
+    if (cube == nullptr || cone == nullptr || cylinder == nullptr || sphere == nullptr || hullBase == nullptr)
     {
         UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: failed to load the placeholder ship meshes or materials"), *GetName());
         return;
     }
 
-    // Lit hull and trim; the engine glow reuses the unlit body material with only its emissive term
+    // Lit hull and trim
     UMaterialInstanceDynamic* hull = SOLShipPawnCreateHullMaterial(hullBase, this, SHIP_HULL_COLOR);
     UMaterialInstanceDynamic* trim = SOLShipPawnCreateHullMaterial(hullBase, this, SHIP_TRIM_COLOR);
-    UMaterialInstanceDynamic* glow = UMaterialInstanceDynamic::Create(glowBase, this);
-    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::COLOR_A), FLinearColor::Black);
-    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::COLOR_B), FLinearColor::Black);
-    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::POLAR_COLOR), FLinearColor::Black);
-    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::EMISSIVE_COLOR), SHIP_ENGINE_GLOW);
 
     // One component per entry of the parts table, indexed by shape and look
     UStaticMesh* const meshes[] = { cube, cone, cylinder, sphere };
-    UMaterialInterface* const materials[] = { hull, trim, glow };
+    UMaterialInterface* const materials[] = { hull, trim };
     static_assert(UE_ARRAY_COUNT(meshes) == static_cast<int32>(ESOLShipPartShape::Count), "One mesh per part shape");
     static_assert(UE_ARRAY_COUNT(materials) == static_cast<int32>(ESOLShipPartLook::Count), "One material per look");
     ShipParts.Reserve(UE_ARRAY_COUNT(SHIP_PARTS));
@@ -1503,6 +1524,25 @@ void ASOLShipPawn::BuildShipMesh()
         AddShipPart(meshes[static_cast<int32>(spec.Shape)], materials[static_cast<int32>(spec.Look)], spec.LocationCm,
             spec.Rotation, spec.Scale);
     }
+
+    // The two nozzle plumes and glows (SDD 51 section 4.10, replacing the always-on engine glow spheres, Q19): the
+    // mesh is built in the hull frame in cm with its own thruster materials; idle sections collapse onto their anchors
+    UStaticMesh* thrusters = LoadObject<UStaticMesh>(nullptr, SOL::Paths::THRUSTER_PLAYER_MESH);
+    if (thrusters == nullptr)
+    {
+        UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: failed to load the thruster plume mesh"), *GetName());
+        return;
+    }
+    ThrusterMesh = NewObject<UStaticMeshComponent>(this);
+    ThrusterMesh->SetMobility(EComponentMobility::Movable);
+    ThrusterMesh->SetStaticMesh(thrusters);
+    ThrusterMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    ThrusterMesh->SetCastShadow(false);
+    ThrusterMesh->SetupAttachment(ShipRoot);
+    ThrusterMesh->RegisterComponent();
+    float plume[SOL::ThrusterMaterialParams::CUSTOM_DATA_FLOATS];
+    SOLThruster::PlumeCustomData(FSOLPlumeInstance(), MakeArrayView(plume));
+    ThrusterMesh->SetCustomPrimitiveDataFloatArray(0, MakeArrayView(plume));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1517,6 +1557,7 @@ void ASOLShipPawn::AddShipPart(UStaticMesh* mesh, UMaterialInterface* material, 
     part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     part->SetCastShadow(false);
     SOLShipSunlight::PutOnShipLightingChannel(part);   // Lit by the shadowed ship sun light, not the rocks' (SDD 16)
+    SOLShipSunlight::AddToPlayerHullLightChannel(part); // ...and by its own plume's hull light (SDD 51 section 4.7)
     part->SetupAttachment(ShipRoot);
     part->SetRelativeTransform(FTransform(rotation, locationCm, scale));
     part->RegisterComponent();
@@ -1543,6 +1584,81 @@ void ASOLShipPawn::FollowShip()
     SetActorLocationAndRotation(AnchorSubsystem->ComputePointRenderLocationCm(AnchorSubsystem->GetObserverPositionM()),
         orientation);
     UpdateCameraRotation(GetWorld()->GetDeltaSeconds());
+    UpdateThrusterPlume();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drives the thruster mesh's plume floats and the hull light from the step's thrust that the ship was just placed with
+// (War power colour while the order flies; the light gated by quality and VR, Q28); sol.PlayerPlume 0 hides both
+void ASOLShipPawn::UpdateThrusterPlume()
+{
+    if (ThrusterMesh == nullptr || PlumeLight == nullptr)
+    {
+        return;
+    }
+    const bool bShown = CVarSOLPlayerPlume.GetValueOnGameThread() != 0;
+    if (bShown != mIsPlumeShown)
+    {
+        mIsPlumeShown = bShown;
+        ThrusterMesh->SetVisibility(bShown);
+    }
+    if (!bShown)
+    {
+        mPlayerPlume = FSOLPlayerPlume();
+        PlumeLight->SetVisibility(false);
+        return;
+    }
+
+    // The plume's pixel size from the camera's distance to the ship (the reference focal length of the view)
+    // The light: the verification override, else the applied quality preset and whether the view is stereo (VR)
+    const bool bVR = GEngine != nullptr && GEngine->IsStereoscopic3D();
+    const bool bLightEnabled = mPlumeQualityOverride != INDEX_NONE
+        ? SOLThruster::PlayerLightEnabled(mPlumeQualityOverride, mIsPlumeVrOverride)
+        : Settings == nullptr || SOLThruster::PlayerLightEnabled(Settings->GetSavedValues().QualityPreset, bVR);
+    FVector2D viewportPx(0.0, 0.0);
+    if (const UGameViewportClient* viewport = GetWorld()->GetGameViewport())
+    {
+        viewport->GetViewportSize(viewportPx);
+    }
+    const double aspect = viewportPx.Y > 0.0 ? viewportPx.X / viewportPx.Y : SOL::Thruster::PLAYER_FALLBACK_ASPECT;
+    const double distanceM = FVector::Dist(Camera->GetComponentLocation(), GetActorLocation()) / SOL::METERS_TO_CM;
+    mPlumeThrustG = Ships->GetThrustLocalG();
+    mPlayerPlume = SOLThruster::PlayerPlume(mPlumeThrustG, Ships->IsAutopilotWarPower(), distanceM,
+        SOLThruster::FocalRefPx(Camera->FieldOfView, aspect), bLightEnabled);
+
+    // Floats to the render thread only when they change; the light likewise
+    float plume[SOL::ThrusterMaterialParams::CUSTOM_DATA_FLOATS];
+    SOLThruster::PlumeCustomData(mPlayerPlume.Plume, MakeArrayView(plume));
+    const TArray<float>& pushed = ThrusterMesh->GetCustomPrimitiveData().Data;
+    if (pushed.Num() < SOL::ThrusterMaterialParams::CUSTOM_DATA_FLOATS
+        || FMemory::Memcmp(pushed.GetData(), plume, sizeof(plume)) != 0)
+    {
+        ThrusterMesh->SetCustomPrimitiveDataFloatArray(0, MakeArrayView(plume));
+    }
+    if (PlumeLight->IsVisible() != mPlayerPlume.bLightVisible)
+    {
+        PlumeLight->SetVisibility(mPlayerPlume.bLightVisible);
+    }
+    if (mPlayerPlume.bLightVisible)
+    {
+        PlumeLight->SetIntensity(mPlayerPlume.LightIntensityCd);
+        PlumeLight->SetLightColor(mPlayerPlume.LightColour);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the pilot G vision post-process blend weight
+float ASOLShipPawn::GetGVisionBlendWeight() const
+{
+    return GVisionPostProcess != nullptr ? GVisionPostProcess->BlendWeight : 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Overrides the hull light gating's quality preset and VR flag (INDEX_NONE clears it)
+void ASOLShipPawn::SetPlumeLightOverride(const int32 qualityPreset, const bool bVR)
+{
+    mPlumeQualityOverride = qualityPreset;
+    mIsPlumeVrOverride = bVR;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -116,6 +116,16 @@ void SOLShipSunlight::PutOnShipLightingChannel(UPrimitiveComponent* primitive)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Adds a primitive to lighting channel 2, the player hull light's own channel (its other channels kept)
+void SOLShipSunlight::AddToPlayerHullLightChannel(UPrimitiveComponent* primitive)
+{
+    if (primitive != nullptr)
+    {
+        primitive->LightingChannels.bChannel2 = true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Writes a body's base color (the material's linear ColorA) and returns true, or returns false if it has none
 bool SOLBodyAppearance::FindBaseColor(const FName bodyName, FLinearColor& outColor)
 {

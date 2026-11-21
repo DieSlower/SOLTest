@@ -13,6 +13,7 @@
 #include "SOLConstants.h"
 #include "Universe/SOLBodyFrameCache.h"
 #include "Universe/SOLRenderPlacement.h"
+#include "Visuals/SOLThrusterMath.h"
 
 #include "MassExecutionContext.h"
 
@@ -197,6 +198,7 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         FSOLChaseRunState chaseRun;
         FSOLChaseGLimit chaseLimit;
         FSOLWarPowerPulseState warPowerPulse = stateFragment.WarPowerPulse;
+        FSOLThrustMean thrustMean;      // The plume's thrust: the substeps' ship-frame thrust, time-weighted (SDD 51)
 
         // Real-time flight inherits its frame's velocity change under warp once, at the frame start; an autopilot or
         // a chase under warp integrates the frame's sim time itself and needs no carry
@@ -462,6 +464,10 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
             }
             gLoad = SOLNewtonian::GLoadG(properAccelMps2);
             meter = SOLNewtonian::StepGMeter(meter, gLoad, flightParams.PilotLimits, substepS);
+
+            // The achieved thrust alone (no contact push) in the attitude the step thrust with
+            thrustMean.Add(SOLThruster::ShipThrustLocalMps2(before.Orientation, stepOutput.ThrustAccelWorldMps2),
+                substepS);
         }
 
         // In a lane step every AUTO kind's HUD ETA counts the lane at the traffic speed (approach, lane, leave with its
@@ -489,6 +495,10 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         stateFragment.LaneLeg = laneLeg;
         stateFragment.LaneMode = laneMode;
         stateFragment.WarPowerPulse = warPowerPulse;
+        if (substepS > 0.0)
+        {
+            stateFragment.ThrustLocalG = thrustMean.MeanG();    // A zero-length step keeps the last plume
+        }
         if (chaseFragment != nullptr)
         {
             chaseFragment->ChaseRun = chaseRun;

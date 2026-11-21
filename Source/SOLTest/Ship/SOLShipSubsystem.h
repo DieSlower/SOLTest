@@ -329,6 +329,10 @@ public:
     // Returns the pilot's G-load (thrust plus surface contact) as of the last step
     double GetGLoadG() const;
 
+    // Returns the player ship's achieved thrust in its ship frame (X nose, Y right, Z top), G, as of the last step: the
+    // substeps' time-weighted mean (SDD 51 section 4.2, the plume's source); zero without a ship
+    FVector3f GetThrustLocalG() const;
+
     // Returns true while the autopilot flies under a warp too high for precise gravity near a body (HUD hint)
     bool IsAutopilotPrecisionReduced() const;
 

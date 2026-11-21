@@ -1956,6 +1956,12 @@ namespace SOL
         // With -SOLSmokeThruster (-game only): interleaved sol.NpcPlumes 1 / 0 cost windows at the Earth spawn view and
         // in a lane view instead of the checks (SDD 51 section 4.12)
         inline constexpr const TCHAR* SMOKE_THRUSTER_PROFILE = TEXT("SOLSmokeThrusterProfile");
+        // The player's plume and hull light through idle, 1 G, 3 G, boost, the light gating, the cvar and War power,
+        // with screenshots (SDD 51 part 51d), then quit
+        inline constexpr const TCHAR* SMOKE_PLAYER_THRUSTER = TEXT("SOLSmokePlayerThruster");
+        // With -SOLSmokePlayerThruster (-game only): interleaved sol.PlayerPlume 1 / 0 cost windows under a War power
+        // order instead of the checks
+        inline constexpr const TCHAR* SMOKE_PLAYER_THRUSTER_PROFILE = TEXT("SOLSmokePlayerThrusterProfile");
         inline constexpr const TCHAR* SMOKE_LANE_MERGE = TEXT("SOLSmokeLaneMerge");    // Lane merge readout (SDD 50
                                                                                          // V6), quit
         // The sim date -SOLSmokeLaneMerge starts at unless -SOLSimDate= is given: the planets' places decide which
@@ -2725,6 +2731,15 @@ namespace SOL
         inline constexpr double PLAYER_NOZZLE_Y_M = 2.2;           // One nozzle at +Y, one at -Y
         inline constexpr double PLAYER_NOZZLE_Z_M = -0.2;
 
+        // Player hull light (section 4.7, Q17, Q28): one unshadowed point light this far aft of the nozzles' centroid
+        // on the centre line, on lighting channel 2, which only the player's hull parts share; intensity b x the
+        // maximum (start value, tuned in 51f: the sun is SUN_ILLUMINANCE_LUX 3 lux, so 40 cd lights the engines
+        // about as brightly as the sun from 3.7 m)
+        inline constexpr double PLAYER_LIGHT_AFT_OF_NOZZLES_M = 1.0;
+        inline constexpr double PLAYER_LIGHT_MAX_INTENSITY_CD = 40.0;
+        inline constexpr double PLAYER_LIGHT_RADIUS_M = PLAYER_HULL_LENGTH_M;
+        inline constexpr double PLAYER_FALLBACK_ASPECT = 16.0 / 9.0;  // The plume's pixel rule before a viewport exists
+
         // Burst port table (Q31, provisional positions on the placeholder hulls, hull frame metres): a bow pair at
         // (BOW_X, +-BOW_Y, 0) exhausting +X for reverse thrust, and 4 side ports: (SIDE_X, +-SIDE_Y, 0) for lateral
         // thrust and (SIDE_X, 0, +-SIDE_Z) for vertical thrust, each exhausting outward; no stern ports
@@ -2877,6 +2892,8 @@ namespace SOL
     inline constexpr const TCHAR* NPC_LANE_CVAR = TEXT("sol.NpcLanes"); // 0 hides the lane lines (A/B profiling, D20)
     // 0 draws the NPC hulls as the plain engine shapes without plume floats (A/B profiling, SDD 51 part 51c)
     inline constexpr const TCHAR* NPC_PLUME_CVAR = TEXT("sol.NpcPlumes");
+    // 0 hides the player's thruster plume mesh and hull light (A/B profiling, SDD 51 part 51d)
+    inline constexpr const TCHAR* PLAYER_PLUME_CVAR = TEXT("sol.PlayerPlume");
     static_assert(NPC_LANE_FADE_FAR_RADII > NPC_LANE_FADE_NEAR_RADII && NPC_LANE_FADE_NEAR_RADII > 1.0,
         "the lane fade band runs outward from the near radii");
     static_assert(NPC_LANE_TRAFFIC_HIGH > NPC_LANE_TRAFFIC_LOW && NPC_LANE_TRAFFIC_LOW > 0,

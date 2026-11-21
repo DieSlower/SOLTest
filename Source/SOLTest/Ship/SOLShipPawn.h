@@ -26,6 +26,7 @@
 #include "Npc/SOLNpcTrafficSmoke.h"
 #include "Npc/SOLNpcTunnelSmoke.h"
 #include "Npc/SOLThrusterSmoke.h"
+#include "Ship/SOLPlayerThrusterSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHoloMenuProfileSmoke.h"
@@ -33,6 +34,7 @@
 #include "UI/SOLHudSmoke.h"
 #include "UI/SOLOverlaySmoke.h"
 #include "Visuals/SOLSpaceDustSmoke.h"
+#include "Visuals/SOLThrusterMath.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
@@ -43,6 +45,7 @@ class APlayerController;
 class UCameraComponent;
 class UPostProcessComponent;
 class UDirectionalLightComponent;
+class UPointLightComponent;
 class UInputAction;
 class UInputMappingContext;
 class ULocalPlayer;
@@ -380,6 +383,22 @@ public:
     // Returns the control the pawn composed this frame
     const FSOLShipControl& GetComposedControl() const { return mControl; }
 
+    // Returns the plume floats and hull light pushed after the last universe update, and the thrust (G, ship frame)
+    // they came from (verification, -SOLSmokePlayerThruster)
+    const FSOLPlayerPlume& GetPlayerPlume() const { return mPlayerPlume; }
+    const FVector3f& GetPlumeThrustG() const { return mPlumeThrustG; }
+
+    // Returns the thruster mesh and the hull light (verification); null before BeginPlay builds the mesh
+    const UStaticMeshComponent* GetThrusterMesh() const { return ThrusterMesh; }
+    const UPointLightComponent* GetPlumeLight() const { return PlumeLight; }
+
+    // Returns the pilot G vision post-process blend weight (verification)
+    float GetGVisionBlendWeight() const;
+
+    // Overrides the quality preset and VR flag the hull light gating reads (verification, in memory only; a preset of
+    // INDEX_NONE clears it)
+    void SetPlumeLightOverride(int32 qualityPreset, bool bVR);
+
     // Returns the virtual joystick offset in pixels (X right, Y up)
     const FVector2d& GetStickOffsetPixels() const { return mStickOffsetPx; }
 
@@ -540,6 +559,9 @@ private:
 
     // Places the actor at the observer's render location with the ship's orientation after the universe update
     void FollowShip();
+
+    // Drives the thruster mesh's plume floats and the hull light from the last step's thrust (SDD 51 part 51d)
+    void UpdateThrusterPlume();
 
     // Returns the ship's position and forward direction (Unreal-handed universe frame); false without a ship
     bool GetShipPose(FVector3d& outPositionM, FVector3d& outForwardDir) const;
@@ -784,6 +806,14 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UStaticMeshComponent>> ShipParts;
 
+    /** The player's hull light (SDD 51 section 4.7): lit by the plume, on lighting channel 2 with the hull parts only. */
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
+    TObjectPtr<UPointLightComponent> PlumeLight;
+
+    /** The two nozzle plumes and glows (SM_SOLPlayerThrusters, hull frame), driven by custom primitive data. */
+    UPROPERTY(Transient)
+    TObjectPtr<UStaticMeshComponent> ThrusterMesh;
+
     UPROPERTY(Transient)
     TObjectPtr<UInputMappingContext> MappingContext;
 
@@ -1005,6 +1035,7 @@ private:
     TUniquePtr<FSOLNpcTunnelSmoke> mSmokeNpcTunnel;         // Verification-only NPC lane tunnel script (SDD 49)
     TUniquePtr<FSOLNpcTrafficSmoke> mSmokeNpcTraffic;       // Verification-only NPC lane traffic script (SDD 50)
     TUniquePtr<FSOLThrusterSmoke> mSmokeThruster;           // Verification-only NPC thruster plume script (SDD 51)
+    TUniquePtr<FSOLPlayerThrusterSmoke> mSmokePlayerThruster; // Verification-only player plume script (SDD 51 51d)
     TUniquePtr<FSOLLaneMergeSmoke> mSmokeLaneMerge;         // Verification-only lane merge readout script (V6)
     TUniquePtr<FSOLAutoLanesSmoke> mSmokeAutoLanes;         // Verification-only AUTO lane rules script (V7)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
@@ -1024,6 +1055,11 @@ private:
     TUniquePtr<FSOLGlossaryCropWriter> mGlossaryCropWriter; // The -SOLWriteGlossaryCrops run (SDD 33 section 9)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
     FSOLShipControl mControl;                               // Control composed from the input state
+    FSOLPlayerPlume mPlayerPlume;                           // Plume floats and hull light pushed last (SDD 51 51d)
+    FVector3f mPlumeThrustG = FVector3f::ZeroVector;        // ...and the step thrust they came from
+    bool mIsPlumeShown = true;                              // sol.PlayerPlume as last applied
+    int32 mPlumeQualityOverride = INDEX_NONE;               // Verification override of the light gating's preset...
+    bool mIsPlumeVrOverride = false;                        // ...and VR flag
     FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)
     FSOLBoostToggle mBoost;                                 // Boost toggle (SDD 19)
     uint32 mSeenPilotResetCount = 0;                        // Ship subsystem pilot resets already applied to boost

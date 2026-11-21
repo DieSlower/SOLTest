@@ -138,6 +138,10 @@ namespace SOLShipSunlight
     // Puts a primitive on lighting channel 1 only (the ship's parts and the dropped targets), so the Sun light reaches
     // it only while the observer is lit and the ship sun light while it is shadowed. Safe before registration
     SOLTEST_API void PutOnShipLightingChannel(UPrimitiveComponent* primitive);
+
+    // Adds a primitive to lighting channel 2, the player hull light's own channel (SDD 51 section 4.7, Q28): only the
+    // player's hull parts are on it, so the plume lights its own hull and nothing else. Safe before registration
+    SOLTEST_API void AddToPlayerHullLightChannel(UPrimitiveComponent* primitive);
 }
 
 // Read access to the placeholder body appearances, for presentation that must match the meshes (map icons)

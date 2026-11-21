@@ -99,6 +99,26 @@ sparse near the viewpoint), the gate decision on the combat-off case.
    channel; on in VR, off at Low, on otherwise (Q28), on its own lighting channel.
 4. Re-validate the flight and War power tests; screenshots at idle, 1 G, 3 G, boost (clamped, Q6) and War power.
 
+**51d status (2026-11-21): built, not committed.** Tests first (`Tests/PlayerThrusterTest.cpp`, `SOLTest.PlayerThruster.*`,
+6 cases, seen failing by value against stubs, then green): `SOLThruster::ShipThrustLocalMps2` (the step's world thrust
+in the ship frame), `SOLThruster::PlayerPlume` (plume floats of the 20 m hull plus the hull light), the transient
+`FSOLShipStateFragment::ThrustLocalG` (not reflected), the light constants and the pawn's `PlumeLight` component
+(channel 2 only, unshadowed, candelas, hidden at rest) with `SOLShipSunlight::AddToPlayerHullLightChannel`. The flight
+processor adds each substep's thrust (rotated by the attitude it thrust with) to an `FSOLThrustMean` and writes the mean
+(`USOLShipSubsystem::GetThrustLocalG`); the pawn drops the glow spheres, adds `ThrusterMesh` (`SM_SOLPlayerThrusters`)
+and updates mesh and light in `FollowShip` (`UpdateThrusterPlume`); `sol.PlayerPlume` A/B cvar. Hull light start value
+40 cd (`PLAYER_LIGHT_MAX_INTENSITY_CD`): it lights the aft faces clearly from the chase camera, the sides only grazingly.
+Smoke `-SOLSmokePlayerThruster` (`Ship/SOLPlayerThrusterSmoke.{h,cpp}`) 25/25 at 1280x720 and 1920x1080 (idle b 0;
+1.000 G c 0, b 0.3834, L 4.314 m; 3.000 G c 0.35, b 0.664, L 10.388 m; boost 9 G clamped c 1, b 1, L 20 m; Low preset
+light off, VR at Low light on; cvar off hides both; War power pulse 6.803 G c 1, recovery 1.50 G c 1, b 0.469, L
+5.95 m). The light colour reads back about 1/255 off the ramp (the engine stores it as an 8-bit sRGB `FColor`).
+Screenshots `Docs/Images/51-player-thruster-boost.png` (side view, red-orange) and `51-player-thruster-chase.png` (chase
+camera, hull light on). Profile `-SOLSmokePlayerThrusterProfile` under a War power order (A B B A x 2, 300 frames per
+window, A minus B of the window means), 1920x1080, 3 runs: GPU frame +0.033, +0.055, +0.071 ms (gate 0.20 ms, bursts
+not yet built); game thread -0.01 to +0.03 ms (noise). VR one-eye 3840x3744 (record only): GPU frame about 23.4 ms, A
+minus B -0.11 ms, inside the window-to-window drift (about 0.4 ms), so not resolvable. Re-validated: `ShipSunlight.*`,
+`WarPowerMove.*`, flight and `Thruster.*` in the full suite. Not yet done: the adversarial review.
+
 ### 51g: gas bursts (scope increase, Q7; Q27-Q32 resolved)
 
 1. Burst ports: the fixed per-hull port table in `SOLConstants.h` (Q31: bow pair plus 4 side ports, no stern ports); burst sections on the NPC hull meshes and the player meshes (re-run

@@ -506,4 +506,11 @@ from the existing `QualityPreset` (Q12).
   `SOLNpcRail::LaneThrustMps2`, `SOLNpcAi::AchievedAccelMps2`, tested in `SOLTest.NpcThrust.*` and
   `SOLTest.NpcRail.LaneThrust`.
 
+- 2026-11-21: part 51d: the player plume as built (section 4.2: the substep thrust is rotated by the attitude it was
+  applied with, `SOLThruster::ShipThrustLocalMps2`, and a zero-length step keeps the last value; section 4.7: the light
+  is on lighting channel 2, which nothing else uses, the hull parts keep channel 1 for the sun and fill lights and join
+  channel 2; start intensity 40 cd; section 4.10: the pawn's `ThrusterMesh` gets custom primitive data only on change).
+  New glue `SOLThruster::PlayerPlume`, tested in `SOLTest.PlayerThruster.*`; A/B cvar `sol.PlayerPlume`; measured
+  costs in the plan's 51d status.
+
 - 51c decision (user): combat-off NPC redraw CPU gate relaxed to 0.12 ms (combat-on stays 0.10 ms); Full lane ship plume = rail thrust plus AI correction.

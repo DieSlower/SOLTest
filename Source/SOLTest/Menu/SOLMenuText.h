@@ -808,7 +808,10 @@ namespace SOLMenuText
             "Settings option Mouse steering at start makes it start on. Each time it turns on or off, the joystick "
             "recenters. While it is off the cursor is shown (it stays inside the game window) and moving the mouse "
             "does not turn the ship. While you hold {FreeLook} to look around, the joystick circles turn yellow. "
-            "Boost ({Boost}) is a switch: it stays on until you press it again, black out, jump or respawn."),
+            "Boost ({Boost}) is a switch: it stays on until you press it again, black out, jump or respawn. "
+            "Your two engine plumes show the main engine's thrust: longer and brighter with more G, blue-white at "
+            "normal thrust, yellow-white at full forward thrust (3 G) and red-orange beyond, as with boost, and always "
+            "red-orange while a War Power Move flies. They also light your hull, except at the Low graphics quality."),
         TEXT("The autopilot (AUTO) flies you to a body and hands back to assisted flight when it arrives. Any thrust, "
             "roll, mouse steering or stop spin of yours takes control back in assisted flight at once, as does "
             "{ToggleAssist}; a key already held when the autopilot starts counts only after you let it go. With NPC "

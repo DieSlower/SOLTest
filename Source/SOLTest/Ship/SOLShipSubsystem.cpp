@@ -1132,6 +1132,14 @@ double USOLShipSubsystem::GetGLoadG() const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the player ship's ship-frame thrust in G as of the last step (zero without a ship)
+FVector3f USOLShipSubsystem::GetThrustLocalG() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).ThrustLocalG
+        : FVector3f::ZeroVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns true while the autopilot flies under a warp too high for precise gravity near a body (HUD hint)
 bool USOLShipSubsystem::IsAutopilotPrecisionReduced() const
 {

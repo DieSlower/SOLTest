@@ -30,6 +30,9 @@ struct FSOLShipStateFragment : public FMassFragment
     ESOLLaneAutoMode LaneMode = ESOLLaneAutoMode::None;  // Its mode after the last substep (the HUD's LANE tag;
                                                          // Left is final for the order)
     FSOLWarPowerPulseState WarPowerPulse;     // War power pulse phase (transient, reset with each order, never saved)
+    FVector3f ThrustLocalG = FVector3f::ZeroVector;  // Achieved thrust of the last step in the ship frame (X nose, Y
+                                                     // right, Z top), G: the substeps' time-weighted mean (SDD 51
+                                                     // section 4.2; drives the plume, transient, never saved)
 };
 
 /** Control input a ship flies with this frame (written by the player pawn, AI or a script). */
