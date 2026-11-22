@@ -1956,12 +1956,31 @@ namespace SOL
         // With -SOLSmokeThruster (-game only): interleaved sol.NpcPlumes 1 / 0 cost windows at the Earth spawn view and
         // in a lane view instead of the checks (SDD 51 section 4.12)
         inline constexpr const TCHAR* SMOKE_THRUSTER_PROFILE = TEXT("SOLSmokeThrusterProfile");
+        // With -SOLSmokeThruster: the ribbon screenshots and the frozen-frame no-pop pair (SDD 51 part 51e step 7)
+        // instead of the plume checks; with -SOLSmokeThrusterProfile too, the interleaved sol.ThrusterRibbons 1 / 0
+        // windows instead of sol.NpcPlumes
+        inline constexpr const TCHAR* SMOKE_THRUSTER_RIBBONS = TEXT("SOLSmokeThrusterRibbons");
+        // With -SOLSmokeThrusterRibbons: the sol.ThrusterRibbonNiagaraPx value the run uses outside its no-pop pair
+        // (default -1, the preset's threshold; a huge value measures the profile with every NPC ribbon in the pool)
+        inline constexpr const TCHAR* SMOKE_RIBBON_NIAGARA_PX = TEXT("SOLSmokeRibbonNiagaraPx=");
         // The player's plume and hull light through idle, 1 G, 3 G, boost, the light gating, the cvar and War power,
         // with screenshots (SDD 51 part 51d), then quit
         inline constexpr const TCHAR* SMOKE_PLAYER_THRUSTER = TEXT("SOLSmokePlayerThruster");
         // With -SOLSmokePlayerThruster (-game only): interleaved sol.PlayerPlume 1 / 0 cost windows under a War power
         // order instead of the checks
         inline constexpr const TCHAR* SMOKE_PLAYER_THRUSTER_PROFILE = TEXT("SOLSmokePlayerThrusterProfile");
+        // One frozen synthetic curved ribbon drawn by the Niagara set and then by the strip pool, near and at 25 km,
+        // with screenshots for the renderer parity diff (SDD 51 part 51e step 5, -game with a real RHI), then quit
+        inline constexpr const TCHAR* SMOKE_RIBBON_PARITY = TEXT("SOLSmokeRibbonParity");
+        // With -SOLSmokeRibbonParity: the R10 flame seam sweep instead of the parity sweep (NPC and player flames at the
+        // pixel-floor distances, side / oblique / chase / front views, the burn states and a turn; SDD 51 51e3)
+        inline constexpr const TCHAR* SMOKE_FLAME_SEAM = TEXT("SOLSmokeFlameSeam");
+        // With -SOLSmokeFlameSeam: every seam configuration with anti-aliasing off (r.AntiAliasingMethod 0), for the
+        // Niagara / strip pool pixel parity of the same frozen frame (SDD 51 51e3)
+        inline constexpr const TCHAR* SMOKE_FLAME_SEAM_AA_OFF = TEXT("SOLSmokeFlameSeamAAOff");
+        // With -SOLSmokeFlameSeam: -SOLSmokeFlameSeamOnly=<text> keeps only the configurations whose name contains it
+        // (e.g. "v10" for the chase views)
+        inline constexpr const TCHAR* SMOKE_FLAME_SEAM_ONLY = TEXT("SOLSmokeFlameSeamOnly=");
         inline constexpr const TCHAR* SMOKE_LANE_MERGE = TEXT("SOLSmokeLaneMerge");    // Lane merge readout (SDD 50
                                                                                          // V6), quit
         // The sim date -SOLSmokeLaneMerge starts at unless -SOLSimDate= is given: the planets' places decide which
@@ -2080,15 +2099,17 @@ namespace SOL
         inline constexpr const TCHAR* NPC_TUNNEL_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcTunnel.M_SOLNpcTunnel");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_0 = TEXT("/Engine/BasicShapes/Cone.Cone");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_1 = TEXT("/Engine/BasicShapes/Cube.Cube");
-        // Thruster plume (SDD 51 section 4.11), built by Tools/Fx/create_thruster_assets.py (keep both in sync): the
-        // plume, glow, gas-burst and ribbon materials, the generated noise texture, the NPC placeholder hulls with their
-        // plume / glow / burst sections (a generated cone and box of the same size and pivot as the two meshes above,
-        // plus the thruster sections), the player's thruster mesh and the ribbon system. Not drawn until parts 51c-51e
-        // wire them
-        inline constexpr const TCHAR* THRUSTER_PLUME_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterPlume.M_SOLThrusterPlume");
+        // Thruster (SDD 51 sections 4.11, 11.2), built by Tools/Fx/create_thruster_assets.py (keep both in sync): the
+        // glow, gas-burst and flame materials (the Niagara flame's and the strip pool's), the generated noise texture,
+        // the NPC placeholder hulls with their glow / burst sections (a generated cone and box of the same size and pivot
+        // as the two meshes above, plus the thruster sections), the player's thruster mesh and the flame system
         inline constexpr const TCHAR* THRUSTER_GLOW_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterGlow.M_SOLThrusterGlow");
         inline constexpr const TCHAR* THRUSTER_BURST_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterBurst.M_SOLThrusterBurst");
         inline constexpr const TCHAR* THRUSTER_TRAIL_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterTrail.M_SOLThrusterTrail");
+        // GPU strip pool flame material (SDD 51 R7, R10) and the linear float placeholder its texture parameter defaults to
+        inline constexpr const TCHAR* THRUSTER_RIBBON_MATERIAL = TEXT("/Game/SOL/Fx/M_SOLThrusterRibbon.M_SOLThrusterRibbon");
+        inline constexpr const TCHAR* THRUSTER_FLOAT_DEFAULT_TEXTURE =
+            TEXT("/Game/SOL/Fx/T_SOLThrusterFloatDefault.T_SOLThrusterFloatDefault");
         inline constexpr const TCHAR* THRUSTER_NOISE_TEXTURE = TEXT("/Game/SOL/Fx/T_SOLThrusterNoise.T_SOLThrusterNoise");
         inline constexpr const TCHAR* THRUSTER_NPC_HULL_MESH_FACTION_0 =
             TEXT("/Game/SOL/Fx/SM_SOLNpcHullCone.SM_SOLNpcHullCone");
@@ -2703,7 +2724,6 @@ namespace SOL
         inline constexpr double SHOCK_DECAY = 0.82;
         inline constexpr double SHOCK_ZONE = 0.8;
         inline constexpr int32 SHOCK_MAX_KNOTS = 8;
-        inline constexpr double TAIL_RADIUS_RATIO = 0.35;          // Cone tail radius over the nozzle radius (Q11)
         inline constexpr double GLOW_MIN_DRAWN_PX = 1.0;           // A shown glow is drawn at least this big (Q33)
 
         // Gas bursts (section 4.6, Q32): strength ramps from BURST_MIN_G to BURST_REF_G, length L_hull / DIVISOR x s
@@ -2711,13 +2731,50 @@ namespace SOL
         inline constexpr double BURST_REF_G = 1.5;
         inline constexpr double BURST_LENGTH_HULL_DIVISOR = 6.0;
 
-        // Ribbon (section 4.8, Q12, Q24, Q29): history size and age, length at full age over the plume, ships per
-        // QualityPreset (Low, Medium, High, Epic, Cinematic; Cinematic has no cap at all)
-        inline constexpr int32 RIBBON_SAMPLES = 24;
-        inline constexpr double RIBBON_MAX_AGE_S = 1.0;
-        inline constexpr double RIBBON_LENGTH_FACTOR = 3.0;
-        inline constexpr int32 RIBBON_COUNT_UNLIMITED = MAX_int32;
-        inline constexpr int32 RIBBON_COUNTS_BY_QUALITY[] = { 0, 8, 16, 32, RIBBON_COUNT_UNLIMITED };
+        // One-piece flame (SDD 51 section 11.2, R10): one tube per main nozzle from the exit to the tail, FLAME_LENGTH_
+        // FACTOR x L_p long, its full width tapering by a smoothstep from 2 r_n at the nozzle to TAIL_WIDTH_RATIO x 2 r_n
+        // at L_p and constant beyond; the spine is the gas parcels emitted at FLAME_EXHAUST_SPEED_MPS (ballistic in the
+        // ship's non-rotating axes), read from a ring of FLAME_HISTORY_SAMPLES nozzle poses pushed at most every
+        // FLAME_SAMPLE_INTERVAL_S of game time. At cut-off b falls to 0 over FLAME_SHUTDOWN_S with L_p and c held. The
+        // streak depth rises from STREAK_STRENGTH in the body to FLAME_STREAK_TAIL_STRENGTH in the tail. Start values
+        // (v_e, shutdown, tail streaks) are tuned in part 51f
+        inline constexpr double FLAME_TAIL_WIDTH_RATIO = 0.1;
+        inline constexpr double FLAME_LENGTH_FACTOR = 3.0;
+        inline constexpr int32 FLAME_POINTS = 25;                  // Spine points per flame (s_j = j L_f / 24)
+        inline constexpr int32 FLAME_HISTORY_SAMPLES = 8;
+        inline constexpr double FLAME_SAMPLE_INTERVAL_S = 1.0 / 120.0;
+        inline constexpr double FLAME_EXHAUST_SPEED_MPS = 2000.0;
+        inline constexpr double FLAME_SHUTDOWN_S = 0.25;
+        inline constexpr double FLAME_STREAK_TAIL_STRENGTH = 0.8;
+        // Sides of the round cross-section (R10-Q2): 16, so the ring reads round looking down the flame (the chase view;
+        // 8 sides showed as an octagon, the facets 1 - cos(pi / 8) = 7.6 % of the radius, 16 sides 1.9 %)
+        inline constexpr int32 FLAME_TUBE_SIDES = 16;
+        // End caps (51e3, the user's choice over an along-arc fade: the open tube ends looked hollow): both renderers draw
+        // FLAME_DRAWN_POINTS points, the spine with one cap point before the nozzle and one past the tail, each
+        // FlameCapDepthM (CAP_DEPTH_NOZZLE_RADII x r_n, at least CAP_MIN_DEPTH_M, above Niagara's 1 cm point merge) out
+        // along the end segment at width 0, so the tube closes in a flat cone that shades as a disc (SOLTH_FlamePixel's
+        // cap fraction)
+        inline constexpr int32 FLAME_DRAWN_POINTS = 27;
+        inline constexpr double FLAME_CAP_DEPTH_NOZZLE_RADII = 0.05;
+        inline constexpr double FLAME_CAP_MIN_DEPTH_M = 0.02;
+        // Thin-flame shading (R10 seam checks): where the drawn width is the 1 px floor or a few pixels, a pixel centre's
+        // radial fraction is an aliasing accident (a 1 px line shows the rim colour, a 2 px one the core), so the shading
+        // blends to the cross-section's mean (radial fraction 0.5, a literal in SOLTH_FlamePixel) by the weight true /
+        // drawn width x clamp((drawn px - LOW) / (HIGH - LOW), 0, 1); continuous along the flame, so no step where the
+        // floor starts
+        inline constexpr double FLAME_SHARP_LOW_PX = 1.0;
+        inline constexpr double FLAME_SHARP_HIGH_PX = 4.0;
+
+        // Flame pixel rule (section 11.1 R1-R4, R10-7). No distance or count cap: a hull-drawn ship's flame is at full
+        // alpha while its on-screen length is at least FADE_START_FACTOR x V, dims linearly to 0 at V and is gone
+        // below; V per QualityPreset (Low, Medium, High, Epic, Cinematic; start values, tunable); drawn at least
+        // MIN_WIDTH_PX device pixels wide
+        inline constexpr double RIBBON_VANISH_PX_BY_QUALITY[] = { 10.0, 4.6, 2.2, 1.0, 1.0 };
+        inline constexpr double RIBBON_FADE_START_FACTOR = 4.0;
+        inline constexpr double RIBBON_MIN_WIDTH_PX = 1.0;
+        // Hybrid renderer (section 11.1 R7, R10-Q6): a shown NPC flame at least NIAGARA_PX_FACTOR x V long on screen is
+        // drawn by Niagara (start value, retuned in 51f), every other one by the GPU strip pool; by pixel size only
+        inline constexpr double RIBBON_NIAGARA_PX_FACTOR = 8.0;
 
         // Per-hull nozzle table (section 4.9, Q11, Q18), hull frame metres (X nose, Y right, Z top): NPC faction 0
         // cone and faction 1 box with one nozzle on the aft centre; the player with one nozzle on each engine
@@ -2785,18 +2842,55 @@ namespace SOL
         inline constexpr double BURST_FLICKER_DEPTH = 0.35;        // Fraction of the opacity the flicker takes away
         inline constexpr double BURST_EMISSIVE = 0.6;              // Grey-white gas, faintly self-lit (unlit material)
         inline constexpr FLinearColor BURST_COLOUR = FLinearColor(0.82f, 0.85f, 0.90f);
-        inline constexpr double TRAIL_EMISSIVE = 3.0;              // Ribbon emissive scale (colour and alpha per point)
-        // Ribbon points per trail in NS_SOLThrusterTrails: the history plus the live nozzle exit as the head
-        inline constexpr int32 RIBBON_POINTS_PER_TRAIL = RIBBON_SAMPLES + 1;
+        // Physical Niagara flame pool (R7), the player's two flames included: when more NPC flames pass the Niagara
+        // threshold than there are free components, the overflow is drawn by the strip pool (a pool limit, not an LOD
+        // rule)
+        inline constexpr int32 RIBBON_NIAGARA_POOL_TRAILS = 16;
+        // A Niagara set component simulates only while it draws a flame: resumed when a flame is given to it (that
+        // frame the strip pool draws the flame, so a first-tick delay cannot pop) and paused and hidden once unused this
+        // long (game time, s), so idle components cost no simulation and a flame at the threshold does not churn (a
+        // deactivated system was observed not to draw again after a re-activation, so components are paused instead)
+        inline constexpr double RIBBON_NIAGARA_IDLE_S = 1.0;
+        // GPU strip pool layout (R7, R10): texels per flame in the float texture (the FLAME_DRAWN_POINTS points as (x, y,
+        // z, alpha), the (c, b, L_p, r_n) header, then the widths of drawn points 2..25 four per texel) and flames per
+        // instanced tube block
+        inline constexpr int32 RIBBON_TEXELS_PER_TRAIL = 34;
+        inline constexpr int32 RIBBON_TRAILS_PER_BLOCK = 32;
+        // The strip pool instances only the blocks the live flames need: a block is added the frame it is needed and the
+        // trailing blocks are removed once the need has stayed below the instanced count for this many frames in a row
+        // (hysteresis, so a count crossing a block boundary does not add and remove instances every frame)
+        inline constexpr int32 RIBBON_BLOCK_SHRINK_FRAMES = 60;
+        // Bend margin of a flame's reach (frustum test and the Collect pass's draw bound): a curved flame's tail may reach
+        // this many flame lengths from its nozzle
+        inline constexpr double FLAME_REACH_BEND_MARGIN = 1.1;
+        // Frame anchor hold (51e3 CPU cut): the anchor (the camera rounded to metres) is kept while the camera stays
+        // within this distance of it, so the Niagara set components are not moved every frame of a moving camera; float
+        // positions relative to it keep sub-millimetre steps at this range
+        inline constexpr double RIBBON_ANCHOR_HOLD_M = 1000.0;
 
         static_assert(COLOUR_BLUE_END_G < COLOUR_YELLOW_G && COLOUR_YELLOW_G < G_REF, "the colour keys are ordered");
         static_assert(SHOCK_KNOT_HALF_LENGTH < 0.5, "neighbouring knots never overlap (one knot per pixel)");
         static_assert(CONE_FADE_LOW_PX < CONE_FADE_HIGH_PX && GLOW_FADE_LOW_PX < GLOW_FADE_HIGH_PX,
             "the pixel fades rise");
         static_assert(COLOUR_YELLOW_C > 0.0 && COLOUR_YELLOW_C < 1.0, "the yellow key lies inside the ramp");
-        static_assert(RIBBON_SAMPLES >= 16 && RIBBON_SAMPLES <= 32, "the ribbon history holds 16-32 samples");
+        static_assert(FLAME_TAIL_WIDTH_RATIO > 0.0 && FLAME_TAIL_WIDTH_RATIO < 1.0, "the flame tapers toward its tail");
+        static_assert(FLAME_POINTS >= 2 && FLAME_HISTORY_SAMPLES >= 2 && FLAME_TUBE_SIDES >= 3 && FLAME_TUBE_SIDES <= 16,
+            "a flame has a spine, a pose ring and a tube Niagara can draw");
+        static_assert((FLAME_HISTORY_SAMPLES - 1) * FLAME_SAMPLE_INTERVAL_S
+            >= FLAME_LENGTH_FACTOR * NPC_HULL_LENGTH_M / FLAME_EXHAUST_SPEED_MPS,
+            "the pose ring covers the longest NPC flame's life");
+        static_assert(FLAME_SHARP_LOW_PX < FLAME_SHARP_HIGH_PX, "the thin-flame shading weight rises");
         static_assert(BURST_MIN_G < BURST_REF_G, "the burst ramp rises");
-        static_assert(UE_ARRAY_COUNT(RIBBON_COUNTS_BY_QUALITY) == 5, "one ribbon count per quality preset");
+        static_assert(UE_ARRAY_COUNT(RIBBON_VANISH_PX_BY_QUALITY) == 5, "one ribbon vanish length per quality preset");
+        static_assert(RIBBON_FADE_START_FACTOR > 1.0, "the ribbon fade starts above its vanish length");
+        static_assert(RIBBON_NIAGARA_PX_FACTOR >= 1.0, "the Niagara threshold is never below the vanish length");
+        static_assert(RIBBON_NIAGARA_POOL_TRAILS >= 2, "the Niagara pool always holds the player's two trails");
+        static_assert(RIBBON_TEXELS_PER_TRAIL >= FLAME_DRAWN_POINTS + 1 + (FLAME_POINTS - 1 + 3) / 4,
+            "a trail's texels hold its points and header");
+        static_assert(FLAME_DRAWN_POINTS == FLAME_POINTS + 2, "the drawn flame is the spine and its two caps");
+        static_assert(FLAME_CAP_MIN_DEPTH_M > 0.01, "a cap point is never merged by Niagara's 1 cm rule");
+        static_assert(RIBBON_ANCHOR_HOLD_M > 0.0, "the anchor is held within a positive range");
+        static_assert(RIBBON_TRAILS_PER_BLOCK > 0, "a strip block holds at least one trail");
     }
 
     // Thruster materials and meshes (SDD 51 sections 4.4-4.6, 4.10; Paths::THRUSTER_*): the per-ship floats the plume,
@@ -2818,7 +2912,6 @@ namespace SOL
 
         // Material slot names of the thruster meshes (the player mesh has no hull slot)
         inline constexpr const TCHAR* SLOT_HULL = TEXT("Hull");
-        inline constexpr const TCHAR* SLOT_PLUME = TEXT("Plume");
         inline constexpr const TCHAR* SLOT_GLOW = TEXT("Glow");
         inline constexpr const TCHAR* SLOT_BURST = TEXT("Burst");
 
@@ -2831,8 +2924,8 @@ namespace SOL
         inline constexpr const TCHAR* CORE_2 = TEXT("ThrusterCore2");
         inline constexpr const TCHAR* RAMP = TEXT("ThrusterRamp");             // (yellow c, 0, 0, 0)
         inline constexpr const TCHAR* SHOCK = TEXT("ThrusterShock");           // (spacing factor, gain, decay, zone)
-        inline constexpr const TCHAR* SHAPE = TEXT("ThrusterShape");           // (max knots, tail ratio, knot half
-                                                                               //  length, knot half width)
+        inline constexpr const TCHAR* SHAPE = TEXT("ThrusterShape");           // (max knots, tail streak strength,
+                                                                               //  knot half length, knot half width)
         inline constexpr const TCHAR* LOOK = TEXT("ThrusterLook");             // (emissive, core power, knot gain,
                                                                                //  streak strength)
         inline constexpr const TCHAR* STREAK = TEXT("ThrusterStreak");         // (tiles around, tile length radii,
@@ -2846,20 +2939,32 @@ namespace SOL
         inline constexpr const TCHAR* BURST_SHAPE = TEXT("ThrusterBurstShape"); // (base radius, tail radius in
                                                                                //  lengths, low px, high px)
         inline constexpr const TCHAR* BURST_COLOUR = TEXT("ThrusterBurstColour");
-        inline constexpr const TCHAR* TRAIL = TEXT("ThrusterTrail");           // (emissive, 0, 0, 0)
         inline constexpr const TCHAR* NOISE_TEXTURE = TEXT("ThrusterNoise");   // Texture parameter
+        inline constexpr const TCHAR* FLAME = TEXT("ThrusterFlame");           // (flame length factor, tail width
+                                                                               //  ratio, sharp low px, sharp high px)
+
+        // GPU strip pool flame (M_SOLThrusterRibbon, SDD 51 R7 / R10; layout in Shaders/Private/SOLThruster.ush)
+        inline constexpr const TCHAR* RIBBON = TEXT("ThrusterRibbon");         // (min width px, texels per trail,
+                                                                               //  trails per block, points per trail)
+        inline constexpr const TCHAR* RIBBON_FRAME = TEXT("ThrusterRibbonFrame"); // (anchor x, y, z render-space cm,
+                                                                               //  live trail count); set per frame
+        inline constexpr const TCHAR* RIBBON_TEXTURE = TEXT("ThrusterRibbonTex"); // Float texture: one block of
+                                                                               //  trails per row (PackRibbonTexels)
     }
 
-    // Niagara User Parameter names of Paths::THRUSTER_TRAILS_NIAGARA_SYSTEM (SDD 51 section 4.8): one CPU-sim particle
-    // per ribbon point, fed from arrays; point i belongs to trail i / POINTS_PER_TRAIL (link order i % it)
+    // Niagara User Parameter names of Paths::THRUSTER_TRAILS_NIAGARA_SYSTEM (SDD 51 section 4.8, R10): one CPU-sim
+    // particle per flame spine point, fed from arrays; point i belongs to trail i / POINTS_PER_TRAIL (link order i % it)
     namespace ThrusterTrailParams
     {
         inline constexpr const TCHAR* POSITIONS_CM = TEXT("TrailPositionsCm");  // Float3 array: component-local cm
-        inline constexpr const TCHAR* COLOURS = TEXT("TrailColours");           // Colour array: rgb, a = alpha
-        inline constexpr const TCHAR* WIDTHS_CM = TEXT("TrailWidthsCm");        // Float array: ribbon width (cm)
+        inline constexpr const TCHAR* COLOURS = TEXT("TrailColours");           // Colour array: (s / L_f, alpha, sharpness,
+                                                                                //  cap fraction: 0 on a cap point, else 1)
+        inline constexpr const TCHAR* WIDTHS_CM = TEXT("TrailWidthsCm");        // Float array: tube diameter (cm)
         inline constexpr const TCHAR* POINT_COUNT = TEXT("TrailPointCount");    // Live points of the arrays
         inline constexpr const TCHAR* MAX_POINTS = TEXT("TrailMaxPoints");      // Particles spawned once
-        inline constexpr const TCHAR* POINTS_PER_TRAIL = TEXT("TrailPointsPerTrail"); // Thruster::RIBBON_POINTS_PER_TRAIL
+        inline constexpr const TCHAR* POINTS_PER_TRAIL = TEXT("TrailPointsPerTrail"); // Thruster::FLAME_DRAWN_POINTS
+        inline constexpr const TCHAR* FLAME_HEADER = TEXT("TrailFlame");        // Vector4: (c, b, L_p, r_n), the
+                                                                                //  material's dynamic parameter 0
     }
 
     // NPC lane lines (SDD 38 sections 4.4-4.7, issue #38): each lane with traffic is two dashed hologram lines
@@ -2894,6 +2999,11 @@ namespace SOL
     inline constexpr const TCHAR* NPC_PLUME_CVAR = TEXT("sol.NpcPlumes");
     // 0 hides the player's thruster plume mesh and hull light (A/B profiling, SDD 51 part 51d)
     inline constexpr const TCHAR* PLAYER_PLUME_CVAR = TEXT("sol.PlayerPlume");
+    // 0 hides every thruster flame and skips their work in both renderers (A/B profiling, SDD 51 R9, R10)
+    inline constexpr const TCHAR* THRUSTER_RIBBONS_CVAR = TEXT("sol.ThrusterRibbons");
+    // Overrides the on-screen length (reference px) from which an NPC flame is drawn by Niagara; below 0 the
+    // preset's RibbonNiagaraMinPx, a huge value sends every NPC flame to the strip pool (SDD 51 R7 verification)
+    inline constexpr const TCHAR* THRUSTER_RIBBON_NIAGARA_PX_CVAR = TEXT("sol.ThrusterRibbonNiagaraPx");
     static_assert(NPC_LANE_FADE_FAR_RADII > NPC_LANE_FADE_NEAR_RADII && NPC_LANE_FADE_NEAR_RADII > 1.0,
         "the lane fade band runs outward from the near radii");
     static_assert(NPC_LANE_TRAFFIC_HIGH > NPC_LANE_TRAFFIC_LOW && NPC_LANE_TRAFFIC_LOW > 0,

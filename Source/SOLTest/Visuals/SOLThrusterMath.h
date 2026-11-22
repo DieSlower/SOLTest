@@ -65,17 +65,16 @@ enum class ESOLBurst : uint8
     Down                        // Thrust -Z, gas +Z on the top
 };
 
-// One ribbon history sample (SDD 51 section 4.8, Q4): non-rotating world-aligned axes relative to the ship
+// One nozzle pose of a flame's history (SDD 51 R10-4, R10-8): non-rotating world-aligned axes relative to the ship
 struct FSOLPlumeSample
 {
-    double EmitTimeS = 0.0;                         // Emission time
+    double EmitTimeS = 0.0;                         // Emission time (game time)
     FVector3f OffsetM = FVector3f::ZeroVector;      // Nozzle exit relative to the ship's centre at emission
     FVector3f ExhaustDir = FVector3f::ZeroVector;   // Unit exhaust direction at emission
-    float DriftMps = 0.0f;                          // u = RIBBON_LENGTH_FACTOR L_p / RIBBON_MAX_AGE_S
-    float Brightness = 0.0f;                        // b at emission
+    float Brightness = 0.0f;                        // b at emission (0 once the spool-down has ended)
 };
 
-// A plume's ribbon history: a fixed ring of RIBBON_SAMPLES samples, newest first by age, no allocation
+// A flame's pose history: a fixed ring of FLAME_HISTORY_SAMPLES poses, newest first by age, no allocation
 class SOLTEST_API FSOLPlumeHistory
 {
 public:
@@ -83,42 +82,48 @@ public:
     // Empties the history
     void Reset();
 
-    // Stores a sample as the newest (overwriting the oldest when full); false, nothing stored, if any field is
+    // Stores a pose as the newest (overwriting the oldest when full); false, nothing stored, if any field is
     // non-finite
     bool Push(const FSOLPlumeSample& sample);
 
-    // Returns the number of samples held (at most RIBBON_SAMPLES)
+    // Returns the number of poses held (at most FLAME_HISTORY_SAMPLES)
     int32 Num() const;
 
-    // Returns the sample of age rank i (0 = newest, Num() - 1 = oldest); i must lie in [0, Num())
+    // Returns the pose of age rank i (0 = newest, Num() - 1 = oldest); i must lie in [0, Num())
     const FSOLPlumeSample& ByAge(int32 i) const;
 
-    // Returns whether a sample is due: always when empty, else once nowS is at least RIBBON_MAX_AGE_S /
-    // RIBBON_SAMPLES past the newest sample's emission
+    // Returns whether a pose is due: always when empty, else once nowS is more than FLAME_SAMPLE_INTERVAL_S past the
+    // newest pose's emission
     bool ShouldSample(double nowS) const;
 
 private:
 
-    FSOLPlumeSample mSamples[SOL::Thruster::RIBBON_SAMPLES];    // Ring storage
+    FSOLPlumeSample mSamples[SOL::Thruster::FLAME_HISTORY_SAMPLES]; // Ring storage
     int32 mNewest = 0;                                          // Slot of the newest sample
     int32 mCount = 0;                                           // Samples held
 };
 
-// One ship offered to the ribbon selection (SOLThruster::SelectRibbonShips)
-struct FSOLRibbonCandidate
+// One shown NPC flame offered to the renderer split (SOLThruster::SplitRibbonRenderers, part 51e)
+struct FSOLRibbonShown
 {
     int32 NpcIndex = INDEX_NONE;
-    double DistanceM = 0.0;     // Distance from the camera
-    double RibbonPx = 0.0;      // Ribbon length on screen, reference px (the ranking key)
-    bool bHasPlume = false;     // The ship shows a plume now
-    bool bRibbonFading = false; // The ship still has ribbon samples ageing out
+    double RibbonPx = 0.0;      // Flame length on screen, reference px (SOLThruster::RibbonPixelLength)
 };
 
-// The plume floats of one hull-drawn ship (SOLThruster::PlumeInstance; SOL::ThrusterMaterialParams 0-2)
+// One flame spine point as both renderers draw it (SOLThruster::BuildFlamePoints, R10)
+struct FSOLRibbonPoint
+{
+    FVector3f PositionM = FVector3f::ZeroVector;    // Position relative to the frame anchor
+    float Alpha = 0.0f;                             // Emission brightness x along-arc fade x pixel fade
+    float WidthM = 0.0f;                            // Unfloored full width (each renderer applies the 1 px floor)
+};
+
+// The plume floats of one hull-drawn ship (SOLThruster::PlumeInstance; SOL::ThrusterMaterialParams 0-2): the glow reads
+// c and b; float 2 is read by no section since R10 (layout kept, compaction left to 51f)
 struct FSOLPlumeInstance
 {
     float Colour = 0.0f;        // c in [0, 1]
-    float Brightness = 0.0f;    // b in [0, 1]; 0 = no plume
+    float Brightness = 0.0f;    // b in [0, 1]; 0 = no glow
     float LengthM = 0.0f;       // True plume length L_p (the true hull length's, never the drawn size, Q14)
 };
 
@@ -155,11 +160,12 @@ struct FSOLHullThrusters
     FSOLNozzle Nozzles[2];
 };
 
-// Pure math of the issue #51 thruster plume (SDD 51 sections 4.2-4.9, contract
+// Pure math of the issue #51 thruster plume (SDD 51 sections 4.2-4.9, 11.2, contract
 // Docs/Plans/51-thruster-math-contract.md): the plume scalars and colour ramp, shock diamonds, the hull-frame thrust and
-// its burst axes, the pixel-size rule, the ribbon history and selection, quality scaling, the player hull light and the
-// per-hull nozzle table. Constants in SOL::Thruster. The plume material's HLSL mirror (part 51b) must follow any change
-// to PlumeColour, PlumeBrightness or ShockKnots
+// its burst axes, the pixel-size rule, the one-piece flame (profile, gas-parcel spine, pixel envelope), quality scaling,
+// the player hull light and the per-hull nozzle table. Constants in SOL::Thruster. The flame materials' HLSL mirror
+// (Shaders/Private/SOLThruster.ush, SOLThrusterMirror.h) must follow any change to PlumeColour, PlumeBrightness,
+// ShockKnots or the Flame* envelope
 namespace SOLThruster
 {
     // Returns x = clamp(G / G_REF, 0, 1); 0 under PLUME_MIN_G and for a non-finite G
@@ -202,11 +208,12 @@ namespace SOLThruster
     SOLTEST_API FVector3f HullThrustLocalG(const FVector3d& thrustMps2, const FVector3d& hullForward,
         const FVector3d& hullTop);
 
-    // Returns the plume floats of a hull-drawn ship (part 51c): PlumeColourScalar, PlumeBrightness and PlumeLengthM of
-    // the true hull length; all zero when the plume is off, when its true length is under CONE_FADE_LOW_PX on screen
-    // (PixelLength; the material's alpha is 0 there) and for a non-finite or non-positive distance or focal length
-    SOLTEST_API FSOLPlumeInstance PlumeInstance(double gMain, bool bWarPower, double hullLengthM, double distanceM,
-        double focalRefPx);
+    // Returns the plume floats of a hull-drawn ship (part 51c, R10): PlumeColourScalar, PlumeBrightness and PlumeLengthM
+    // of the true hull length; all zero when the plume is off, when the nozzle glow's true diameter
+    // GLOW_DIAMETER_NOZZLE_RADII r_n is under GLOW_FADE_LOW_PX on screen (PixelLength; the glow's alpha is 0 there) and
+    // for a non-finite or non-positive nozzle radius, distance or focal length
+    SOLTEST_API FSOLPlumeInstance PlumeInstance(double gMain, bool bWarPower, double hullLengthM, double nozzleRadiusM,
+        double distanceM, double focalRefPx);
 
     // Writes a ship's per-ship floats in the SOL::ThrusterMaterialParams layout into out (at most out.Num()): c, b and
     // the true plume length, the three burst floats zero (gas bursts are part 51g)
@@ -243,34 +250,146 @@ namespace SOLThruster
     // Returns the size a shown glow is drawn at, max(truePx, floorPx) (the floor for NaN)
     SOLTEST_API double GlowDrawnPx(double truePx, double floorPx);
 
-    // Returns a ribbon sample's drift speed RIBBON_LENGTH_FACTOR L_p / RIBBON_MAX_AGE_S; 0 for a non-finite or
-    // non-positive plume length
-    SOLTEST_API float RibbonDriftMps(double plumeLengthM);
+    // Returns the flame length L_f = FLAME_LENGTH_FACTOR L_p (R10-1); 0 for a non-finite or non-positive plume length
+    SOLTEST_API double FlameLengthM(double plumeLengthM);
 
-    // Returns where a ribbon sample is drawn: ship now + offset + exhaust x drift x age (age = now - emission, a
-    // negative or NaN age read as 0)
-    SOLTEST_API FVector3d RibbonPoint(const FVector3d& shipPositionNow, const FSOLPlumeSample& sample, double nowS);
+    // Returns the flame's full width (diameter) at arc coordinate s, 2 r_n [1 - (1 - FLAME_TAIL_WIDTH_RATIO) S(s / L_p)]
+    // with S the smoothstep on s / L_p clamped to [0, 1] (R10-2): widest at the nozzle, no kink at L_p, constant past it;
+    // a negative s reads as 0; 0 for a NaN s or a non-finite or non-positive L_p or r_n. Unfloored
+    SOLTEST_API double FlameWidthM(double arcM, double plumeLengthM, double nozzleRadiusM);
 
-    // Returns a ribbon sample's alpha (1 - age / RIBBON_MAX_AGE_S) x b, age clamped to [0, A] (negative as 0), b
-    // clamped to [0, 1]; 0 for a NaN age or brightness
-    SOLTEST_API float RibbonAlpha(double ageS, float brightness);
+    // Returns the along-arc alpha clamp(1 - s / L_f, 0, 1) (R10-3); 0 for a NaN s or a non-finite or non-positive L_f
+    SOLTEST_API double FlameAlongAlpha(double arcM, double flameLengthM);
 
-    // Returns a ribbon's width r_n (1 + age / RIBBON_MAX_AGE_S), age clamped to [0, A] (NaN as 0); 0 for a non-finite
-    // or non-positive nozzle radius
-    SOLTEST_API float RibbonWidthM(double ageS, double nozzleRadiusM);
+    // Returns the lateral offset (a + s) sin(phi) - a phi cos(phi), phi = omega s / v_e, of the parcel at arc coordinate
+    // s from the current nozzle axis in a steady turn about the ship's centre with the nozzle a behind it, positive
+    // toward the side the nose turns to (R10-5); 0 for a negative or NaN s, a non-finite or non-positive v_e, or a
+    // non-finite omega or a
+    SOLTEST_API double FlameTurnOffsetM(double arcM, double turnRateRadS, double exhaustSpeedMps, double nozzleOffsetM);
 
-    // Writes the ribbon ships into outNpcIndices (cleared first): candidates within radiusM (inclusive) with a plume or
-    // a fading ribbon, ranked by ribbon px descending (NaN as 0), ties by the lower NPC index, at most maxCount (none
-    // for maxCount <= 0); a partial sort in the output array, which allocates only to grow
-    SOLTEST_API void SelectRibbonShips(TConstArrayView<FSOLRibbonCandidate> candidates, double radiusM, int32 maxCount,
-        TArray<int32>& outNpcIndices);
+    // Writes a flame's spine relative to anchorM (R10-4, contract case 21): point j at s_j = j L_f / (FLAME_POINTS - 1)
+    // is the gas parcel of age s_j / v_e, its pose interpolated between the bracketing poses of (head, the history
+    // newest first), at shipPositionNow + offset + (v_e exhaust + nozzle velocity) tau; alpha clamp01(b) x
+    // FlameAlongAlpha x clamp01(fade) (NaN as 0), 0 for a parcel older than the oldest pose (not yet emitted); width
+    // FlameWidthM, unfloored. head.EmitTimeS is now. Returns the points written, min(FLAME_POINTS, outPoints.Num()); 0
+    // and nothing written for an empty view, L_f 0 or a v_e that is not finite and positive
+    SOLTEST_API int32 BuildFlamePoints(const FSOLPlumeHistory& history, const FSOLPlumeSample& head,
+        const FVector3d& shipPositionNow, double plumeLengthM, double nozzleRadiusM, double exhaustSpeedMps,
+        double fade, const FVector3d& anchorM, TArrayView<FSOLRibbonPoint> outPoints);
 
-    // Returns the ribbon ship count of a QualityPreset (RIBBON_COUNTS_BY_QUALITY, the preset clamped to Low ..
-    // Cinematic; Cinematic is RIBBON_COUNT_UNLIMITED)
-    SOLTEST_API int32 RibbonCountForQuality(int32 qualityPreset);
+    // Returns the flame pixel's core weight at a screen-radial fraction r, (sqrt(1 - r^2))^PLUME_CORE_POWER, r clamped
+    // to [0, 1]; 0 for NaN (R10-3; SOLTH_FlameCoreWeight mirrors it)
+    SOLTEST_API double FlameCoreWeight(double radialFraction);
 
-    // Returns whether the player's plume has a ribbon: at every preset above Low
-    SOLTEST_API bool PlayerHasRibbon(int32 qualityPreset);
+    // Returns the shock-diamond brightness at arc coordinate s and radial fraction r: the nearest ShockKnots knot's
+    // rhombus (half-length SHOCK_KNOT_HALF_LENGTH S along, half-width SHOCK_KNOT_HALF_WIDTH across) times its strength;
+    // 0 outside every knot (R10-3; SOLTH_ShockIntensity mirrors it)
+    SOLTEST_API double FlameKnotIntensity(double arcM, double radialFraction, double plumeLengthM, double nozzleRadiusM,
+        double brightness);
+
+    // Returns the streak depth lerp(body, tail, S((s - 0.5 L_p) / L_p)), S the FlameWidthM smoothstep (R10-3); the body
+    // depth for a NaN s or a non-finite or non-positive L_p (SOLTH_FlameStreakDepth mirrors it)
+    SOLTEST_API double FlameStreakDepth(double arcM, double plumeLengthM, double bodyDepth, double tailDepth);
+
+    // Returns the brightness a flame emits t seconds after its thrust cut out (R10-Q4): clamp01(b) x clamp(1 - t /
+    // FLAME_SHUTDOWN_S, 0, 1), a negative t read as 0; 0 for a NaN b or t
+    SOLTEST_API double FlameShutdownBrightness(double lastBurningBrightness, double secondsSinceCutoff);
+
+    // Returns whether a ship shows a flame (SDD 51 section 11.1, R2, R4): it burns or still has gas in its flame, and
+    // the flame's on-screen length is at least the vanish length; false for a NaN length or vanish length
+    SOLTEST_API bool RibbonShown(double ribbonPx, double vanishPx, bool bHasPlume, bool bRibbonFading);
+
+    // Returns the ribbon vanish length V of a QualityPreset (RIBBON_VANISH_PX_BY_QUALITY, the preset clamped to Low ..
+    // Cinematic; R3)
+    SOLTEST_API double RibbonVanishPx(int32 qualityPreset);
+
+    // Returns a flame's on-screen length in reference px, PixelLength(FLAME_LENGTH_FACTOR L_p, d, f)
+    SOLTEST_API double RibbonPixelLength(double plumeLengthM, double distanceM, double focalRefPx);
+
+    // Returns a ribbon's alpha factor from its on-screen length (R2): 0 at and below V, rising linearly to 1 at
+    // RIBBON_FADE_START_FACTOR x V, 1 above; 0 for a NaN length or vanish length and for V <= 0
+    SOLTEST_API double RibbonPixelFade(double ribbonPx, double vanishPx);
+
+    // Returns the width a ribbon point is drawn at, max(widthM, minPx d / f) (R1, f in the pixels of the floor); a NaN or
+    // negative width reads as 0, the floor term is 0 for a non-finite or non-positive d, f or minPx. The ribbon
+    // material's vertex shader mirrors it (SOLTH_FlameVertex, device pixels)
+    SOLTEST_API double RibbonDrawnWidthM(double widthM, double distanceM, double focalPx, double minPx);
+
+    // Returns a flame point's thin-flame shading weight (R10, the Niagara feeder's copy of SOLTH_FlameSharpness):
+    // clamp01(trueWidthM / drawnWidthM) x clamp01((drawnPx - FLAME_SHARP_LOW_PX) / (FLAME_SHARP_HIGH_PX -
+    // FLAME_SHARP_LOW_PX)) with drawnPx = drawnWidthM x focalPx / distanceM; a negative true width reads as 0; 1 when
+    // the drawn width, distance or focal length is not positive (or NaN)
+    SOLTEST_API double FlameSharpness(double trueWidthM, double drawnWidthM, double distanceM, double focalPx);
+
+    // Returns the farthest distance at which the longest flame (FLAME_LENGTH_FACTOR x the hull length) is still V
+    // long on screen, f x FLAME_LENGTH_FACTOR x L_hull / V; 0 for V <= 0 and any non-finite or non-positive input
+    SOLTEST_API double RibbonReachM(double hullLengthM, double focalRefPx, double vanishPx);
+
+    // Returns the Collect pass's NPC thrust gate (R4, R9, R10-7): max(glow reach f GLOW_DIAMETER_NOZZLE_RADII r_n /
+    // GLOW_FADE_LOW_PX, burst reach f BurstLengthM(L_hull, 1) / CONE_FADE_LOW_PX, flame reach RibbonReachM(L_hull, f, V)
+    // while the flames are on); each term 0 for its own bad input
+    SOLTEST_API double NpcThrustGateM(double hullLengthM, double nozzleRadiusM, double focalRefPx, bool bFlames,
+        double vanishPx);
+
+    // Returns the on-screen ribbon length from which an NPC ribbon is drawn by Niagara (SDD 51 R7),
+    // RIBBON_NIAGARA_PX_FACTOR x RibbonVanishPx of the preset
+    SOLTEST_API double RibbonNiagaraMinPx(int32 qualityPreset);
+
+    // Splits the shown NPC ribbons between the renderers by pixel size (R7): those at least niagaraMinPx long, at most
+    // max(0, niagaraFreeTrails) of them by highest px (ties lower index), go to outNiagaraNpcIndices px descending;
+    // every other entry goes to outPoolNpcIndices in input order. NaN px never qualifies; both outputs are cleared
+    // first and allocate only to grow
+    SOLTEST_API void SplitRibbonRenderers(TConstArrayView<FSOLRibbonShown> shown, double niagaraMinPx,
+        int32 niagaraFreeTrails, TArray<int32>& outNiagaraNpcIndices, TArray<int32>& outPoolNpcIndices);
+
+    // Returns a flame end cap's depth (51e3, contract case 25): max(FLAME_CAP_DEPTH_NOZZLE_RADII x r_n,
+    // FLAME_CAP_MIN_DEPTH_M); the minimum for a NaN, infinite or non-positive r_n
+    SOLTEST_API double FlameCapDepthM(double nozzleRadiusM);
+
+    // Writes the drawn flame (51e3, contract case 25): a nozzle cap point, the spine (at most FLAME_POINTS points), a
+    // tail cap point. Each cap lies FlameCapDepthM(r_n) out from its end point along the end segment (nozzle: from
+    // spine 1 through spine 0; tail: from spine n - 2 through spine n - 1), on the end point itself for a one-point spine
+    // or an end segment shorter than 1e-6 m; its alpha is its end point's, its width 0. Returns n + 2 (n the spine
+    // points used); 0 and nothing written for an empty spine or an output shorter than n + 2. The spine may already sit
+    // at outDrawn[1..n] (built in place); no other overlap is allowed
+    SOLTEST_API int32 AddFlameCaps(TConstArrayView<FSOLRibbonPoint> spine, double nozzleRadiusM,
+        TArrayView<FSOLRibbonPoint> outDrawn);
+
+    // Writes a flame's strip-pool texels (R7, R10, contract case 18, caps 51e3): FLAME_DRAWN_POINTS (x, y, z, alpha)
+    // texels of the drawn points (AddFlameCaps) padded with the last position at alpha 0 (zero with no points), then
+    // the header (c, b, L_p, r_n), then the unfloored widths of drawn points 2..25 four per texel (0 past
+    // points.Num(); drawn point 1, the nozzle, is 2 r_n from the header, the caps are 0); writes nothing unless
+    // outTexels holds exactly RIBBON_TEXELS_PER_TRAIL texels
+    SOLTEST_API void PackRibbonTexels(TConstArrayView<FSOLRibbonPoint> points, float colourScalar, float brightness,
+        float plumeLengthM, float nozzleRadiusM, TArrayView<FVector4f> outTexels);
+
+    // Returns the strip pool texel (column, row) of a trail's first texel, mirroring SOLTH_RibbonTexel:
+    // ((t % RIBBON_TRAILS_PER_BLOCK) x RIBBON_TEXELS_PER_TRAIL, t / RIBBON_TRAILS_PER_BLOCK); (-1, -1) for t < 0
+    SOLTEST_API FIntPoint RibbonTexelOrigin(int32 trail);
+
+    // Returns the strip blocks (ISM instances and texture rows) that hold a trail count, ceil(trails /
+    // RIBBON_TRAILS_PER_BLOCK); 0 for a count <= 0
+    SOLTEST_API int32 RibbonBlockCount(int32 trails);
+
+    // Returns the ribbon frame anchor for a camera in render-space cm: each component rounded to whole metres, so the
+    // anchor is exact in float (within 2^24 cm) and both renderers use the same value; zero for a non-finite input
+    SOLTEST_API FVector3d RibbonAnchorCm(const FVector3d& cameraRenderCm);
+
+    // Returns this frame's ribbon anchor with the hold (51e3, contract case 24): the held anchor while bHasHeld, the
+    // held anchor is finite and the camera lies within RIBBON_ANCHOR_HOLD_M of it (straight-line distance, the bound
+    // included), else RibbonAnchorCm(camera)
+    SOLTEST_API FVector3d RibbonAnchorHoldCm(const FVector3d& heldAnchorCm, bool bHasHeld,
+        const FVector3d& cameraRenderCm);
+
+    // Returns the device focal length in device pixels, projectionScaleY x viewHeightPx / 2 (ViewToClip[1][1] and
+    // the unscaled view height, as SOLTH_FlameVertex floors); 0 for a non-finite or non-positive input
+    SOLTEST_API double RibbonDeviceFocalPx(double projectionScaleY, double viewHeightPx);
+
+    // Returns whether a history slot of the shared flame store may be released this frame (contract case 24): it holds
+    // no pose, its newest pose with b > 0 is at least flameLifeS old (NaN age too: all its gas has left the flame), or
+    // it was not fed this frame and its last pixel fade was 0 (NaN as 0)
+    SOLTEST_API bool RibbonTrailReleasable(bool bFedThisFrame, int32 sampleCount, double newestBurningAgeS,
+        double flameLifeS, double pixelFade);
 
     // Returns the player hull light's intensity b x maxIntensity, b clamped to [0, 1] (NaN 0); 0 for a non-finite or
     // negative maximum
@@ -281,9 +400,6 @@ namespace SOLThruster
 
     // Returns a hull's nozzle table (SOL::Thruster); an unknown kind reads as NpcFaction0
     SOLTEST_API const FSOLHullThrusters& HullThrusters(ESOLHullKind kind);
-
-    // Returns whether a ship may show a plume and gas bursts: only when drawn with a hull mesh, never as a dot (Q27)
-    SOLTEST_API bool PlumeAllowed(bool bHullDrawn);
 
     // Returns whether the player hull light is on (Q28): always in VR, else at every preset above Low
     SOLTEST_API bool PlayerLightEnabled(int32 qualityPreset, bool bVR);

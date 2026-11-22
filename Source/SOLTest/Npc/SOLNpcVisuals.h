@@ -17,6 +17,7 @@
 #include "SOLNpcVisuals.generated.h"
 
 class ASOLOrbitLineVisuals;
+class ASOLThrusterRibbons;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UStaticMesh;
@@ -76,6 +77,10 @@ public:
 
     // Gives the lanes the orbit-line actor whose occluders they share (SDD 38 D24; ASOLGameMode, at spawn)
     void SetOrbitLineVisuals(ASOLOrbitLineVisuals* orbitLines);
+
+    // Gives the placement pass the thruster ribbons it feeds the hull-drawn ships to (SDD 51 R7; ASOLGameMode, at
+    // spawn)
+    void SetThrusterRibbons(ASOLThrusterRibbons* ribbons) { ThrusterRibbons = ribbons; }
 
     // Verification runs (-SOLSmokeNpcLanes): detaches the lanes from the Lanes overlay row, so the player's settings
     // are neither read nor changed for them, and shows or hides them as given (may be called again to switch)
@@ -250,6 +255,9 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<ASOLOrbitLineVisuals> OrbitLines;
 
+    UPROPERTY(Transient)
+    TObjectPtr<ASOLThrusterRibbons> ThrusterRibbons;  // Fed from the placement pass (SDD 51 R7)
+
     FDelegateHandle mNpcsUpdatedHandle;
     uint32 mUploadedRevision = MAX_uint32;            // Population revision of the rail texture
     int32 mFarBlockCount = 0;
@@ -271,6 +279,8 @@ private:
     TArray<FVector4f> mPointRelM;                     // Scratch: each Point-tier CPU ship's drawn position relative to
                                                       // the viewpoint, w 1 when the CPU draws it (the Mid hand-over)
     TArray<int32> mMeshPoolOwners;                    // NPC index each pool mesh showed last frame (INDEX_NONE: none)
+    TArray<int32> mMeshPoolShips;                     // Scratch: this frame's CPU ship index per used pool mesh, in
+                                                      // placement order (their ribbon feeds, SDD 51 R7)
     TArray<float> mHullPlumeData[2];                  // Scratch per faction: SOL::ThrusterMaterialParams floats per
                                                       // instance slot, reused every frame (SDD 51 section 4.10)
     TArray<FIntPoint> mPlumeBlockRanges[2];           // Scratch: per placement task, the lowest and highest slot with a

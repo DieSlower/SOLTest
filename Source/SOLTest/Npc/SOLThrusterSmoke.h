@@ -5,11 +5,14 @@
 
 #pragma once
 
+#include "Visuals/SOLThrusterRibbons.h"
+
 #include "CoreMinimal.h"
 
 class ASOLNpcVisuals;
 class ASOLOrbitLineVisuals;
 class ASOLShipPawn;
+class ASOLThrusterRibbons;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
 class USOLNpcSubsystem;
@@ -38,6 +41,16 @@ class UWorld;
  * (the ship not moved) and then riding along with the hardest-braking Earth-Mars lane ship. Per window: a settle, then
  * `stat dumpave` of STAT_SOL_NpcRedraw over the window with three ProfileGPU frames, and the window means of the NPC
  * Collect pass, the whole NPC update, the GPU frame and the game thread logged as one PROFILE line.
+ *
+ * With -SOLSmokeThrusterRibbons (SDD 51 part 51e step 7, combat left on) it checks the thruster ribbons instead: a
+ * screenshot at the Earth spawn view (the battles' turning ships), the frozen-frame no-pop pair there (time dilation at
+ * its minimum and the ribbons' clock frozen; sol.ThrusterRibbonNiagaraPx at the preset's value twice, then huge twice,
+ * so every NPC ribbon moves to the strip pool, with anti-aliasing off and then with the project's; then
+ * sol.ThrusterRibbons 0 for the ribbon mask; without the HUD, the camera, anchor and trail counts logged and checked per
+ * shot and the Niagara-drawn trails' screen places logged for the crops), the player thrusting while turning (its two
+ * ribbons, side view), a ride with a lane ship in a U-turn and one with a burning lane ship at 22 km (the 1 px line).
+ * With -SOLSmokeThrusterProfile too, the interleaved windows switch sol.ThrusterRibbons 1 (A) / 0 (B, the Niagara set
+ * also deactivated) instead of sol.NpcPlumes, without ProfileGPU frames, and log the ribbons' own tick time and counts.
  */
 class SOLTEST_API FSOLThrusterSmoke
 {
@@ -66,6 +79,11 @@ private:
         ProfileSpawn,       // Interleaved windows at the Earth spawn view
         ProfileLaneSettle,  // Riding along with a braking lane ship; settle
         ProfileLane,        // Interleaved windows in the lane
+        RibbonSpawn,        // Ribbons: the spawn view settles; one screenshot
+        RibbonPlayer,       // The player thrusts while turning (side view); one screenshot
+        RibbonTurnSettle,   // Riding along with a lane ship in a U-turn; one screenshot
+        RibbonPop,          // The frozen-frame no-pop shots (still riding the U-turn ship)
+        RibbonFarSettle,    // Riding along with a burning lane ship at 22 km; one screenshot
         Done,
     };
 
@@ -136,8 +154,24 @@ private:
     // Runs one frame of an interleaved profile; returns true once every window is done
     bool TickProfile(const TCHAR* view, UWorld* world, float realDeltaSeconds);
 
-    // Requests a screenshot with the HUD named Thruster_<width>x<height>_<name>.png
-    void TakeShot(const TCHAR* name) const;
+    // Requests a screenshot (with or without the HUD) named Thruster_<width>x<height>_<name>.png
+    void TakeShot(const TCHAR* name, bool bShowUi = true) const;
+
+    // Runs one frame of the frozen-frame no-pop shots; returns true once every shot is written
+    bool TickPop(UWorld* world);
+
+    // Freezes (time dilation at its minimum, the ribbons' clock fixed) or thaws the game
+    void SetFrozen(UWorld* world, bool bFrozen);
+
+    // Logs the ribbons' counts, camera and anchor under a label, and the drawn NPC trails (all Niagara ones, the
+    // longest pool ones and the longest at least farM away) with their screen places; returns the Niagara-drawn count
+    int32 LogRibbons(const TCHAR* label, double farM) const;
+
+    // Picks an Earth-Mars lane ship in a U-turn now and holdS later; INDEX_NONE if none
+    int32 PickTurnTarget(double holdS) const;
+
+    // Returns whether a phase ends with a ribbon screenshot
+    static bool IsRibbonShotPhase(ESOLThrusterPhase phase);
 
     // Logs one check with its verdict and counts it
     void Check(const TCHAR* label, bool bPassed, const FString& detail);
@@ -187,6 +221,30 @@ private:
     int32 mGpuFrames = 0;                   // Frames in the GPU mean (ProfileGPU frames left out)
     int32 mWindowHulls = 0;                 // Hull-drawn ships and lit plumes at the window's start
     int32 mWindowLit = 0;
+    double mSumRibbonMs = 0.0;              // Ribbon mode: the ribbons' tick and trail counts, window sums
+    double mSumRibbonPhaseMs[ASOLThrusterRibbons::RIBBON_PHASES] = {};
+    double mSumCulledTrails = 0.0;
+    double mSumNiagaraTrails = 0.0;
+    double mSumPoolTrails = 0.0;
+    double mSumLiveTrails = 0.0;
+
+    // The ribbon checks
+    TWeakObjectPtr<ASOLThrusterRibbons> mRibbons;
+    bool mIsRibbons = false;                // -SOLSmokeThrusterRibbons
+    int32 mRunNiagaraPx = -1;               // -SOLSmokeRibbonNiagaraPx= (sol.ThrusterRibbonNiagaraPx of the run)
+    bool mIsShotTaken = false;              // The current phase's screenshot was requested
+    double mShotHoldS = 0.0;                // Real time left for a requested screenshot to be written
+    int32 mPopShot = 0;                     // Shot index and frame in the no-pop sequence
+    int32 mPopFrame = 0;
+    int32 mAntiAliasingDefault = INDEX_NONE;    // r.AntiAliasingMethod before the sequence
+    FVector mPopCameraCm = FVector::ZeroVector; // The first shot's camera, anchor and counts (the invariants)
+    FVector3d mPopAnchorCm = FVector3d::ZeroVector;
+    int32 mPopLive = 0;
+    int32 mPopNiagaraNpc = 0;
+    int32 mPopPool = 0;
+    bool mIsPopVacuous = true;              // No NPC trail was drawn by Niagara in the first shot
+    bool mIsPopStable = true;               // Camera, anchor and live count equal in every shot
+    bool mIsPopSwitched = true;             // Every pool shot: no NPC trail in Niagara, the pool grown by the switch
 
     int32 mChecksRun = 0;
     int32 mChecksPassed = 0;

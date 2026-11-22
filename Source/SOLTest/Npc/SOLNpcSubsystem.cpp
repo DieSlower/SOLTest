@@ -6,6 +6,7 @@
 #include "Npc/SOLNpcSubsystem.h"
 
 #include "Game/SOLGameMode.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Npc/SOLNpcAiMath.h"
 #include "Npc/SOLNpcFragments.h"
 #include "Npc/SOLNpcFullAiProcessor.h"
@@ -20,6 +21,7 @@
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
 #include "Visuals/SOLThrusterMath.h"
+#include "Visuals/SOLThrusterRibbons.h"
 
 #include "Algo/BinarySearch.h"
 #include "Async/ParallelFor.h"
@@ -423,8 +425,8 @@ double USOLNpcSubsystem::ViewPixelAngleRad() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the distance beyond which no NPC plume can reach the cone's low pixel edge (SDD 51 section 4.2): the longest
-// plume (the hull length) at the view's 1080p-reference focal length
+// Returns the distance beyond which no NPC plume can reach the cone's low pixel edge and no ribbon its vanish length
+// (SDD 51 section 4.2, R4): the longest plume (the hull length) at the view's 1080p-reference focal length
 double USOLNpcSubsystem::ViewPlumeGateM() const
 {
     // The plume A/B switch (sol.NpcPlumes 0, owned by ASOLNpcVisuals) also skips the thrust, so its baseline Collect
@@ -437,8 +439,14 @@ double USOLNpcSubsystem::ViewPlumeGateM() const
     double fovDeg = 0.0;
     FVector2D viewportPx;
     ViewCamera(fovDeg, viewportPx);
-    return SOLThruster::PlumeMaxDistanceM(SOL::Thruster::NPC_HULL_LENGTH_M,
-        SOLThruster::FocalRefPx(fovDeg, viewportPx.X / viewportPx.Y), SOL::Thruster::CONE_FADE_LOW_PX);
+
+    // The glow and gas-burst reach, widened to the flame reach at the preset's V while the flames are on (R4, R10-7);
+    // sol.ThrusterRibbons 0 leaves the glow and bursts only (R9); Epic (3) without settings, as the flames' draw assumes
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
+    const int32 quality = settings != nullptr ? settings->GetSavedValues().QualityPreset : 3;
+    return SOLThruster::NpcThrustGateM(SOL::Thruster::NPC_HULL_LENGTH_M, SOL::Thruster::NPC_NOZZLE_RADIUS_M,
+        SOLThruster::FocalRefPx(fovDeg, viewportPx.X / viewportPx.Y), ASOLThrusterRibbons::AreRibbonsEnabled(),
+        SOLThruster::RibbonVanishPx(quality));
 }
 
 //////////////////////////////////////////////////////////////////////////

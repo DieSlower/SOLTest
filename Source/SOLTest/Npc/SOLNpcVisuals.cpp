@@ -23,6 +23,7 @@
 #include "UI/SOLOverlayModel.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
+#include "Visuals/SOLThrusterRibbons.h"
 
 #include "Async/ParallelFor.h"
 #include "Camera/PlayerCameraManager.h"
@@ -301,6 +302,7 @@ void ASOLNpcVisuals::BeginPlay()
         MeshPool.Add(mesh);
     }
     mMeshPoolOwners.Init(INDEX_NONE, NPC_MESH_POOL_SIZE);
+    mMeshPoolShips.Reserve(NPC_MESH_POOL_SIZE);
     for (int32 faction = 0; faction < 2; ++faction)
     {
         UMaterialInterface* tint = hulls[faction]->GetMaterial(0);
@@ -830,10 +832,75 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const auto shipPlume = [this, bPlumes](const FSOLNpcCpuShip& ship, const double distanceCm)
     {
         return bPlumes ? SOLThruster::PlumeInstance(ship.ThrustLocalG.X, false, SOL::Thruster::NPC_HULL_LENGTH_M,
-            distanceCm / SOL::METERS_TO_CM, mPlumeFocalRefPx) : FSOLPlumeInstance();
+            SOL::Thruster::NPC_NOZZLE_RADIUS_M, distanceCm / SOL::METERS_TO_CM, mPlumeFocalRefPx) : FSOLPlumeInstance();
     };
     const float gpuHideRadiusM = static_cast<float>(Npcs->GetStats().MidRadiusM);
     int32 meshSlots[2] = { 0, 1 };
+
+    // The thruster flames (SDD 51 R7, R2, R4, R10): fed from this pass for the hull-drawn ships; switches read once
+    // here, never in the parallel tasks. Off with the plume meshes too (sol.NpcPlumes 0 collects no thrust)
+    ASOLThrusterRibbons* const ribbons = bPlumes && IsValid(ThrusterRibbons)
+        && ASOLThrusterRibbons::AreRibbonsEnabled() ? ThrusterRibbons.Get() : nullptr;
+    const double ribbonVanishPx = ribbons != nullptr ? ribbons->GetVanishPx() : 0.0;
+    const double focalRefPx = mPlumeFocalRefPx;
+
+    // The farthest an NPC flame reaches from its ship's centre: the aft nozzle plus the longest flame with a bend margin
+    static constexpr double NPC_FLAME_MAX_REACH_M = -SOL::Thruster::NPC_NOZZLE_X_M
+        + SOL::Thruster::FLAME_REACH_BEND_MARGIN * SOL::Thruster::FLAME_LENGTH_FACTOR
+        * SOL::Thruster::NPC_HULL_LENGTH_M;
+
+    // Feeds a hull-drawn ship's flame from its raw main-engine thrust (not the glow's pixel-gated PlumeInstance), only
+    // while the ship's largest flame touches last frame's view frustum (R10-Q8: a ship turning into view grows its
+    // flame in at v_e over 1-3 frames; off screen its flame is released once its gas has left): a new flame only for a
+    // burning ship whose flame reaches V on screen (left pending for the serial commit), a ship with a flame always,
+    // committed in place from this task (the store runs the spool-down). Positions in render-space metres (Unreal
+    // axes, after the rebase), the nozzle offset and exhaust in non-rotating world axes (one nozzle on the aft centre)
+    const auto feedRibbon = [ribbons, ribbonVanishPx, focalRefPx](const FSOLNpcCpuShip& ship,
+        const FVector& locationCm, const FVector& prevLocationCm, const double distanceCm, FSOLRibbonFeed& outPending)
+    {
+        outPending.bValid = false;
+        const double gMain = static_cast<double>(ship.ThrustLocalG.X);
+        const double plumeM = SOLThruster::PlumeLengthM(SOL::Thruster::NPC_HULL_LENGTH_M, gMain);
+        const double brightness = SOLThruster::PlumeBrightness(gMain);
+        const double distanceM = distanceCm / SOL::METERS_TO_CM;
+        const bool bBurning = plumeM > 0.0 && brightness > 0.0;
+        const bool bReachesV = bBurning
+            && SOLThruster::RibbonPixelLength(plumeM, distanceM, focalRefPx) >= ribbonVanishPx;
+        const int32 trailSlot = ribbons->FindTrail(ship.NpcIndex);
+        if (!bReachesV && trailSlot == INDEX_NONE)
+        {
+            return;
+        }
+        const FVector3d shipM = FVector3d(locationCm) / SOL::METERS_TO_CM;
+        if (!ribbons->IsOnScreen(shipM, NPC_FLAME_MAX_REACH_M))
+        {
+            return;
+        }
+        const FVector3d forward = (ship.HeadingDirection.IsZero() ? FVector3d(locationCm - prevLocationCm)
+            : SOLRender::EclipticToUnreal(FVector3d(ship.HeadingDirection))).GetSafeNormal();
+        if (forward.IsZero())
+        {
+            return;
+        }
+        const FSOLNozzle& nozzle = SOLThruster::HullThrusters((ship.Faction & 1) != 0 ? ESOLHullKind::NpcFaction1
+            : ESOLHullKind::NpcFaction0).Nozzles[0];
+        const FVector3d offsetM = forward * static_cast<double>(nozzle.PositionM.X);
+        FSOLRibbonFeed feed;
+        feed.Key = ship.NpcIndex;
+        feed.ShipPositionM = shipM;
+        feed.Pose.OffsetM = FVector3f(offsetM);
+        feed.Pose.ExhaustDir = FVector3f(-forward);
+        if (bBurning)
+        {
+            feed.ColourScalar = static_cast<float>(SOLThruster::PlumeColourScalar(gMain, false));
+            feed.PlumeLengthM = plumeM;
+            feed.Pose.Brightness = static_cast<float>(brightness);
+        }
+        feed.DistanceM = distanceM;
+        feed.NozzleRadiusM = nozzle.RadiusM;
+        feed.bValid = true;
+        ribbons->FeedNpc(trailSlot, feed, outPending);
+    };
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UpdateCpuShips);
 
     // The Mid hand-over of the Point-tier ships (SDD 50 section 4.6), in parallel before the slots: a lane ship is
@@ -901,6 +968,7 @@ void ASOLNpcVisuals::UpdateCpuShips()
     // Serial pass: each ship's slot in its layer (texel or per-faction instance; mesh-pool ships are placed here,
     // INDEX_NONE), so the heavy per-ship work below can run in parallel (SDD 11 Amendment 6)
     mShipSlots.SetNumUninitialized(ships.Num(), EAllowShrinking::No);
+    mMeshPoolShips.Reset();
     int32 pointCount = 0;
     int32 instanceCounts[2] = { 0, 0 };
     for (int32 index = 0; index < ships.Num(); ++index)
@@ -940,6 +1008,7 @@ void ASOLNpcVisuals::UpdateCpuShips()
                 mMeshPoolOwners[poolSlot] = ship.NpcIndex;
             }
             mesh->SetVisibility(true);
+            mMeshPoolShips.Add(index);
             mShipSlots[index] = INDEX_NONE;
             continue;
         }
@@ -953,6 +1022,24 @@ void ASOLNpcVisuals::UpdateCpuShips()
         mHullPrevTransforms[faction].SetNumUninitialized(instanceCounts[faction], EAllowShrinking::No);
         mHullPlumeData[faction].SetNumUninitialized(instanceCounts[faction] * PLUME_FLOATS, EAllowShrinking::No);
         mPlumeBlockRanges[faction].SetNumUninitialized(blockCount, EAllowShrinking::No);
+    }
+
+    // Ribbon feed slots: the pool meshes' ships first (fed here, serially), then faction 0's and faction 1's instance
+    // slots (fed by the parallel pass, one slot per ship)
+    const int32 meshFeeds = mMeshPoolShips.Num();
+    const int32 instanceFeedBase[2] = { meshFeeds, meshFeeds + instanceCounts[0] };
+    const TArrayView<FSOLRibbonFeed> ribbonFeeds = ribbons != nullptr
+        ? ribbons->BeginNpcFeeds(meshFeeds + instanceCounts[0] + instanceCounts[1]) : TArrayView<FSOLRibbonFeed>();
+    if (ribbons != nullptr)
+    {
+        for (int32 feed = 0; feed < meshFeeds; ++feed)
+        {
+            const FSOLNpcCpuShip& ship = ships[mMeshPoolShips[feed]];
+            FVector locationCm, prevLocationCm;
+            FQuat rotation;
+            placeShip(ship, ship.Faction & 1, locationCm, prevLocationCm, rotation);
+            feedRibbon(ship, locationCm, prevLocationCm, (locationCm - viewRenderCm).Size(), ribbonFeeds[feed]);
+        }
     }
 
     // Parallel pass: point texels and instanced hulls (never smaller than a few pixels, previous transform from the
@@ -994,6 +1081,10 @@ void ASOLNpcVisuals::UpdateCpuShips()
                 plumeRanges[faction].X = FMath::Min(plumeRanges[faction].X, slot);
                 plumeRanges[faction].Y = FMath::Max(plumeRanges[faction].Y, slot);
             }
+            if (ribbons != nullptr)
+            {
+                feedRibbon(ship, locationCm, prevLocationCm, distanceCm, ribbonFeeds[instanceFeedBase[faction] + slot]);
+            }
         }
         mPlumeBlockRanges[0][block] = plumeRanges[0];
         mPlumeBlockRanges[1][block] = plumeRanges[1];
@@ -1011,6 +1102,10 @@ void ASOLNpcVisuals::UpdateCpuShips()
         mPlumeRange[faction] = range.X <= range.Y ? range : FIntPoint(1, 0);
     }
 
+    if (ribbons != nullptr)
+    {
+        ribbons->CommitNpcFeeds();
+    }
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UploadShips);
 
     // Hide the unused pool meshes

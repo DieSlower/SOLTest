@@ -181,7 +181,7 @@ private:
     double ViewPixelAngleRad() const;
 
     // Returns the plume gate: hull-drawn ships nearer than this get their plume thrust in the Collect pass (SDD 51
-    // section 4.2, SOLThruster::PlumeMaxDistanceM of the view)
+    // section 4.2, R4: SOLThruster::NpcThrustGateM of the view, the ribbon reach included while ribbons are on)
     double ViewPlumeGateM() const;
 
     // Writes the player camera's horizontal FOV (degrees) and the viewport size (px), with reference fallbacks

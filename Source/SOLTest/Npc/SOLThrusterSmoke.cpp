@@ -22,8 +22,12 @@
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
 #include "Visuals/SOLThrusterMath.h"
+#include "Visuals/SOLThrusterRibbons.h"
 
+#include "Camera/PlayerCameraManager.h"
 #include "DynamicRHI.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/App.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -84,6 +88,46 @@ namespace
         TEXT("r.ProfileGPU.ShowStats 1"), TEXT("r.ProfileGPU.ShowPercentColumn 1"),
         TEXT("r.ProfileGPU.ShowInclusive 1"), TEXT("r.ProfileGPU.ShowExclusive 1"),
         TEXT("r.ProfileGPU.ThresholdPercent 0"), TEXT("r.ProfileGPU.Root *") };
+
+    // The ribbon checks (-SOLSmokeThrusterRibbons)
+    constexpr int32 THRSMOKE_RIBBON_PROFILE_PAIRS = 8;       // A/B pairs per view in the ribbon profile
+    constexpr double THRSMOKE_RIBBON_SPAWN_S = 5.0;          // The spawn view settles (histories fill: 1 s each)
+    constexpr double THRSMOKE_RIBBON_PLAYER_S = 2.5;         // The player thrusts while turning this long
+    constexpr double THRSMOKE_RIBBON_RIDE_S = 4.0;           // A ride settles (the target's ribbon fills)
+    constexpr double THRSMOKE_RIBBON_SHOT_HOLD_S = 0.6;      // Real time for a requested screenshot to be written
+    constexpr double THRSMOKE_RIBBON_TURN_HOLD_S = 6.0;      // The U-turn target stays in its turn this long
+    constexpr double THRSMOKE_RIBBON_TURN_VIEW_M = 400.0;    // Ride distance from the U-turn target
+    constexpr double THRSMOKE_RIBBON_FAR_VIEW_M = 22000.0;   // Ride distance from the far burning target
+    constexpr double THRSMOKE_RIBBON_FAR_LOG_M = 20000.0;    // Trails at least this far are logged
+    constexpr double THRSMOKE_RIBBON_PLAYER_THRUST = 1.0;    // Forward input (3 G)...
+    constexpr double THRSMOKE_RIBBON_PLAYER_YAW_RADPS = 0.8; // ...while yawing at this rate
+    constexpr double THRSMOKE_RIBBON_SWING_YAW_PX = 500.0;   // Free-look swing onto the ship's side (as the 51d smoke)
+    constexpr double THRSMOKE_RIBBON_SWING_PITCH_PX = -60.0;
+    constexpr int32 THRSMOKE_RIBBON_LOG_TRAILS = 10;         // Longest pool / far trails logged per label
+    constexpr float THRSMOKE_FROZEN_DILATION = 0.0001f;      // The world settings' minimum time dilation
+    constexpr double THRSMOKE_POP_RELATIVE_TOL_CM = 1.0;   // Camera to the ridden ship across the pop shots
+    constexpr int32 THRSMOKE_POOL_PX = 1000000000;           // sol.ThrusterRibbonNiagaraPx: every NPC ribbon to the pool
+    constexpr int32 THRSMOKE_PRESET_PX = -1;                 // ...the preset's threshold
+    constexpr int32 THRSMOKE_POP_SETTLE_FRAMES = 30;         // Frames after a switch (the pool's 3 upload buffers)...
+    constexpr int32 THRSMOKE_POP_TSR_SETTLE_FRAMES = 90;     // ...and after a switch back to temporal AA
+    const TCHAR* const THRSMOKE_AA_CVAR = TEXT("r.AntiAliasingMethod");
+
+    // One shot of the no-pop sequence: anti-aliasing off (0) or the default (-1), the Niagara threshold, the ribbons
+    struct FThrusterPopShot
+    {
+        const TCHAR* Name;
+        int32 AntiAliasing;
+        int32 NiagaraPx;
+        int32 Ribbons;
+    };
+    // N = the preset's split, P = every NPC ribbon in the pool, twice each (the same-renderer baseline); last the ribbons
+    // off (the mask; switching them off drops the histories, so it comes last)
+    const FThrusterPopShot THRSMOKE_POP_SHOTS[] = {
+        { TEXT("pop_aaoff_N1"), 0, THRSMOKE_PRESET_PX, 1 }, { TEXT("pop_aaoff_N2"), 0, THRSMOKE_PRESET_PX, 1 },
+        { TEXT("pop_aaoff_P1"), 0, THRSMOKE_POOL_PX, 1 }, { TEXT("pop_aaoff_P2"), 0, THRSMOKE_POOL_PX, 1 },
+        { TEXT("pop_tsr_N1"), -1, THRSMOKE_PRESET_PX, 1 }, { TEXT("pop_tsr_N2"), -1, THRSMOKE_PRESET_PX, 1 },
+        { TEXT("pop_tsr_P1"), -1, THRSMOKE_POOL_PX, 1 }, { TEXT("pop_tsr_P2"), -1, THRSMOKE_POOL_PX, 1 },
+        { TEXT("pop_aaoff_R0"), 0, THRSMOKE_PRESET_PX, 0 } };
 
     //////////////////////////////////////////////////////////////////////////
     // Sets an integer console variable, logging a name that does not exist
@@ -172,8 +216,13 @@ void FSOLThrusterSmoke::Start(ASOLShipPawn& pawn)
 
     // The cost captures need a standalone -game process (in the editor ProfileGPU opens its visualizer)
     mIsProfile = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_THRUSTER_PROFILE) && !GIsEditor;
-    UE_LOG(LogSOL, Log, TEXT("SmokeThruster: starting (NPC visuals %s, profile %s)"),
-        mVisuals.IsValid() ? *mVisuals->GetName() : TEXT("none"), mIsProfile ? TEXT("on") : TEXT("off"));
+    mIsRibbons = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_THRUSTER_RIBBONS);
+    mRunNiagaraPx = THRSMOKE_PRESET_PX;
+    FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_RIBBON_NIAGARA_PX, mRunNiagaraPx);
+    mRibbons = gameMode != nullptr ? gameMode->GetThrusterRibbons() : nullptr;
+    UE_LOG(LogSOL, Log, TEXT("SmokeThruster: starting (NPC visuals %s, profile %s, ribbons %s)"),
+        mVisuals.IsValid() ? *mVisuals->GetName() : TEXT("none"), mIsProfile ? TEXT("on") : TEXT("off"),
+        mIsRibbons ? (mRibbons.IsValid() ? TEXT("on") : TEXT("on, actor missing")) : TEXT("off"));
 
     // Overrides in memory only: lanes, tunnels and orbit lines detached from the player's settings and hidden, no
     // space dust, no NPC combat, the plumes on
@@ -188,11 +237,13 @@ void FSOLThrusterSmoke::Start(ASOLShipPawn& pawn)
         mOrbitLines->SetLinesEnabled(false);
     }
     ThrusterSmokeSetCvar(SOL::SpaceDust::CVAR_ENABLED, 0);
-    if (!mIsProfile)
+    if (!mIsProfile && !mIsRibbons)
     {
-        ThrusterSmokeSetCvar(THRSMOKE_COMBAT_CVAR, 0);      // The profile keeps the default (combat on)
+        ThrusterSmokeSetCvar(THRSMOKE_COMBAT_CVAR, 0);      // The profile and the ribbons keep the default (combat on)
     }
     ThrusterSmokeSetCvar(SOL::NPC_PLUME_CVAR, 1);
+    ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBONS_CVAR, 1);
+    ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBON_NIAGARA_PX_CVAR, mRunNiagaraPx);
     if (mNpcs.IsValid() && mNpcs->GetRequestedCount() == 0)
     {
         mNpcs->RequestNpcCount(THRSMOKE_SHIPS);
@@ -202,13 +253,16 @@ void FSOLThrusterSmoke::Start(ASOLShipPawn& pawn)
 
 //////////////////////////////////////////////////////////////////////////
 // Runs one frame of the script; returns true once it has finished
-bool FSOLThrusterSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
+bool FSOLThrusterSmoke::Update(ASOLShipPawn& pawn, const float deltaSeconds)
 {
+    // The ribbon checks freeze the game (the pawn's delta is dilated), so they time by the engine's real delta
+    const float realDeltaSeconds = mIsRibbons ? static_cast<float>(FApp::GetDeltaTime()) : deltaSeconds;
     if (mPhase == ESOLThrusterPhase::Done)
     {
         return true;
     }
-    if (!mVisuals.IsValid() || !mNpcs.IsValid() || !mShips.IsValid() || !mRegistry.IsValid() || !mAnchor.IsValid())
+    if (!mVisuals.IsValid() || !mNpcs.IsValid() || !mShips.IsValid() || !mRegistry.IsValid() || !mAnchor.IsValid()
+        || (mIsRibbons && !mRibbons.IsValid()))
     {
         UE_LOG(LogSOL, Error, TEXT("SmokeThruster: NPC visuals or subsystems missing; aborting"));
         mPhase = ESOLThrusterPhase::Done;
@@ -230,6 +284,40 @@ bool FSOLThrusterSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
         ScanFrame();
     }
 
+    // The player's held inputs (thrust forward while yawing) every frame of its phase, the screenshot hold included
+    if (mPhase == ESOLThrusterPhase::RibbonPlayer)
+    {
+        if (mPhaseFrames == 1)
+        {
+            // Manual flight (no assist fighting the yaw) and the free-look swing onto the ship's side
+            if (mShips->GetFlightMode() != ESOLFlightMode::Manual)
+            {
+                pawn.HandleToggleAssist();
+            }
+            pawn.HandleFreeLook(true);
+            pawn.HandleMouseDelta(FVector2d(THRSMOKE_RIBBON_SWING_YAW_PX, THRSMOKE_RIBBON_SWING_PITCH_PX));
+        }
+        pawn.HandleThrust(FVector3d(THRSMOKE_RIBBON_PLAYER_THRUST, 0.0, 0.0));
+        FSOLShipState state = mShips->GetState();
+        state.AngularVelocityRadPerS = FVector3d(0.0, 0.0, THRSMOKE_RIBBON_PLAYER_YAW_RADPS);
+        mShips->SetState(state);
+    }
+    else if (mPhase == ESOLThrusterPhase::RibbonTurnSettle && mPhaseFrames == 1)
+    {
+        pawn.HandleThrust(FVector3d::ZeroVector);           // The rides pin the ship; the camera back behind it
+        pawn.HandleFreeLook(false);
+    }
+
+    // A requested screenshot holds the phase until it is written
+    if (mShotHoldS > 0.0)
+    {
+        mShotHoldS -= realDeltaSeconds;
+        if (mShotHoldS > 0.0)
+        {
+            return false;
+        }
+    }
+
     // Phase end: the population once ready; the profiles once every window is done; the rest by time and frames
     if (mPhase == ESOLThrusterPhase::WaitPopulation)
     {
@@ -249,9 +337,30 @@ bool FSOLThrusterSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
             return false;
         }
     }
+    else if (mPhase == ESOLThrusterPhase::RibbonPop)
+    {
+        if (!TickPop(pawn.GetWorld()))
+        {
+            return false;
+        }
+    }
     else if (mPhaseTimeS < GetPhaseDuration(mPhase) || mPhaseFrames < FMath::Max(GetPhaseFrames(mPhase),
         THRSMOKE_MIN_PHASE_FRAMES))
     {
+        return false;
+    }
+
+    // A ribbon shot phase ends with its screenshot, once written
+    if (IsRibbonShotPhase(mPhase) && !mIsShotTaken)
+    {
+        const bool bFar = mPhase == ESOLThrusterPhase::RibbonFarSettle;
+        const TCHAR* name = mPhase == ESOLThrusterPhase::RibbonSpawn ? TEXT("ribbon_spawn")
+            : mPhase == ESOLThrusterPhase::RibbonPlayer ? TEXT("ribbon_player")
+            : mPhase == ESOLThrusterPhase::RibbonTurnSettle ? TEXT("ribbon_turn") : TEXT("ribbon_far");
+        LogRibbons(name, THRSMOKE_RIBBON_FAR_LOG_M);
+        TakeShot(name, !bFar);
+        mIsShotTaken = true;
+        mShotHoldS = THRSMOKE_RIBBON_SHOT_HOLD_S;
         return false;
     }
 
@@ -259,6 +368,7 @@ bool FSOLThrusterSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
     mPhase = NextPhase(mPhase);
     mPhaseTimeS = 0.0;
     mPhaseFrames = 0;
+    mIsShotTaken = false;
     if (mPhase == ESOLThrusterPhase::Done)
     {
         Finish(pawn);
@@ -278,7 +388,11 @@ FSOLThrusterSmoke::ESOLThrusterPhase FSOLThrusterSmoke::NextPhase(const ESOLThru
         {
             return ESOLThrusterPhase::ProfileSpawn;
         }
-        return ESOLThrusterPhase::SpawnScan;
+        return mIsRibbons ? ESOLThrusterPhase::RibbonSpawn : ESOLThrusterPhase::SpawnScan;
+    }
+    if (phase == ESOLThrusterPhase::RibbonPlayer && mLane == INDEX_NONE)
+    {
+        return ESOLThrusterPhase::Done;
     }
     if (phase == ESOLThrusterPhase::SpawnScan && mLane == INDEX_NONE)
     {
@@ -307,9 +421,24 @@ double FSOLThrusterSmoke::GetPhaseDuration(const ESOLThrusterPhase phase)
         return THRSMOKE_SETTLE_S;
     case ESOLThrusterPhase::Shot:
         return THRSMOKE_SHOT_S;
+    case ESOLThrusterPhase::RibbonSpawn:
+        return THRSMOKE_RIBBON_SPAWN_S;
+    case ESOLThrusterPhase::RibbonPlayer:
+        return THRSMOKE_RIBBON_PLAYER_S;
+    case ESOLThrusterPhase::RibbonTurnSettle:
+    case ESOLThrusterPhase::RibbonFarSettle:
+        return THRSMOKE_RIBBON_RIDE_S;
     default:
         return 0.0;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a phase ends with a ribbon screenshot
+bool FSOLThrusterSmoke::IsRibbonShotPhase(const ESOLThrusterPhase phase)
+{
+    return phase == ESOLThrusterPhase::RibbonSpawn || phase == ESOLThrusterPhase::RibbonPlayer
+        || phase == ESOLThrusterPhase::RibbonTurnSettle || phase == ESOLThrusterPhase::RibbonFarSettle;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -358,10 +487,10 @@ void FSOLThrusterSmoke::EnterPhase(const ESOLThrusterPhase phase)
         break;
     case ESOLThrusterPhase::CoastSettle:
     {
-        // A Mid-tier hull distance: beyond the Full radius, inside the hull radius and the plume gate
+        // A Mid-tier hull distance: beyond the Full radius, inside the hull radius and the glow's plume-float gate
         const FSOLNpcStats& stats = mNpcs->GetStats();
-        const double gateM = SOLThruster::PlumeMaxDistanceM(SOL::Thruster::NPC_HULL_LENGTH_M,
-            mVisuals->GetPlumeFocalRefPx(), SOL::Thruster::CONE_FADE_LOW_PX);
+        const double gateM = SOLThruster::PlumeMaxDistanceM(SOL::Thruster::GLOW_DIAMETER_NOZZLE_RADII
+            * SOL::Thruster::NPC_NOZZLE_RADIUS_M, mVisuals->GetPlumeFocalRefPx(), SOL::Thruster::GLOW_FADE_LOW_PX);
         const double lowM = THRSMOKE_MID_BAND_LOW * stats.FullRadiusM;
         const double highM = THRSMOKE_MID_BAND_HIGH * FMath::Min(stats.InstancedRadiusM, gateM);
         mIsMidBandEmpty = !(lowM < highM);
@@ -384,6 +513,42 @@ void FSOLThrusterSmoke::EnterPhase(const ESOLThrusterPhase phase)
         mProfileWindow = 0;
         mProfileFrame = 0;
         break;
+    case ESOLThrusterPhase::RibbonPop:
+    {
+        const IConsoleVariable* aa = IConsoleManager::Get().FindConsoleVariable(THRSMOKE_AA_CVAR);
+        mAntiAliasingDefault = aa != nullptr ? aa->GetInt() : INDEX_NONE;
+        mPopShot = 0;
+        mPopFrame = 0;
+        ThrusterSmokeSetCvar(THRSMOKE_COMBAT_CVAR, 0);      // No bolts moving between the frozen shots
+        SetFrozen(mVisuals->GetWorld(), true);
+        break;
+    }
+    case ESOLThrusterPhase::RibbonTurnSettle:
+    {
+        const int32 target = PickTurnTarget(THRSMOKE_RIBBON_TURN_HOLD_S);
+        if (target != INDEX_NONE)
+        {
+            StartRide(target, THRSMOKE_RIBBON_TURN_VIEW_M);
+        }
+        else
+        {
+            UE_LOG(LogSOL, Warning, TEXT("SmokeThruster RIBBON: no Earth-Mars lane ship in a U-turn; not ridden"));
+        }
+        break;
+    }
+    case ESOLThrusterPhase::RibbonFarSettle:
+    {
+        const int32 target = PickTarget(true, false, THRSMOKE_BURN_HOLD_S, THRSMOKE_BURN_FRACTION);
+        if (target != INDEX_NONE)
+        {
+            StartRide(target, THRSMOKE_RIBBON_FAR_VIEW_M);
+        }
+        else
+        {
+            Check(TEXT("far-target"), false, TEXT("no Earth-Mars lane ship holds Accelerate or Brake"));
+        }
+        break;
+    }
     case ESOLThrusterPhase::ProfileLaneSettle:
     {
         const int32 target = PickTarget(true, true, THRSMOKE_PROFILE_HOLD_S, THRSMOKE_BURN_FRACTION);
@@ -432,6 +597,24 @@ void FSOLThrusterSmoke::ExitPhase(const ESOLThrusterPhase phase)
         const int32 cpu = FindCpuShip(mTarget);
         mOffReadable = cpu != INDEX_NONE && mVisuals->GetPushedPlume(cpu, plume);
         mOffBrightness = mOffReadable ? plume.Brightness : 0.0f;
+        break;
+    }
+    case ESOLThrusterPhase::RibbonPop:
+    {
+        SetFrozen(mVisuals->GetWorld(), false);
+        ThrusterSmokeSetCvar(THRSMOKE_COMBAT_CVAR, 1);
+        ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBONS_CVAR, 1);
+        ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBON_NIAGARA_PX_CVAR, mRunNiagaraPx);
+        if (mAntiAliasingDefault != INDEX_NONE)
+        {
+            ThrusterSmokeSetCvar(THRSMOKE_AA_CVAR, mAntiAliasingDefault);
+        }
+        Check(TEXT("pop-not-vacuous"), !mIsPopVacuous, FString::Printf(TEXT("%d NPC trails drawn by Niagara, %d by the "
+            "pool and %d live in the first shot"), mPopNiagaraNpc, mPopPool, mPopLive));
+        Check(TEXT("pop-frozen"), mIsPopStable,
+            TEXT("the ridden ship drawn and the camera fixed relative to it in every shot"));
+        Check(TEXT("pop-switched"), mIsPopSwitched, TEXT("in every pool shot no NPC trail in Niagara and the pool "
+            "holding the first shot's Niagara and pool trails"));
         break;
     }
     case ESOLThrusterPhase::PlumesOn:
@@ -489,6 +672,12 @@ void FSOLThrusterSmoke::Finish(ASOLShipPawn& pawn)
     ThrusterSmokeSetCvar(SOL::SpaceDust::CVAR_ENABLED, 1);
     ThrusterSmokeSetCvar(THRSMOKE_COMBAT_CVAR, 1);
     ThrusterSmokeSetCvar(SOL::NPC_PLUME_CVAR, 1);
+    ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBONS_CVAR, 1);
+    ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBON_NIAGARA_PX_CVAR, THRSMOKE_PRESET_PX);
+    if (mIsRibbons && mRibbons.IsValid())
+    {
+        SetFrozen(pawn.GetWorld(), false);
+    }
     if (mIsProfile)
     {
         ThrusterSmokeRunCommand(TEXT("r.ProfileGPU.ShowUI 1"), pawn.GetWorld());
@@ -684,8 +873,8 @@ void FSOLThrusterSmoke::ScanFrame()
     const TConstArrayView<FSOLNpcCpuShip> ships = mNpcs->GetCpuShips();
     const FVector3d viewpointM = mAnchor->GetViewpointM();
     const double focalPx = mVisuals->GetPlumeFocalRefPx();
-    const double gateM = SOLThruster::PlumeMaxDistanceM(SOL::Thruster::NPC_HULL_LENGTH_M, focalPx,
-        SOL::Thruster::CONE_FADE_LOW_PX);
+    const double gateM = SOLThruster::PlumeMaxDistanceM(SOL::Thruster::GLOW_DIAMETER_NOZZLE_RADII
+        * SOL::Thruster::NPC_NOZZLE_RADIUS_M, focalPx, SOL::Thruster::GLOW_FADE_LOW_PX);
     const double timeS = frame.RailTimeS;
     FScan& s = mScan;
     ++s.Frames;
@@ -708,16 +897,16 @@ void FSOLThrusterSmoke::ScanFrame()
         // P5, every hull-drawn ship (battles included): the pushed floats are PlumeInstance of its own plume thrust,
         // away from the 0.5 px cut (the renderer judges it at the placed distance)
         const double shipDistanceM = (ship.PositionM - viewpointM).Size();
-        const double edgePx = SOLThruster::PixelLength(SOLThruster::PlumeLengthM(SOL::Thruster::NPC_HULL_LENGTH_M,
-            ship.ThrustLocalG.X), shipDistanceM, focalPx);
-        if (FMath::Abs(edgePx - SOL::Thruster::CONE_FADE_LOW_PX) < THRSMOKE_EDGE_BAND * SOL::Thruster::CONE_FADE_LOW_PX)
+        const double edgePx = SOLThruster::PixelLength(SOL::Thruster::GLOW_DIAMETER_NOZZLE_RADII
+            * SOL::Thruster::NPC_NOZZLE_RADIUS_M, shipDistanceM, focalPx);
+        if (FMath::Abs(edgePx - SOL::Thruster::GLOW_FADE_LOW_PX) < THRSMOKE_EDGE_BAND * SOL::Thruster::GLOW_FADE_LOW_PX)
         {
             ++s.FloatEdge;
         }
         else if (mVisuals->GetPushedPlume(index, plume))
         {
             const FSOLPlumeInstance expected = SOLThruster::PlumeInstance(ship.ThrustLocalG.X, false,
-                SOL::Thruster::NPC_HULL_LENGTH_M, shipDistanceM, focalPx);
+                SOL::Thruster::NPC_HULL_LENGTH_M, SOL::Thruster::NPC_NOZZLE_RADIUS_M, shipDistanceM, focalPx);
             const float lengthError = FMath::Abs(plume.LengthM - expected.LengthM);
             const bool bMatch = FMath::Abs(plume.Brightness - expected.Brightness) <= THRSMOKE_FLOAT_TOLERANCE
                 && FMath::Abs(plume.Colour - expected.Colour) <= THRSMOKE_FLOAT_TOLERANCE
@@ -796,7 +985,7 @@ void FSOLThrusterSmoke::ScanFrame()
 // switch, a settle, then the stat dumpave window with its ProfileGPU frames and the window means; true once done
 bool FSOLThrusterSmoke::TickProfile(const TCHAR* view, UWorld* world, const float realDeltaSeconds)
 {
-    constexpr int32 windows = 2 * THRSMOKE_PROFILE_PAIRS;
+    const int32 windows = 2 * (mIsRibbons ? THRSMOKE_RIBBON_PROFILE_PAIRS : THRSMOKE_PROFILE_PAIRS);
     if (mProfileWindow >= windows)
     {
         return true;
@@ -807,8 +996,22 @@ bool FSOLThrusterSmoke::TickProfile(const TCHAR* view, UWorld* world, const floa
     constexpr int32 end = start + THRSMOKE_PROFILE_FRAMES;
     if (mProfileFrame == 0)
     {
-        ThrusterSmokeSetCvar(SOL::NPC_PLUME_CVAR, bPlumes ? 1 : 0);
+        // The A/B switch: the plumes, or the ribbons (sol.ThrusterRibbons 0 also deactivates the Niagara set, so A - B
+        // is its whole cost)
+        if (mIsRibbons)
+        {
+            ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBONS_CVAR, bPlumes ? 1 : 0);
+        }
+        else
+        {
+            ThrusterSmokeSetCvar(SOL::NPC_PLUME_CVAR, bPlumes ? 1 : 0);
+        }
         mSumCollectMs = mSumNpcMs = mSumGpuMs = mSumGameMs = mSumFrameMs = 0.0;
+        mSumRibbonMs = mSumNiagaraTrails = mSumPoolTrails = mSumLiveTrails = mSumCulledTrails = 0.0;
+        for (double& phaseMs : mSumRibbonPhaseMs)
+        {
+            phaseMs = 0.0;
+        }
         mSumFrames = 0;
         mGpuFrames = 0;
     }
@@ -845,6 +1048,10 @@ bool FSOLThrusterSmoke::TickProfile(const TCHAR* view, UWorld* world, const floa
         bool bNearGpu = false;
         for (const int32 gpuFrame : THRSMOKE_PROFILE_GPU_FRAMES)
         {
+            if (mIsRibbons)
+            {
+                break;                                      // The ribbon profile reads the GPU frame mean only
+            }
             if (windowFrame == gpuFrame)
             {
                 UE_LOG(LogSOL, Log, TEXT("SmokeThruster PROFILE %s window %d %s: ProfileGPU"), view, mProfileWindow,
@@ -857,6 +1064,18 @@ bool FSOLThrusterSmoke::TickProfile(const TCHAR* view, UWorld* world, const floa
         mSumNpcMs += mNpcs->GetStats().TotalMs;
         mSumGameMs += FPlatformTime::ToMilliseconds(GGameThreadTime);
         mSumFrameMs += realDeltaSeconds * 1000.0;
+        if (mIsRibbons)
+        {
+            mSumRibbonMs += mRibbons->GetLastTickMs();
+            mSumNiagaraTrails += mRibbons->GetNiagaraTrailCount();
+            mSumPoolTrails += mRibbons->GetPoolTrailCount();
+            mSumLiveTrails += mRibbons->GetLiveTrailCount();
+            mSumCulledTrails += mRibbons->GetCulledTrailCount();
+            for (int32 phase = 0; phase < ASOLThrusterRibbons::RIBBON_PHASES; ++phase)
+            {
+                mSumRibbonPhaseMs[phase] += mRibbons->GetLastPhaseMs(phase);
+            }
+        }
         ++mSumFrames;
         if (!bNearGpu)
         {
@@ -871,6 +1090,17 @@ bool FSOLThrusterSmoke::TickProfile(const TCHAR* view, UWorld* world, const floa
             "gameMs=%.3f frameMs=%.3f frames=%d gpuFrames=%d hulls=%d lit=%d"), view, mProfileWindow, state,
             mSumCollectMs / frames, mSumNpcMs / frames, mGpuFrames > 0 ? mSumGpuMs / mGpuFrames : 0.0,
             mSumGameMs / frames, mSumFrameMs / frames, mSumFrames, mGpuFrames, mWindowHulls, mWindowLit);
+        if (mIsRibbons)
+        {
+            UE_LOG(LogSOL, Log, TEXT("SmokeThruster PROFILE %s window %d %s: ribbonMs=%.4f niagara=%.1f pool=%.1f "
+                "live=%.1f culled=%.1f commitMs=%.4f storeMs=%.4f splitMs=%.4f niagaraMs=%.4f poolMs=%.4f "
+                "nArraysMs=%.4f nMoveMs=%.4f setupMs=%.4f fillMs=%.4f nBuildMs=%.4f"), view, mProfileWindow, state,
+                mSumRibbonMs / frames, mSumNiagaraTrails / frames, mSumPoolTrails / frames, mSumLiveTrails / frames,
+                mSumCulledTrails / frames, mSumRibbonPhaseMs[0] / frames, mSumRibbonPhaseMs[1] / frames,
+                mSumRibbonPhaseMs[2] / frames, mSumRibbonPhaseMs[3] / frames, mSumRibbonPhaseMs[4] / frames,
+                mSumRibbonPhaseMs[5] / frames, mSumRibbonPhaseMs[6] / frames, mSumRibbonPhaseMs[7] / frames,
+                mSumRibbonPhaseMs[8] / frames, mSumRibbonPhaseMs[9] / frames);
+        }
         ++mProfileWindow;
         mProfileFrame = 0;
         return mProfileWindow >= windows;
@@ -880,8 +1110,8 @@ bool FSOLThrusterSmoke::TickProfile(const TCHAR* view, UWorld* world, const floa
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Requests a screenshot with the HUD named Thruster_<width>x<height>_<name>.png
-void FSOLThrusterSmoke::TakeShot(const TCHAR* name) const
+// Requests a screenshot (with or without the HUD) named Thruster_<width>x<height>_<name>.png
+void FSOLThrusterSmoke::TakeShot(const TCHAR* name, const bool bShowUi) const
 {
     FVector2D size(0.0, 0.0);
     if (mVisuals.IsValid() && mVisuals->GetWorld()->GetGameViewport() != nullptr)
@@ -890,7 +1120,7 @@ void FSOLThrusterSmoke::TakeShot(const TCHAR* name) const
     }
     const FString path = FPaths::ConvertRelativePathToFull(FPaths::ScreenShotDir() / FString::Printf(
         TEXT("Thruster_%dx%d_%s.png"), FMath::RoundToInt32(size.X), FMath::RoundToInt32(size.Y), name));
-    FScreenshotRequest::RequestScreenshot(path, true, false);
+    FScreenshotRequest::RequestScreenshot(path, bShowUi, false);
     UE_LOG(LogSOL, Log, TEXT("SmokeThruster: screenshot %s"), *path);
 
     // Where the ridden ship is drawn relative to the player pawn (the camera's cached location is a frame old)
@@ -910,6 +1140,194 @@ void FSOLThrusterSmoke::TakeShot(const TCHAR* name) const
             "the other side)"), FVector(SOLRender::EclipticToUnreal(FVector3d(ship.HeadingDirection)))
             | pawn->GetActorRightVector());
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs one frame of the frozen-frame no-pop shots: each shot's switches, a settle, the invariants, the screenshot
+// without the HUD (its write hold is the caller's); true once every shot is written
+bool FSOLThrusterSmoke::TickPop(UWorld* world)
+{
+    constexpr int32 shots = UE_ARRAY_COUNT(THRSMOKE_POP_SHOTS);
+    if (mPopShot >= shots)
+    {
+        return true;
+    }
+    const FThrusterPopShot& shot = THRSMOKE_POP_SHOTS[mPopShot];
+    const bool bToTsr = shot.AntiAliasing != 0 && (mPopShot == 0 || THRSMOKE_POP_SHOTS[mPopShot - 1].AntiAliasing == 0);
+    if (mPopFrame == 0)
+    {
+        const int32 antiAliasing = shot.AntiAliasing >= 0 ? shot.AntiAliasing : mAntiAliasingDefault;
+        if (antiAliasing != INDEX_NONE)
+        {
+            ThrusterSmokeSetCvar(THRSMOKE_AA_CVAR, antiAliasing);
+        }
+        ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBON_NIAGARA_PX_CVAR, shot.NiagaraPx);
+        ThrusterSmokeSetCvar(SOL::THRUSTER_RIBBONS_CVAR, shot.Ribbons);
+    }
+    if (++mPopFrame < (bToTsr ? THRSMOKE_POP_TSR_SETTLE_FRAMES : THRSMOKE_POP_SETTLE_FRAMES))
+    {
+        return false;
+    }
+
+    // The invariants against the first shot: the camera fixed relative to the ridden ship (the dilated game still
+    // moves both a little in render space) and the ridden ship's trail drawn and on screen; a pool shot holds every
+    // NPC trail in the pool. The live count is logged only (far ships keep being fed while frozen)
+    const APlayerController* controller = world->GetFirstPlayerController();
+    const FVector cameraCm = controller != nullptr && controller->PlayerCameraManager != nullptr
+        ? controller->PlayerCameraManager->GetCameraLocation() : FVector::ZeroVector;
+    const FVector3d anchorCm = mRibbons->GetLastAnchorCm();
+    const int32 live = mRibbons->GetLiveTrailCount();
+    const int32 niagaraNpc = LogRibbons(shot.Name, THRSMOKE_RIBBON_FAR_LOG_M);
+    const int32 pool = mRibbons->GetPoolTrailCount();
+    TArray<FSOLRibbonDrawnTrail> drawn;
+    mRibbons->GetDrawnNpcTrails(drawn);
+    const FSOLRibbonDrawnTrail* ridden = drawn.FindByPredicate([this](const FSOLRibbonDrawnTrail& trail)
+    {
+        return trail.Key == mTarget;
+    });
+    const FVector3d relativeCm = ridden != nullptr ? FVector3d(cameraCm) - ridden->ShipPositionM * SOL::METERS_TO_CM
+        : FVector3d(BIG_NUMBER);
+    if (mPopShot == 0)
+    {
+        mPopCameraCm = relativeCm;
+        mPopAnchorCm = anchorCm;
+        mPopLive = live;
+        mPopNiagaraNpc = niagaraNpc;
+        mPopPool = pool;
+        mIsPopVacuous = niagaraNpc == 0 || ridden == nullptr || !ridden->bNiagara;
+    }
+    else
+    {
+        const bool bStable = (shot.Ribbons == 0 || ridden != nullptr)
+            && (shot.Ribbons == 0 || relativeCm.Equals(mPopCameraCm, THRSMOKE_POP_RELATIVE_TOL_CM));
+        const bool bSwitched = shot.NiagaraPx != THRSMOKE_POOL_PX || (niagaraNpc == 0
+            && pool == mPopPool + mPopNiagaraNpc);
+        mIsPopStable &= bStable;
+        mIsPopSwitched &= bSwitched;
+        if (!bStable || !bSwitched)
+        {
+            UE_LOG(LogSOL, Warning, TEXT("SmokeThruster RIBBON %s: camera moved %.4f cm, anchor moved %.4f cm, live %d "
+                "(first %d), NPC Niagara %d, pool %d (first %d + %d)"), shot.Name, (relativeCm - mPopCameraCm).Size(),
+                (anchorCm - mPopAnchorCm).Size(), live, mPopLive, niagaraNpc, pool, mPopPool, mPopNiagaraNpc);
+        }
+    }
+    TakeShot(shot.Name, false);
+    mShotHoldS = THRSMOKE_RIBBON_SHOT_HOLD_S;
+    ++mPopShot;
+    mPopFrame = 0;
+    return false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Freezes (time dilation at the world settings' minimum, the ribbons' clock fixed at now) or thaws the game
+void FSOLThrusterSmoke::SetFrozen(UWorld* world, const bool bFrozen)
+{
+    UGameplayStatics::SetGlobalTimeDilation(world, bFrozen ? THRSMOKE_FROZEN_DILATION : 1.0f);
+    if (mRibbons.IsValid())
+    {
+        mRibbons->SetVerificationClock(bFrozen ? world->GetTimeSeconds() : -1.0);
+    }
+    UE_LOG(LogSOL, Log, TEXT("SmokeThruster RIBBON: game %s at %.4f s"), bFrozen ? TEXT("frozen") : TEXT("thawed"),
+        world->GetTimeSeconds());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Logs the ribbons' counts, camera and anchor under a label, and the drawn NPC trails with their screen places (every
+// Niagara one, the longest pool ones, the longest at least farM away); returns the Niagara-drawn NPC trails
+int32 FSOLThrusterSmoke::LogRibbons(const TCHAR* label, const double farM) const
+{
+    TArray<FSOLRibbonDrawnTrail> trails;
+    mRibbons->GetDrawnNpcTrails(trails);
+    const APlayerController* controller = mVisuals->GetWorld()->GetFirstPlayerController();
+    const FVector cameraCm = controller != nullptr && controller->PlayerCameraManager != nullptr
+        ? controller->PlayerCameraManager->GetCameraLocation() : FVector::ZeroVector;
+    const FVector3d anchorCm = mRibbons->GetLastAnchorCm();
+    int32 niagaraNpc = 0;
+    for (const FSOLRibbonDrawnTrail& trail : trails)
+    {
+        niagaraNpc += trail.bNiagara ? 1 : 0;
+    }
+    UE_LOG(LogSOL, Log, TEXT("SmokeThruster RIBBON %s: Niagara %d (NPC %d), pool %d, live %d, tick %.4f ms, camera "
+        "(%.3f, %.3f, %.3f) cm, anchor (%.0f, %.0f, %.0f) cm, device focal %.2f px"), label,
+        mRibbons->GetNiagaraTrailCount(), niagaraNpc, mRibbons->GetPoolTrailCount(), mRibbons->GetLiveTrailCount(),
+        mRibbons->GetLastTickMs(), cameraCm.X, cameraCm.Y, cameraCm.Z, anchorCm.X, anchorCm.Y, anchorCm.Z,
+        mRibbons->GetLastDeviceFocalPx());
+
+    // Logs one trail with its ship's screen place
+    const auto logTrail = [label, controller](const FSOLRibbonDrawnTrail& trail, const TCHAR* group)
+    {
+        FVector2D screen(-1.0, -1.0);
+        const bool bOnScreen = controller != nullptr && controller->ProjectWorldLocationToScreen(
+            FVector(trail.ShipPositionM * SOL::METERS_TO_CM), screen, true);
+        UE_LOG(LogSOL, Log, TEXT("SmokeThruster RIBBON %s %s key=%d px=%.2f d=%.0f screen=%s(%.1f, %.1f)"), label,
+            group, trail.Key, trail.RibbonPx, trail.DistanceM, bOnScreen ? TEXT("") : TEXT("off "), screen.X,
+            screen.Y);
+    };
+    TArray<const FSOLRibbonDrawnTrail*> pool;
+    TArray<const FSOLRibbonDrawnTrail*> far;
+    for (const FSOLRibbonDrawnTrail& trail : trails)
+    {
+        if (trail.bNiagara)
+        {
+            logTrail(trail, TEXT("niagara"));
+        }
+        else
+        {
+            pool.Add(&trail);
+        }
+        if (trail.DistanceM >= farM)
+        {
+            far.Add(&trail);
+        }
+    }
+    // Orders trails by on-screen length, longest first
+    const auto longer = [](const FSOLRibbonDrawnTrail& a, const FSOLRibbonDrawnTrail& b)
+    {
+        return a.RibbonPx > b.RibbonPx;
+    };
+    pool.Sort(longer);
+    far.Sort(longer);
+    for (int32 index = 0; index < FMath::Min(pool.Num(), THRSMOKE_RIBBON_LOG_TRAILS); ++index)
+    {
+        logTrail(*pool[index], TEXT("pool"));
+    }
+    for (int32 index = 0; index < FMath::Min(far.Num(), THRSMOKE_RIBBON_LOG_TRAILS); ++index)
+    {
+        logTrail(*far[index], TEXT("far"));
+    }
+    return niagaraNpc;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Picks an Earth-Mars lane ship in a U-turn now and holdS later (the same turn), the hardest-thrusting one
+int32 FSOLThrusterSmoke::PickTurnTarget(const double holdS) const
+{
+    const FSOLNpcRailFrame& frame = mNpcs->GetRailFrame();
+    const TConstArrayView<FSOLNpcRail> rails = mNpcs->GetRails();
+    if (mLane == INDEX_NONE || !frame.LaneFrame.IsValidIndex(mLane))
+    {
+        return INDEX_NONE;
+    }
+    int32 best = INDEX_NONE;
+    double bestAccelMps2 = -1.0;
+    for (const int32 index : mLaneShips)
+    {
+        const FSOLLaneThrustState now = ThrusterSmokeThrust(rails[index], frame, index, frame.RailTimeS);
+        const FSOLLaneThrustState later = ThrusterSmokeThrust(rails[index], frame, index, frame.RailTimeS + holdS);
+        if (ThrusterSmokeIsTurn(now.Segment) && now.Segment == later.Segment && now.AccelMps2 > bestAccelMps2)
+        {
+            bestAccelMps2 = now.AccelMps2;
+            best = index;
+        }
+    }
+    if (best != INDEX_NONE)
+    {
+        const FSOLLaneThrustState state = ThrusterSmokeThrust(rails[best], frame, best, frame.RailTimeS);
+        UE_LOG(LogSOL, Log, TEXT("SmokeThruster RIBBON: U-turn target ship %d, segment %d, thrust %d at %.3f G"), best,
+            static_cast<int32>(state.Segment), static_cast<int32>(state.Thrust),
+            state.AccelMps2 / SOL::STANDARD_GRAVITY_MPS2);
+    }
+    return best;
 }
 
 //////////////////////////////////////////////////////////////////////////

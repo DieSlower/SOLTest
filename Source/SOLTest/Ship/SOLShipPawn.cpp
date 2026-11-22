@@ -7,6 +7,7 @@
 
 #include "Combat/SOLCombatSubsystem.h"
 #include "Flight/SOLNewtonianFlight.h"
+#include "Game/SOLGameMode.h"
 #include "Game/SOLInputHelpers.h"
 #include "HudEvents/SOLHudEventSubsystem.h"
 #include "Interaction/SOLInteractionSubsystem.h"
@@ -34,6 +35,7 @@
 #include "Universe/SOLSimClockSubsystem.h"
 #include "Visuals/SOLBodyVisuals.h"
 #include "Visuals/SOLSpaceDustComponent.h"
+#include "Visuals/SOLThrusterRibbons.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
@@ -324,6 +326,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokePlayerThruster = MakeUnique<FSOLPlayerThrusterSmoke>();
         mSmokePlayerThruster->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_RIBBON_PARITY))
+    {
+        mSmokeRibbonParity = MakeUnique<FSOLThrusterRibbonParitySmoke>();
+        mSmokeRibbonParity->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_MERGE))
     {
         mSmokeLaneMerge = MakeUnique<FSOLLaneMergeSmoke>();
@@ -417,7 +424,7 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
-        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid()
+        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid() || mSmokeRibbonParity.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
@@ -487,6 +494,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeNpcTraffic.Reset();
     mSmokeThruster.Reset();
     mSmokePlayerThruster.Reset();
+    mSmokeRibbonParity.Reset();
     mSmokeLaneMerge.Reset();
     mSmokeAutoLanes.Reset();
     mSmokeMap.Reset();
@@ -551,6 +559,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokePlayerThruster.IsValid() && mSmokePlayerThruster->Update(*this, deltaSeconds))
     {
         mSmokePlayerThruster.Reset();
+    }
+    if (mSmokeRibbonParity.IsValid() && mSmokeRibbonParity->Update(*this, deltaSeconds))
+    {
+        mSmokeRibbonParity.Reset();
     }
     if (mSmokeLaneMerge.IsValid() && mSmokeLaneMerge->Update(*this, deltaSeconds))
     {
@@ -1074,7 +1086,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
-        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid()
+        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid() || mSmokeRibbonParity.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
@@ -1525,8 +1537,9 @@ void ASOLShipPawn::BuildShipMesh()
             spec.Rotation, spec.Scale);
     }
 
-    // The two nozzle plumes and glows (SDD 51 section 4.10, replacing the always-on engine glow spheres, Q19): the
-    // mesh is built in the hull frame in cm with its own thruster materials; idle sections collapse onto their anchors
+    // The two nozzle glows and the gas bursts (SDD 51 section 4.10, replacing the always-on engine glow spheres, Q19;
+    // the flames are ASOLThrusterRibbons', R10): the mesh is built in the hull frame in cm with its own thruster
+    // materials; idle sections collapse onto their anchors
     UStaticMesh* thrusters = LoadObject<UStaticMesh>(nullptr, SOL::Paths::THRUSTER_PLAYER_MESH);
     if (thrusters == nullptr)
     {
@@ -1623,8 +1636,10 @@ void ASOLShipPawn::UpdateThrusterPlume()
     const double aspect = viewportPx.Y > 0.0 ? viewportPx.X / viewportPx.Y : SOL::Thruster::PLAYER_FALLBACK_ASPECT;
     const double distanceM = FVector::Dist(Camera->GetComponentLocation(), GetActorLocation()) / SOL::METERS_TO_CM;
     mPlumeThrustG = Ships->GetThrustLocalG();
-    mPlayerPlume = SOLThruster::PlayerPlume(mPlumeThrustG, Ships->IsAutopilotWarPower(), distanceM,
+    const bool bWarPower = Ships->IsAutopilotWarPower();
+    mPlayerPlume = SOLThruster::PlayerPlume(mPlumeThrustG, bWarPower, distanceM,
         SOLThruster::FocalRefPx(Camera->FieldOfView, aspect), bLightEnabled);
+    FeedThrusterRibbons(distanceM, bWarPower);
 
     // Floats to the render thread only when they change; the light likewise
     float plume[SOL::ThrusterMaterialParams::CUSTOM_DATA_FLOATS];
@@ -1643,6 +1658,44 @@ void ASOLShipPawn::UpdateThrusterPlume()
     {
         PlumeLight->SetIntensity(mPlayerPlume.LightIntensityCd);
         PlumeLight->SetLightColor(mPlayerPlume.LightColour);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Feeds the two nozzles' flames from the step's raw main-engine thrust (R5, R10); the store starts a flame only while
+// the plume burns and runs the spool-down after a cut-off (L_p and c held)
+void ASOLShipPawn::FeedThrusterRibbons(const double distanceM, const bool bWarPower)
+{
+    const ASOLGameMode* gameMode = GetWorld()->GetAuthGameMode<ASOLGameMode>();
+    ASOLThrusterRibbons* ribbons = gameMode != nullptr ? gameMode->GetThrusterRibbons() : nullptr;
+    if (ribbons == nullptr || ShipRoot == nullptr || !ASOLThrusterRibbons::AreRibbonsEnabled())
+    {
+        return;
+    }
+    const double gMain = static_cast<double>(mPlumeThrustG.X);
+    const double plumeM = SOLThruster::PlumeLengthM(SOL::Thruster::PLAYER_HULL_LENGTH_M, gMain);
+    const float brightness = static_cast<float>(SOLThruster::PlumeBrightness(gMain));
+    const bool bBurning = plumeM > 0.0 && brightness > 0.0f;
+    const FTransform& hull = ShipRoot->GetComponentTransform();
+    const FVector3d shipM = GetActorLocation() / SOL::METERS_TO_CM;
+    const FSOLHullThrusters& thrusters = SOLThruster::HullThrusters(ESOLHullKind::Player);
+    FSOLRibbonFeed feed;
+    feed.ColourScalar = static_cast<float>(SOLThruster::PlumeColourScalar(gMain, bWarPower));
+    feed.PlumeLengthM = bBurning ? plumeM : 0.0;
+    feed.DistanceM = distanceM;
+    feed.Pose.Brightness = bBurning ? brightness : 0.0f;
+    feed.bValid = true;
+    for (int32 nozzle = 0; nozzle < thrusters.NozzleCount; ++nozzle)
+    {
+        // The nozzle exit and exhaust from the hull frame (metres, X nose) into render space through the ship root
+        const FSOLNozzle& source = thrusters.Nozzles[nozzle];
+        const FVector3d headM = hull.TransformPosition(FVector(source.PositionM) * SOL::METERS_TO_CM)
+            / SOL::METERS_TO_CM;
+        feed.ShipPositionM = shipM;
+        feed.NozzleRadiusM = source.RadiusM;
+        feed.Pose.OffsetM = FVector3f(headM - shipM);
+        feed.Pose.ExhaustDir = FVector3f(hull.TransformVectorNoScale(FVector(source.ExhaustDir)).GetSafeNormal());
+        ribbons->FeedPlayer(nozzle, feed);
     }
 }
 

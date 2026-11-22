@@ -27,6 +27,7 @@
 #include "Npc/SOLNpcTunnelSmoke.h"
 #include "Npc/SOLThrusterSmoke.h"
 #include "Ship/SOLPlayerThrusterSmoke.h"
+#include "Visuals/SOLThrusterRibbonParitySmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHoloMenuProfileSmoke.h"
@@ -563,6 +564,10 @@ private:
     // Drives the thruster mesh's plume floats and the hull light from the last step's thrust (SDD 51 part 51d)
     void UpdateThrusterPlume();
 
+    // Feeds the two nozzles' ribbons from the step's raw thrust (SDD 51 R5: always, no pixel gate; render-space metres
+    // after this frame's placement, the offsets and exhaust in world axes), from UpdateThrusterPlume
+    void FeedThrusterRibbons(double distanceM, bool bWarPower);
+
     // Returns the ship's position and forward direction (Unreal-handed universe frame); false without a ship
     bool GetShipPose(FVector3d& outPositionM, FVector3d& outForwardDir) const;
 
@@ -1036,6 +1041,7 @@ private:
     TUniquePtr<FSOLNpcTrafficSmoke> mSmokeNpcTraffic;       // Verification-only NPC lane traffic script (SDD 50)
     TUniquePtr<FSOLThrusterSmoke> mSmokeThruster;           // Verification-only NPC thruster plume script (SDD 51)
     TUniquePtr<FSOLPlayerThrusterSmoke> mSmokePlayerThruster; // Verification-only player plume script (SDD 51 51d)
+    TUniquePtr<FSOLThrusterRibbonParitySmoke> mSmokeRibbonParity; // Verification-only ribbon renderer parity (51e)
     TUniquePtr<FSOLLaneMergeSmoke> mSmokeLaneMerge;         // Verification-only lane merge readout script (V6)
     TUniquePtr<FSOLAutoLanesSmoke> mSmokeAutoLanes;         // Verification-only AUTO lane rules script (V7)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)

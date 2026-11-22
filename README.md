@@ -262,6 +262,14 @@ The far field (issue #52) from 1,000 tunnel radii beside the Earth-Mars lane, lo
 
 The same lane from 300 tunnel radii: the rings are a few pixels across and the guide dots appear between them once the gap between rings on screen is wide enough (from about 10 px, fully at 16 px), so the tunnel reads as one continuous chain from far away to inside.
 
+![The player ship's thruster flame at war power](Docs/Images/51-thruster-flame-player-warpower.png)
+
+The player ship's one-piece thruster flame (issue #51) at war power, seen from behind: a hot core fading to a long tapered tail.
+
+![NPC thruster flames along a lane](Docs/Images/51-thruster-flame-npc-lane.png)
+
+NPC ships in a lane (issue #51): each hull-drawn ship trails its own flame, scaled by its thrust.
+
 ![Lane traffic flowing through the Earth-Mars tunnel](Docs/Images/50-lane-traffic-flow.png)
 
 Lane traffic (issue #50) a quarter of the way from Earth to Mars, looking toward Mars with 1M NPC ships: the lane's ships keep right, outbound on the right half of the tunnel (green chevrons) and inbound on the left (red), fastest near the axis and slowest at the wall, and a quarter of the traffic flies in the halo outside the rings. The rings are 12 tunnel radii apart, and only the few near the player are drawn before they crowd together on screen. The player is barely moving, so the merge readout on the wall label's last line says TOO SLOW against the 134 km/s of traffic here.
@@ -281,11 +289,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 150.4 h |
+| Work time (wall-clock) | 163.9 h |
 | Time spent answering questions | 12.2 h |
-| Tokens | 8,650.1M |
-| Notional API price | $3,406 |
-| Subagents dispatched | 647 |
+| Tokens | 9,191.4M |
+| Notional API price | $3,597 |
+| Subagents dispatched | 678 |
 <!-- METRICS:END -->
 
 ## Documentation map

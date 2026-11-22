@@ -3,9 +3,10 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
-// Thruster plume (SDD 51 sections 4.3-4.6): the HLSL mirror of the colour ramp, brightness and shock-diamond math of
-// Source/SOLTest/Visuals/SOLThrusterMath.cpp, plus the vertex and pixel entry points the M_SOLThrusterPlume,
-// M_SOLThrusterGlow and M_SOLThrusterBurst Custom nodes call. Source/SOLTest/Visuals/SOLThrusterMirror.h is the
+// Thruster plume (SDD 51 sections 4.3-4.6, 11.2): the HLSL mirror of the colour ramp, brightness, shock-diamond and
+// flame envelope math of Source/SOLTest/Visuals/SOLThrusterMath.cpp, plus the vertex and pixel entry points the
+// M_SOLThrusterGlow, M_SOLThrusterBurst, M_SOLThrusterTrail (Niagara flame) and M_SOLThrusterRibbon (pool flame) Custom
+// nodes call. Source/SOLTest/Visuals/SOLThrusterMirror.h is the
 // statement-for-statement float copy the tests compare with the double C++ (SOLTest.Thruster.MaterialMirror). A change
 // to one must change the others. The entry points' argument lists are baked into the materials by
 // Tools/Fx/create_thruster_assets.py: a body change needs no rebuild, a new argument does.
@@ -13,10 +14,10 @@
 // (SOLThrusterMirror::MaterialVectors packs the same values), so this file holds no copy of them.
 //
 // Thruster section vertices (SM_SOLNpcHullCone / SM_SOLNpcHullBox / SM_SOLPlayerThrusters, mesh local units):
-// UV0 = (u around the cone, s along it from the anchor) for a plume or burst cone, the corner (-1 / +1, -1 / +1) for a
-// glow quad; UV2 = anchor.xy, UV3 = (anchor.z, size m), UV4 = axis.xy, UV5 = (axis.z, burst port code). The anchor is
-// the nozzle exit (plume, glow) or the port centre (burst); the axis the exhaust direction; size the true nozzle radius
-// r_n (plume, glow) or the burst length at strength 1 (L_hull / 6). The geometry is built at full length, so the mesh
+// UV0 = (u around the cone, s along it from the anchor) for a burst cone, the corner (-1 / +1, -1 / +1) for a glow
+// quad; UV2 = anchor.xy, UV3 = (anchor.z, size m), UV4 = axis.xy, UV5 = (axis.z, burst port code). The anchor is the
+// nozzle exit (glow) or the port centre (burst); the axis the exhaust direction; size the true nozzle radius r_n (glow)
+// or the burst length at strength 1 (L_hull / 6). The geometry is built at full length, so the mesh
 // bounds cover every state; the vertex stage re-places each vertex in true metres from the anchor (the hull instance
 // may be scaled non-uniformly and inflated to its pixel floor), or collapses it onto the anchor when the section is off
 // or under its pixel fade, so an idle section rasterises nothing.
@@ -211,79 +212,6 @@ bool SOLTH_ConeFrame(float3 offsetW, float3 axisW, out float3 axis, out float3 r
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Plume (M_SOLThrusterPlume)
-// ---------------------------------------------------------------------------------------------------------------------
-
-// Places a plume shell vertex (section 4.4): s along the exhaust axis over the true length L_p, the true nozzle radius
-// tapering to shape.y; collapses onto the anchor when b or L_p is 0 or the cone is under its pixel fade. Returns the
-// world position offset; interp0 = (s, radial fraction, pixel alpha, knot spacing m), interp1 = (c, b, L_p, knots),
-// interp2 = the streak noise coordinates
-float3 SOLTH_PlumeVertex(float3 offsetW, float3 axisW, float2 uv, float nozzleRadiusM, float c, float b,
-    float plumeLengthM, float3 cameraToVertexW, float projectionScaleX, float2 viewSize, float timeS, float4 shock,
-    float4 shape, float4 streak, float4 fade, out float4 interp0, out float4 interp1, out float2 interp2)
-{
-    interp0 = float4(0.0, 0.0, 0.0, 0.0);
-    interp1 = float4(0.0, 0.0, 0.0, 0.0);
-    interp2 = float2(0.0, 0.0);
-    const float3 collapse = -offsetW;
-    float3 axis;
-    float3 radial;
-    if (!(b > 0.0) || !(plumeLengthM > 0.0) || !(nozzleRadiusM > 0.0) || !SOLTH_ConeFrame(offsetW, axisW, axis, radial))
-    {
-        return collapse;
-    }
-
-    // Pixel-size fade on the true plume length, from the camera's distance to the nozzle
-    const float3 cameraToAnchorW = cameraToVertexW - offsetW;
-    const float distanceCm = length(cameraToAnchorW);
-    const float focalPx = SOLTH_FocalRefPx(projectionScaleX, viewSize, fade.z);
-    const float lengthPx = distanceCm > 0.0 ? focalPx * plumeLengthM * 100.0 / distanceCm : 1.0e30;
-    const float alpha = SOLTH_LodAlpha(lengthPx, fade.x, fade.y);
-    if (!(alpha > 0.0))
-    {
-        return collapse;
-    }
-
-    // Target position in true metres: s along the axis, the tapered radius around it
-    const float s = saturate(uv.y);
-    const float taper = lerp(1.0, shape.y, s);
-    const float3 target = axis * (s * plumeLengthM * 100.0) + radial * (nozzleRadiusM * 100.0 * taper);
-
-    // Pixel-stage inputs: the screen-radial fraction, the knots and the streak coordinates (linear in s, so exact)
-    const float3 viewDir = distanceCm > 0.0 ? cameraToAnchorW / distanceCm : axis;
-    const float spacingM = SOLTH_ShockSpacing(nozzleRadiusM, b, shock);
-    const int knots = SOLTH_ShockKnotCount(plumeLengthM, spacingM, shock, shape);
-    const float tileLengthM = max(streak.y * nozzleRadiusM, 1.0e-3);
-    interp0 = float4(s, SOLTH_ConeRadialFraction(radial, axis, viewDir, taper), alpha, spacingM);
-    interp1 = float4(c, b, plumeLengthM, (float)knots);
-    interp2 = float2(uv.x * streak.x, s * plumeLengthM / tileLengthM - frac(timeS * streak.z * b));
-    return target - offsetW;
-}
-
-// Returns the plume's additive emissive colour: the ramp's rim colour outside, the core colour on the centre line, the
-// shock diamonds on the core, the panning streaks, fading toward the tail and with the pixel alpha
-float3 SOLTH_PlumePixel(float4 interp0, float4 interp1, float streakNoise, float4 ramp, float3 rim0, float3 rim1,
-    float3 rim2, float3 core0, float3 core1, float3 core2, float4 shock, float4 shape, float4 look)
-{
-    const float s = interp0.x;
-    const float rFrac = saturate(interp0.y);
-    const float alpha = interp0.z;
-    const float b = interp1.y;
-    float3 rim;
-    float3 core;
-    SOLTH_PlumeColour(interp1.x, ramp, rim0, rim1, rim2, core0, core1, core2, rim, core);
-
-    // Core weight from the facing, the knots on the centre line, the streaks, the fade along the length
-    const float facing = sqrt(saturate(1.0 - rFrac * rFrac));
-    const float coreWeight = pow(facing, look.y);
-    const float knot = SOLTH_ShockIntensity(s * interp1.z, rFrac, interp0.w, (int)(interp1.w + 0.5), shock, shape);
-    const float streak = lerp(1.0 - look.w, 1.0, saturate(streakNoise));
-    const float along = pow(saturate(1.0 - s), 1.5) * saturate(s * 12.0 + 0.25);
-    const float3 colour = lerp(rim, core, coreWeight) * (0.3 + 0.7 * facing) + core * (knot * look.z);
-    return colour * (look.x * b * alpha * along * streak);
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 // Nozzle glow (M_SOLThrusterGlow)
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -382,14 +310,283 @@ float SOLTH_BurstOpacity(float4 interp0, float noise, float phase, float timeS, 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Ribbon (M_SOLThrusterTrail, NS_SOLThrusterTrails)
+// One-piece flame (SDD 51 section 11.2, R10): M_SOLThrusterTrail on the NS_SOLThrusterTrails tube ribbon and
+// M_SOLThrusterRibbon on the GPU strip pool share SOLTH_FlameNoiseUv and SOLTH_FlamePixel, so both renderers shade a
+// flame identically. Per pixel they need: the arc fraction s / L_f (Niagara: particle colour r; pool: the point index
+// over FLAME_POINTS - 1), the point alpha (colour g; pool: the texel's w), the thin-flame sharpness (colour b; pool:
+// SOLTH_FlameSharpness), the cap fraction (colour a; pool: 0 on an end cap's point, 1 elsewhere, interpolated), the
+// tube's around coordinate V (UV0.y: k / FLAME_TUBE_SIDES on ring vertex k in both), the flame header (c, b, L_p, r_n; Niagara: dynamic parameter 0; pool: texel 25), the
+// spine direction (the vertex tangent), and the pixel-to-camera direction (no vertex normal: the radial fraction
+// comes from V, which both renderers interpolate alike). flame = (FLAME_LENGTH_FACTOR, FLAME_TAIL_WIDTH_RATIO, FLAME_SHARP_LOW_PX, FLAME_SHARP_HIGH_PX). Every along-arc term is a continuous function
+// of s (no branch at L_p), so the flame has no seam
 // ---------------------------------------------------------------------------------------------------------------------
 
-// Returns a ribbon's additive emissive colour: the point colour times its alpha (the age fade and b, section 4.8) with
-// a soft profile across the width (uv.y runs 0 -> 1 across the ribbon)
-float3 SOLTH_TrailPixel(float2 uv, float3 colour, float alpha, float4 trail)
+// Returns the smoothstep 3u^2 - 2u^3 of u clamped to [0, 1] (SOLThrusterMirror::Smoothstep)
+float SOLTH_Smoothstep(float u)
 {
-    const float across = uv.y * 2.0 - 1.0;
-    const float profile = pow(saturate(1.0 - across * across), 2.0);
-    return colour * (alpha * profile * trail.x);
+    const float clamped = saturate(u);
+    return clamped * clamped * (3.0 - 2.0 * clamped);
+}
+
+// Returns the core weight (sqrt(1 - r^2))^look.y, r clamped to [0, 1], NaN as 0 (SOLThruster::FlameCoreWeight)
+float SOLTH_FlameCoreWeight(float radialFraction, float4 look)
+{
+    if (isnan(radialFraction))
+    {
+        return 0.0;
+    }
+    const float r = saturate(radialFraction);
+    return pow(sqrt(max(1.0 - r * r, 0.0)), look.y);
+}
+
+// Returns the knot brightness at arc coordinate s and radial fraction r from the flame's header: the knot spacing and
+// count, then the nearest knot's rhombus (SOLThruster::FlameKnotIntensity)
+float SOLTH_FlameKnot(float arcM, float radialFraction, float plumeLengthM, float nozzleRadiusM, float b, float4 shock,
+    float4 shape)
+{
+    const float spacingM = SOLTH_ShockSpacing(nozzleRadiusM, b, shock);
+    const int count = SOLTH_ShockKnotCount(plumeLengthM, spacingM, shock, shape);
+    return SOLTH_ShockIntensity(arcM, SOLTH_Unit(radialFraction), spacingM, count, shock, shape);
+}
+
+// Returns the streak depth lerp(body, tail, smoothstep((s - 0.5 L_p) / L_p)); the body depth for a non-positive L_p
+// (SOLThruster::FlameStreakDepth)
+float SOLTH_FlameStreakDepth(float arcM, float plumeLengthM, float bodyDepth, float tailDepth)
+{
+    if (!(plumeLengthM > 0.0) || isinf(plumeLengthM) || isnan(arcM))
+    {
+        return bodyDepth;
+    }
+    return lerp(bodyDepth, tailDepth, SOLTH_Smoothstep((arcM - 0.5 * plumeLengthM) / plumeLengthM));
+}
+
+// Returns the flame's width over its nozzle width at arc coordinate s, 1 - (1 - tail ratio) S(s / L_p) (the axial
+// fallback of the radial fraction: looking down the spine the narrow tail reads as the core)
+float SOLTH_FlameTaper(float arcM, float plumeLengthM, float4 flame)
+{
+    return plumeLengthM > 0.0 ? 1.0 - (1.0 - flame.y) * SOLTH_Smoothstep(arcM / plumeLengthM) : 1.0;
+}
+
+// Returns the flame's screen-radial fraction at a pixel: 0 on the spine, 1 on the silhouette, looking down the spine
+// falling back to the local taper (as SOLTH_ConeRadialFraction does for a cone). Ring vertex k sits at angle a = -2 pi V
+// (V = around = k / FLAME_TUBE_SIDES) at right (-0.5 cos a) + up (-0.5 sin a) x the width, right perpendicular to both
+// the view and the spine and up along the view's part across the spine, so its screen offset across the spine is
+// -0.5 cos a x the width in every view: the fraction is |cos a|, from the interpolated V (the same value in both
+// renderers, round between the ring vertices; the front and back walls at one pixel share it, cos(-a) = cos a)
+float SOLTH_FlameRadialFraction(float around, float3 tangentW, float3 toCameraW, float taper)
+{
+    const float tangentLength = length(tangentW);
+    const float viewLength = length(toCameraW);
+    if (!(tangentLength > 0.0) || !(viewLength > 0.0))
+    {
+        return taper;
+    }
+    const float3 axis = tangentW / tangentLength;
+    const float3 viewDir = toCameraW / viewLength;
+    const float perpLength = length(viewDir - dot(viewDir, axis) * axis);
+    const float side = abs(cos(6.2831853 * around));
+    return lerp(taper, side, saturate(perpLength * 3.0));
+}
+
+// Returns the point alpha of a pixel on the narrow tail seen through the neck (51e3, the idle axis dot): looking down
+// the spine, a ray through the constant-width tail (s > L_p) crosses its two walls a run w |sin a| cot(theta) apart
+// along s (w the tail's true width, theta the view's angle to the spine); one that passes the neck crosses only one
+// tail wall, far down the tail, where the along fade 1 - s / L_f is lower than on the cone wall beside the neck, so the
+// tail's mouth read as a dark dot (from either end). The wall crossed farther along s (the far half seen from the
+// nozzle side, the near half from the tail side) takes the along fade at the other crossing, never before L_p (the
+// neck); the alpha is unchanged on the other half, in the taper and in side views (the run is 0 at each boundary, so
+// the blend is continuous and only brightens)
+float SOLTH_FlameNeckAlpha(float alpha, float arcFraction, float around, float3 tangentW, float3 toCameraW, float4 header,
+    float4 flame)
+{
+    const float arcM = arcFraction * flame.x * header.z;
+    const float tangentLength = length(tangentW);
+    const float viewLength = length(toCameraW);
+    if (!(arcM > header.z) || !(tangentLength > 0.0) || !(viewLength > 0.0) || !(flame.x > 1.0))
+    {
+        return alpha;
+    }
+    const float3 axis = tangentW / tangentLength;
+    const float3 viewDir = toCameraW / viewLength;
+    // The wall half the ray crosses second when running toward the tail (the far half, sin(2 pi V) < 0) or first
+    // when running toward the nozzle (the near half): the crossing farther along s
+    const float towardTail = -dot(viewDir, axis);
+    const float laterSide = -sin(6.2831853 * around) * sign(towardTail);
+    if (!(laterSide > 0.0))
+    {
+        return alpha;
+    }
+
+    // The ray's run along the spine between the tail's two walls, back to its crossing nearer the nozzle (clamped at
+    // the neck)
+    const float sinTheta = max(length(viewDir - dot(viewDir, axis) * axis), 1.0e-4);
+    const float runM = 2.0 * header.w * flame.y * laterSide * abs(towardTail) / sinTheta;
+    const float entryM = max(arcM - runM, header.z);
+    const float along = max(1.0 - arcFraction, 1.0e-3);
+    return alpha * saturate(1.0 - entryM / (flame.x * header.z)) / along;
+}
+
+// Returns the streak noise coordinates: streak.x tiles around the tube, one tile per streak.y nozzle radii along s,
+// panning back at streak.z tiles per second x b (game time)
+float2 SOLTH_FlameNoiseUv(float arcFraction, float around, float4 header, float timeS, float4 streak, float4 flame)
+{
+    const float arcM = arcFraction * flame.x * header.z;
+    const float tileLengthM = max(streak.y * header.w, 1.0e-3);
+    return float2(around * streak.x, arcM / tileLengthM - frac(timeS * streak.z * header.y));
+}
+
+// Returns the flame's additive emissive colour: the ramp's rim colour outside, the core colour on the spine (tapering
+// with the flame), the shock diamonds on the core in the first SHOCK_ZONE of L_p, the panning streaks deepening toward
+// the tail, times the point alpha (emission b x along-arc fade x pixel fade). sharpness (SOLTH_FlameSharpness) blends the
+// radial fraction to the cross-section's mean (0.5) where the flame is drawn only a few pixels wide. capFraction is the
+// pixel's distance from the axis over the ring radius on an end cap (0 at the cap point, 1 on its rim; 1 on the tube):
+// a cap pixel at around V sits capFraction of the way out on ring vertex V's line, so its screen offset across the
+// spine is capFraction times the tube's (the radial fraction scales by it, equal to the tube's on the shared rim)
+float3 SOLTH_FlamePixel(float arcFraction, float alpha, float sharpness, float capFraction, float4 header, float around,
+    float3 tangentW, float3 toCameraW, float streakNoise, float4 ramp, float3 rim0, float3 rim1, float3 rim2,
+    float3 core0, float3 core1, float3 core2, float4 shock, float4 shape, float4 look, float4 flame)
+{
+    const float arcM = arcFraction * flame.x * header.z;
+    const float rawR = saturate(saturate(capFraction) * SOLTH_FlameRadialFraction(around, tangentW, toCameraW,
+        SOLTH_FlameTaper(arcM, header.z, flame)));
+    const float r = lerp(0.5, rawR, saturate(sharpness));
+    float3 rim;
+    float3 core;
+    SOLTH_PlumeColour(header.x, ramp, rim0, rim1, rim2, core0, core1, core2, rim, core);
+    const float facing = sqrt(saturate(1.0 - r * r));
+    const float coreWeight = SOLTH_FlameCoreWeight(r, look);
+    const float knot = SOLTH_FlameKnot(arcM, r, header.z, header.w, header.y, shock, shape);
+    const float depth = SOLTH_FlameStreakDepth(arcM, header.z, look.w, shape.y);
+    const float streak = lerp(1.0 - depth, 1.0, saturate(streakNoise));
+    const float3 colour = lerp(rim, core, coreWeight) * (0.3 + 0.7 * facing) + core * (knot * look.z);
+    const float neckAlpha = SOLTH_FlameNeckAlpha(alpha, arcFraction, around, tangentW, toCameraW, header, flame);
+    return colour * (look.x * saturate(neckAlpha) * streak);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Flame strip pool (M_SOLThrusterRibbon, SDD 51 R7, R10): draws the NPC flames Niagara does not, and must look the
+// same as NS_SOLThrusterTrails (straight segments between the spine points, a FLAME_TUBE_SIDES-sided tube oriented
+// like Niagara's Screen-facing Tube shape, the same width, floor and pixel)
+// ---------------------------------------------------------------------------------------------------------------------
+// Block mesh (built at runtime by the pool component): RIBBON_TRAILS_PER_BLOCK flames x FLAME_DRAWN_POINTS rings x
+// (FLAME_TUBE_SIDES + 1) vertices, UV0 = (drawn point index, around V = k / sides), UV1.x = the flame's index in the
+// block (small integers and sixteenths, exact in half precision); per-instance custom data 0 = the block's first flame.
+// The component sits at the render-space origin with identity instances, so its local position is render-space cm.
+// Texture (PF_A32B32G32R32F, nearest): one block per row; flame t's RIBBON_TEXELS_PER_TRAIL texels start at column
+// (t % trailsPerBlock) x texelsPerTrail of row t / trailsPerBlock. The per-flame texels (SOLThruster::PackRibbonTexels):
+// drawn points 0..26 = (x, y, z metres from the frame anchor in render-space axes, alpha) (0 and 26 the end caps,
+// SOLThruster::AddFlameCaps), texel 27 = the header (c, b, L_p, r_n), texels 28..33 = the unfloored full widths of
+// drawn points 2..25, four per texel (drawn point 1, the nozzle, is 2 r_n; a cap ring has radius 0).
+// frame = (anchor x, y, z in render-space cm, live flame count); ribbon = (RIBBON_MIN_WIDTH_PX,
+// RIBBON_TEXELS_PER_TRAIL, RIBBON_TRAILS_PER_BLOCK, FLAME_DRAWN_POINTS).
+// Returns the Load coordinate of texel k of trail t
+int3 SOLTH_RibbonTexel(float trail, int texel, float4 ribbon)
+{
+    const int trailsPerBlock = max((int)(ribbon.z + 0.5), 1);
+    const int texelsPerTrail = (int)(ribbon.y + 0.5);
+    const int t = (int)(trail + 0.5);
+    return int3((t % trailsPerBlock) * texelsPerTrail + texel, t / trailsPerBlock, 0);
+}
+
+// Returns drawn point p's (1 .. 25, a cap passes its end point) unfloored full width in metres: 2 r_n (the header's w)
+// at the nozzle, else its packed component
+float SOLTH_RibbonPointWidth(int p, float4 header, float4 widths)
+{
+    if (p <= 1)
+    {
+        return 2.0 * header.w;
+    }
+    const int c = (p - 2) % 4;
+    return dot(widths, float4(c == 0, c == 1, c == 2, c == 3));
+}
+
+// Returns a unit vector, or zero for a vector shorter than minLength (Niagara's ribbon segment rule)
+float3 SOLTH_RibbonUnit(float3 v, float minLength)
+{
+    const float len = length(v);
+    return len > minLength ? v / len : float3(0.0, 0.0, 0.0);
+}
+
+// Returns the ribbon direction at point p from its neighbours p - 2 .. p + 2 (metres), as the Niagara CPU ribbon
+// builds it with tessellation off: the normalised sum of the unit segments around a point; at the first and last
+// point the end segment reflected about its neighbour's direction (curvature continuous at the ends). A point within
+// 1 cm of the previous one (which Niagara drops) follows the next segment; the padding past the live count gets none
+float3 SOLTH_RibbonTangent(float3 p2, float3 p1, float3 p0, float3 n1, float3 n2, bool bFirst, bool bLastSlot)
+{
+    const float minM = 0.01;
+    const float3 back = SOLTH_RibbonUnit(p0 - p1, minM);
+    const float3 ahead = bLastSlot ? float3(0.0, 0.0, 0.0) : SOLTH_RibbonUnit(n1 - p0, minM);
+    if (bFirst)
+    {
+        // First point: the first segment reflected about point 1's direction
+        const float3 aheadNext = bLastSlot ? float3(0.0, 0.0, 0.0) : SOLTH_RibbonUnit(n2 - n1, minM);
+        if (!(dot(ahead, ahead) > 0.0))
+        {
+            // Point 1 on the head (Niagara drops it): follow the segment after it
+            return aheadNext;
+        }
+        const float3 next = SOLTH_RibbonUnit(ahead + aheadNext, 1.0e-6);
+        return dot(aheadNext, aheadNext) > 0.0 ? 2.0 * dot(ahead, next) * ahead - next : ahead;
+    }
+    if (!(dot(back, back) > 0.0))
+    {
+        // On the previous point (Niagara drops it): follow the next segment, none for the padding
+        return ahead;
+    }
+    if (dot(ahead, ahead) > 0.0)
+    {
+        return SOLTH_RibbonUnit(back + ahead, 1.0e-6);
+    }
+
+    // Last live point: the last segment reflected about the previous point's direction (none on a 2-point ribbon)
+    const float3 backPrev = SOLTH_RibbonUnit(p1 - p2, minM);
+    if (!(dot(backPrev, backPrev) > 0.0))
+    {
+        return back;
+    }
+    const float3 prev = SOLTH_RibbonUnit(backPrev + back, 1.0e-6);
+    return 2.0 * dot(back, prev) * back - prev;
+}
+
+// Returns the thin-flame shading weight (true / drawn width) x clamp((drawn px - flame.z) / (flame.w - flame.z), 0, 1):
+// 1 where the flame is drawn at its true width and several pixels wide, falling to 0 at the 1 px floor
+// (SOL::Thruster::FLAME_SHARP_*; the Niagara feeder computes the same on the CPU)
+float SOLTH_FlameSharpness(float trueCm, float drawnCm, float pixelCm, float4 flame)
+{
+    if (!(drawnCm > 0.0) || !(pixelCm > 0.0))
+    {
+        return 1.0;
+    }
+    const float drawnPx = drawnCm / pixelCm;
+    return saturate(trueCm / drawnCm) * saturate((drawnPx - flame.z) / max(flame.w - flame.z, 1.0e-3));
+}
+
+// Places a tube vertex (R10-Q2): the spine point at frame.xyz + 100 x its metres, offset on the ring of Niagara's
+// Screen-facing Tube shape (slice vertex k at angle -2 pi V: (-0.5 cos, -0.5 sin) on (right, up) with right =
+// cross(camera - point, direction), up = cross(direction, right)) times the width floored at ribbon.x device pixels at
+// the point's distance (2 d / (ViewToClip[1][1] x view height) per pixel, SOLThruster::RibbonDrawnWidthM), times
+// ringScale (0 on an end cap's point, which keeps its end point's width for the sharpness, as the Niagara feeder does).
+// Outputs: interp0 = (arc fraction, alpha, around V, sharpness) and the spine direction (Niagara's vertex tangent).
+// renderToTranslated is the translated-world position of the render-space origin; viewHeightPx is the device height,
+// ViewSizeAndInvSize.y x ResolutionFractionAndInv.y
+float3 SOLTH_FlameVertex(float4 here, float3 direction, float widthM, float ringScale, float around, float arcFraction,
+    float3 localPos, float3 renderToTranslated, float3 cameraTranslated, float projectionScaleY, float viewHeightPx,
+    float4 frame, float4 ribbon, float4 flame, out float4 interp0, out float3 tangentW)
+{
+    const float3 hereCm = frame.xyz + here.xyz * 100.0;
+    const float3 toCamera = cameraTranslated - (renderToTranslated + hereCm);
+    const float distanceCm = length(toCamera);
+    const float3 facing = distanceCm > 0.0 ? toCamera / distanceCm : float3(0.0, 0.0, 0.0);
+    const float3 right = SOLTH_RibbonUnit(cross(facing, direction), 1.0e-6);
+    const float3 up = cross(direction, right);
+    const float pixelCm = projectionScaleY > 0.0 && viewHeightPx > 0.0
+        ? 2.0 * distanceCm / (projectionScaleY * viewHeightPx) : 0.0;
+    const float drawnCm = max(max(widthM, 0.0) * 100.0, ribbon.x * pixelCm);
+    float sinAngle;
+    float cosAngle;
+    sincos(-6.2831853 * around, sinAngle, cosAngle);
+    tangentW = direction;
+    interp0 = float4(arcFraction, here.w, around, SOLTH_FlameSharpness(max(widthM, 0.0) * 100.0, drawnCm, pixelCm,
+        flame));
+    return hereCm + (right * (-0.5 * cosAngle) + up * (-0.5 * sinAngle)) * (drawnCm * ringScale) - localPos;
 }

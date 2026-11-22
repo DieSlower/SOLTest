@@ -18,7 +18,7 @@ struct FSOLThrusterMaterialVectors
     FLinearColor Core[3];       // CORE_0..2
     FVector4f Ramp;             // (yellow c, 0, 0, 0)
     FVector4f Shock;            // (spacing factor, brightness gain, decay, zone)
-    FVector4f Shape;            // (max knots, tail radius ratio, knot half length, knot half width)
+    FVector4f Shape;            // (max knots, tail streak strength, knot half length, knot half width)
     FVector4f Look;             // (emissive, core power, knot gain, streak strength)
     FVector4f Streak;           // (tiles around, tile length in nozzle radii, pan tiles/s at b = 1, 0)
     FVector4f Fade;             // (cone low px, cone high px, reference height px, 0)
@@ -27,13 +27,17 @@ struct FSOLThrusterMaterialVectors
     FVector4f Burst;            // (max opacity, flicker Hz, flicker depth, emissive)
     FVector4f BurstShape;       // (base radius, tail radius in burst lengths, low px, high px)
     FLinearColor BurstColour;
-    FVector4f Trail;            // (emissive, 0, 0, 0)
+    FVector4f Flame;            // (flame length factor, tail width ratio, sharp low px, sharp high px)
+    FVector4f Ribbon;           // Strip pool: (min width px, texels per flame, flames per block, points per flame)
 };
 
-// The C++ float copy of the thruster shader's mirrored math, Shaders/Private/SOLThruster.ush (SDD 51 sections 4.3-4.4),
-// statement for statement and in the same order, so the shader's float path can be compared with the double
-// SOLThruster functions on the CPU (SOLTest.Thruster.MaterialMirror, Tests/ThrusterMirrorTest.cpp). It reads the same
-// packed vectors the materials hold (MaterialVectors). A change to the shader must change this file.
+// The C++ float copy of part of the thruster shader's math, Shaders/Private/SOLThruster.ush (SDD 51 sections 4.3-4.4,
+// 11.2): the functions below are copied statement for statement and in the same order, so the shader's float path
+// can be compared with the double SOLThruster functions on the CPU (SOLTest.Thruster.MaterialMirror,
+// Tests/ThrusterMirrorTest.cpp). Not mirrored: the vertex stage (SOLTH_FlameVertex, the strip pool's texel reads and
+// tangent), the flame pixel's radial fraction and taper (checked on screen by -SOLSmokeRibbonParity and
+// -SOLSmokeFlameSeam instead). It reads the same packed vectors the materials hold (MaterialVectors). A change to a
+// mirrored shader function must change this file.
 namespace SOLThrusterMirror
 {
     // Upper bound of the knot-count loop (SOLTH_KNOT_LOOP_CAP)
@@ -55,7 +59,7 @@ namespace SOLThrusterMirror
         v.Ramp = FVector4f(static_cast<float>(T::COLOUR_YELLOW_C), 0.0f, 0.0f, 0.0f);
         v.Shock = FVector4f(static_cast<float>(T::SHOCK_SPACING_FACTOR), static_cast<float>(T::SHOCK_BRIGHTNESS_GAIN),
             static_cast<float>(T::SHOCK_DECAY), static_cast<float>(T::SHOCK_ZONE));
-        v.Shape = FVector4f(static_cast<float>(T::SHOCK_MAX_KNOTS), static_cast<float>(T::TAIL_RADIUS_RATIO),
+        v.Shape = FVector4f(static_cast<float>(T::SHOCK_MAX_KNOTS), static_cast<float>(T::FLAME_STREAK_TAIL_STRENGTH),
             static_cast<float>(T::SHOCK_KNOT_HALF_LENGTH), static_cast<float>(T::SHOCK_KNOT_HALF_WIDTH));
         v.Look = FVector4f(static_cast<float>(T::PLUME_EMISSIVE), static_cast<float>(T::PLUME_CORE_POWER),
             static_cast<float>(T::SHOCK_KNOT_GAIN), static_cast<float>(T::STREAK_STRENGTH));
@@ -73,7 +77,10 @@ namespace SOLThrusterMirror
             static_cast<float>(T::BURST_TAIL_RADIUS_LENGTHS), static_cast<float>(T::CONE_FADE_LOW_PX),
             static_cast<float>(T::CONE_FADE_HIGH_PX));
         v.BurstColour = T::BURST_COLOUR;
-        v.Trail = FVector4f(static_cast<float>(T::TRAIL_EMISSIVE), 0.0f, 0.0f, 0.0f);
+        v.Flame = FVector4f(static_cast<float>(T::FLAME_LENGTH_FACTOR), static_cast<float>(T::FLAME_TAIL_WIDTH_RATIO),
+            static_cast<float>(T::FLAME_SHARP_LOW_PX), static_cast<float>(T::FLAME_SHARP_HIGH_PX));
+        v.Ribbon = FVector4f(static_cast<float>(T::RIBBON_MIN_WIDTH_PX), static_cast<float>(T::RIBBON_TEXELS_PER_TRAIL),
+            static_cast<float>(T::RIBBON_TRAILS_PER_BLOCK), static_cast<float>(T::FLAME_DRAWN_POINTS));
         return v;
     }
 
@@ -169,6 +176,91 @@ namespace SOLThrusterMirror
         ShockKnot(k, spacingM, shock, positionM, strength);
         const float rhombus = FMath::Abs(xM - positionM) / (shape.Z * spacingM) + rFrac / shape.W;
         return strength * FMath::Clamp(1.0f - rhombus, 0.0f, 1.0f);
+    }
+
+    // Returns the smoothstep of u clamped to [0, 1] (SOLTH_Smoothstep)
+    inline float Smoothstep(const float u)
+    {
+        const float clamped = FMath::Clamp(u, 0.0f, 1.0f);
+        return clamped * clamped * (3.0f - 2.0f * clamped);
+    }
+
+    // Returns the flame core weight (sqrt(1 - r^2))^look.y, r clamped to [0, 1], NaN as 0 (SOLTH_FlameCoreWeight)
+    inline float FlameCoreWeight(const float radialFraction, const FVector4f& look)
+    {
+        if (FMath::IsNaN(radialFraction))
+        {
+            return 0.0f;
+        }
+        const float r = FMath::Clamp(radialFraction, 0.0f, 1.0f);
+        return std::pow(std::sqrt(FMath::Max(1.0f - r * r, 0.0f)), look.Y);
+    }
+
+    // Returns the flame's knot brightness at arc coordinate s and radial fraction r (SOLTH_FlameKnot): the knot
+    // spacing and count of the flame's header, then the nearest knot's rhombus
+    inline float FlameKnot(const float arcM, const float radialFraction, const float plumeLengthM,
+        const float nozzleRadiusM, const float b, const FVector4f& shock, const FVector4f& shape)
+    {
+        const float spacingM = ShockSpacing(nozzleRadiusM, b, shock);
+        const int32 count = ShockKnotCount(plumeLengthM, spacingM, shock, shape);
+        return ShockIntensity(arcM, Unit(radialFraction), spacingM, count, shock, shape);
+    }
+
+    // Returns the streak depth lerp(body, tail, smoothstep((s - 0.5 L_p) / L_p)); the body depth for a non-positive
+    // L_p (SOLTH_FlameStreakDepth)
+    inline float FlameStreakDepth(const float arcM, const float plumeLengthM, const float bodyDepth,
+        const float tailDepth)
+    {
+        if (!(plumeLengthM > 0.0f) || std::isinf(plumeLengthM) || FMath::IsNaN(arcM))
+        {
+            return bodyDepth;
+        }
+        return FMath::Lerp(bodyDepth, tailDepth, Smoothstep((arcM - 0.5f * plumeLengthM) / plumeLengthM));
+    }
+
+    // Returns the thin-flame shading weight from widths and the pixel size in cm (SOLTH_FlameSharpness): saturate(true
+    // / drawn) x saturate((drawn / pixel - flame.z) / max(flame.w - flame.z, 1e-3)); 1 without a drawn width or pixel
+    inline float FlameSharpness(const float trueCm, const float drawnCm, const float pixelCm, const FVector4f& flame)
+    {
+        if (!(drawnCm > 0.0f) || !(pixelCm > 0.0f))
+        {
+            return 1.0f;
+        }
+        const float drawnPx = drawnCm / pixelCm;
+        return Unit(trueCm / drawnCm) * Unit((drawnPx - flame.Z) / FMath::Max(flame.W - flame.Z, 1.0e-3f));
+    }
+
+    // Returns the point alpha of a pixel on the narrow tail seen through the neck (SOLTH_FlameNeckAlpha): seen down the
+    // spine, the tail wall (s > L_p) the ray crosses farther along s (the far half from the nozzle side, the near half
+    // from the tail side) takes the along fade at its other crossing, s - w |sin a| cot(theta), never before L_p; the
+    // alpha unchanged elsewhere. header = (c, b, L_p, r_n)
+    inline float FlameNeckAlpha(const float alpha, const float arcFraction, const float around,
+        const FVector3f& tangentW, const FVector3f& toCameraW, const FVector4f& header, const FVector4f& flame)
+    {
+        const float arcM = arcFraction * flame.X * header.Z;
+        const float tangentLength = tangentW.Size();
+        const float viewLength = toCameraW.Size();
+        if (!(arcM > header.Z) || !(tangentLength > 0.0f) || !(viewLength > 0.0f) || !(flame.X > 1.0f))
+        {
+            return alpha;
+        }
+        const FVector3f axis = tangentW / tangentLength;
+        const FVector3f viewDir = toCameraW / viewLength;
+        // The wall half crossed farther along s: the far half running toward the tail, the near half toward the nozzle
+        const float towardTail = -FVector3f::DotProduct(viewDir, axis);
+        const float laterSide = -std::sin(6.2831853f * around) * FMath::Sign(towardTail);
+        if (!(laterSide > 0.0f))
+        {
+            return alpha;
+        }
+
+        // The ray's run along the spine between the tail's two walls, back to its crossing nearer the nozzle (clamped
+        // at the neck)
+        const float sinTheta = FMath::Max((viewDir - FVector3f::DotProduct(viewDir, axis) * axis).Size(), 1.0e-4f);
+        const float runM = 2.0f * header.W * flame.Y * laterSide * FMath::Abs(towardTail) / sinTheta;
+        const float entryM = FMath::Max(arcM - runM, header.Z);
+        const float along = FMath::Max(1.0f - arcFraction, 1.0e-3f);
+        return alpha * Unit(1.0f - entryM / (flame.X * header.Z)) / along;
     }
 
     // Returns the focal length in reference px (SOLTH_FocalRefPx)

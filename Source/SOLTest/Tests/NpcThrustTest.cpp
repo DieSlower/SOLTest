@@ -164,18 +164,21 @@ bool FSOLNpcThrustAchievedAccelTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcThrustPlumeInstanceTest, "SOLTest.NpcThrust.PlumeInstance",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// PlumeInstance(gMain, bWarPower, hullLengthM, distanceM, focalRefPx): the plume floats of one hull-drawn ship, colour
-// PlumeColourScalar, brightness PlumeBrightness, true length PlumeLengthM (the true hull length, never the drawn size,
-// Q14); all zero when the plume is off, when its true length is under CONE_FADE_LOW_PX on screen (the material's alpha
-// is 0 there), and for a non-finite or non-positive distance or focal length. PlumeCustomData writes them into the
-// SOL::ThrusterMaterialParams layout with the burst floats zero (bursts are part 51g)
+// PlumeInstance(gMain, bWarPower, hullLengthM, nozzleRadiusM, distanceM, focalRefPx): the plume floats of one hull-
+// drawn ship, colour PlumeColourScalar, brightness PlumeBrightness, true length PlumeLengthM (the true hull length,
+// never the drawn size, Q14); all zero when the plume is off, when the nozzle glow's true diameter
+// (GLOW_DIAMETER_NOZZLE_RADII x the nozzle radius) is under GLOW_FADE_LOW_PX on screen (R10: the zero gate is the
+// glow's own fade, not the flame's length), and for a non-finite or non-positive distance, focal length or nozzle
+// radius. PlumeCustomData writes them into the SOL::ThrusterMaterialParams layout with the burst floats zero (bursts
+// are part 51g)
 bool FSOLNpcThrustPlumeInstanceTest::RunTest(const FString& /*parameters*/)
 {
     const double hullM = SOL::Thruster::NPC_HULL_LENGTH_M;
+    const double radiusM = SOL::Thruster::NPC_NOZZLE_RADIUS_M;
     const double focal = 960.0;
 
     // A 1.65 G lane burn at 1 km (SDD 51 section 4.3 row 1.65 G)
-    const FSOLPlumeInstance burn = SOLThruster::PlumeInstance(1.65, false, hullM, 1000.0, focal);
+    const FSOLPlumeInstance burn = SOLThruster::PlumeInstance(1.65, false, hullM, radiusM, 1000.0, focal);
     TestTrue(TEXT("1.65 G: c 0"), FMath::Abs(burn.Colour) <= NPCTHRUST_TOL);
     TestTrue(TEXT("1.65 G: b 0.4925"), FMath::Abs(burn.Brightness - 0.4925f) <= 1.0e-4f);
     TestTrue(TEXT("1.65 G: L_p 9.659 m"), FMath::Abs(burn.LengthM - 9.659f) <= NPCTHRUST_LEN_TOL);
@@ -184,53 +187,69 @@ bool FSOLNpcThrustPlumeInstanceTest::RunTest(const FString& /*parameters*/)
         && FMath::IsNearlyEqual(burn.LengthM, static_cast<float>(SOLThruster::PlumeLengthM(hullM, 1.65)), 1.0e-5f));
 
     // The colour ramp and the War power override (b and the length follow the real G)
-    const FSOLPlumeInstance hot = SOLThruster::PlumeInstance(3.0, false, hullM, 1000.0, focal);
+    const FSOLPlumeInstance hot = SOLThruster::PlumeInstance(3.0, false, hullM, radiusM, 1000.0, focal);
     TestTrue(TEXT("3 G: c 0.35"), FMath::Abs(hot.Colour - 0.35f) <= 1.0e-4f);
-    const FSOLPlumeInstance war = SOLThruster::PlumeInstance(1.5, true, hullM, 1000.0, focal);
+    const FSOLPlumeInstance war = SOLThruster::PlumeInstance(1.5, true, hullM, radiusM, 1000.0, focal);
     TestTrue(TEXT("War power 1.5 G: c 1"), FMath::Abs(war.Colour - 1.0f) <= NPCTHRUST_TOL);
     TestTrue(TEXT("War power 1.5 G: b and L follow 1.5 G"),
         FMath::IsNearlyEqual(war.Brightness, static_cast<float>(SOLThruster::PlumeBrightness(1.5)), 1.0e-6f)
         && FMath::IsNearlyEqual(war.LengthM, static_cast<float>(SOLThruster::PlumeLengthM(hullM, 1.5)), 1.0e-5f));
 
     // Clamped above G_REF: the hull length, full brightness and colour
-    const FSOLPlumeInstance boost = SOLThruster::PlumeInstance(9.0, false, hullM, 1000.0, focal);
+    const FSOLPlumeInstance boost = SOLThruster::PlumeInstance(9.0, false, hullM, radiusM, 1000.0, focal);
     TestTrue(TEXT("9 G: L = hull length, b 1, c 1"), FMath::Abs(boost.LengthM - 30.0f) <= NPCTHRUST_LEN_TOL
         && FMath::Abs(boost.Brightness - 1.0f) <= NPCTHRUST_TOL && FMath::Abs(boost.Colour - 1.0f) <= NPCTHRUST_TOL);
 
     // The true hull length sets the length: half the hull, the length scales by 0.5
-    const FSOLPlumeInstance halfHull = SOLThruster::PlumeInstance(1.65, false, 0.5 * hullM, 1000.0, focal);
+    const FSOLPlumeInstance halfHull = SOLThruster::PlumeInstance(1.65, false, 0.5 * hullM, radiusM, 1000.0, focal);
     TestTrue(TEXT("proportional to the true hull length"),
         FMath::Abs(halfHull.LengthM - 0.5f * burn.LengthM) <= NPCTHRUST_LEN_TOL);
 
-    // The pixel rule: 9.659 m is CONE_FADE_LOW_PX (0.5 px) at f L / 0.5 = 18,545 m
-    const double edgeM = focal * SOLThruster::PlumeLengthM(hullM, 1.65) / SOL::Thruster::CONE_FADE_LOW_PX;
-    TestFalse(TEXT("just inside the low pixel edge: shown"),
-        NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, 0.99 * edgeM, focal)));
-    TestTrue(TEXT("just past the low pixel edge: off"),
-        NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, 1.01 * edgeM, focal)));
+    // The pixel rule: the glow's true diameter (3.75 m for the NPC) is GLOW_FADE_LOW_PX (0.5 px) at f D / 0.5 = 7200 m,
+    // whatever the G (the flame's length no longer matters)
+    const double edgeM = focal * SOL::Thruster::GLOW_DIAMETER_NOZZLE_RADII * radiusM / SOL::Thruster::GLOW_FADE_LOW_PX;
+    TestFalse(TEXT("just inside the glow's low pixel edge: shown"),
+        NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, radiusM, 0.99 * edgeM, focal)));
+    TestTrue(TEXT("just past the glow's low pixel edge: off"),
+        NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, radiusM, 1.01 * edgeM, focal)));
     TestTrue(TEXT("a narrower view (larger f) shows it farther"),
-        !NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, 1.01 * edgeM, 2.0 * focal)));
+        !NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, radiusM, 1.01 * edgeM, 2.0 * focal)));
+    TestFalse(TEXT("the same edge at 9 G: shown just inside"),
+        NpcThrustPlumeOff(SOLThruster::PlumeInstance(9.0, false, hullM, radiusM, 0.99 * edgeM, focal)));
+    TestTrue(TEXT("the same edge at 9 G: off just past it"),
+        NpcThrustPlumeOff(SOLThruster::PlumeInstance(9.0, false, hullM, radiusM, 1.01 * edgeM, focal)));
 
-    // Off: under the cut-off, no thrust, reverse, bad G, bad distance or focal
+    // A narrower nozzle moves the edge in: half the radius, half the distance
+    TestTrue(TEXT("half the nozzle radius: off past half the edge"), NpcThrustPlumeOff(
+        SOLThruster::PlumeInstance(1.65, false, hullM, 0.5 * radiusM, 1.01 * 0.5 * edgeM, focal)));
+    TestFalse(TEXT("half the nozzle radius: shown inside half the edge"), NpcThrustPlumeOff(
+        SOLThruster::PlumeInstance(1.65, false, hullM, 0.5 * radiusM, 0.99 * 0.5 * edgeM, focal)));
+
+    // Off: under the cut-off, no thrust, reverse, bad G, bad distance, focal or nozzle radius
     for (const double g : { 0.0, 0.5 * SOL::Thruster::PLUME_MIN_G, -1.65, NPCTHRUST_NAN, NPCTHRUST_INF })
     {
         TestTrue(FString::Printf(TEXT("G %f: off"), g),
-            NpcThrustPlumeOff(SOLThruster::PlumeInstance(g, false, hullM, 1000.0, focal)));
+            NpcThrustPlumeOff(SOLThruster::PlumeInstance(g, false, hullM, radiusM, 1000.0, focal)));
     }
     TestTrue(TEXT("War power at 0 G: off (no colour without a plume)"),
-        NpcThrustPlumeOff(SOLThruster::PlumeInstance(0.0, true, hullM, 1000.0, focal)));
+        NpcThrustPlumeOff(SOLThruster::PlumeInstance(0.0, true, hullM, radiusM, 1000.0, focal)));
     for (const double distance : { 0.0, -5.0, NPCTHRUST_NAN, NPCTHRUST_INF })
     {
         TestTrue(FString::Printf(TEXT("distance %f: off"), distance),
-            NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, distance, focal)));
+            NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, radiusM, distance, focal)));
     }
     for (const double badFocal : { 0.0, -960.0, NPCTHRUST_NAN })
     {
         TestTrue(FString::Printf(TEXT("focal %f: off"), badFocal),
-            NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, 1000.0, badFocal)));
+            NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, radiusM, 1000.0, badFocal)));
+    }
+    for (const double badRadius : { 0.0, -1.5, NPCTHRUST_NAN, NPCTHRUST_INF })
+    {
+        TestTrue(FString::Printf(TEXT("nozzle radius %f: off"), badRadius),
+            NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, hullM, badRadius, 1000.0, focal)));
     }
     TestTrue(TEXT("zero hull length: off"),
-        NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, 0.0, 1000.0, focal)));
+        NpcThrustPlumeOff(SOLThruster::PlumeInstance(1.65, false, 0.0, radiusM, 1000.0, focal)));
 
     // The custom-data layout: c, b, L_p at their indices, the three burst floats zero, the rest of the view untouched
     namespace P = SOL::ThrusterMaterialParams;

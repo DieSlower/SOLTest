@@ -104,9 +104,9 @@ bool FSOLPlayerThrusterShipFrameTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerThrusterPlumeTest, "SOLTest.PlayerThruster.Plume",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// PlayerPlume(...).Plume equals PlumeInstance(thrust.X, bWarPower, PLAYER_HULL_LENGTH_M, distance, focal): the SDD 51
-// section 4.3 player values, clamped above G_REF, c = 1 under War power with b and the length from the real G; only
-// the forward component lights it
+// PlayerPlume(...).Plume equals PlumeInstance(thrust.X, bWarPower, PLAYER_HULL_LENGTH_M, PLAYER_NOZZLE_RADIUS_M,
+// distance, focal): the SDD 51 section 4.3 player values, clamped above G_REF, c = 1 under War power with b and the
+// length from the real G; only the forward component lights it
 bool FSOLPlayerThrusterPlumeTest::RunTest(const FString& /*parameters*/)
 {
     // SDD 4.3 table, player 20 m hull: 1 G and 3 G
@@ -136,7 +136,7 @@ bool FSOLPlayerThrusterPlumeTest::RunTest(const FString& /*parameters*/)
 
     // The floats are PlumeInstance's of the player hull, the side components ignored
     const FSOLPlumeInstance expected = SOLThruster::PlumeInstance(2.2, false, SOL::Thruster::PLAYER_HULL_LENGTH_M,
-        PLAYERTHR_VIEW_M, PLAYERTHR_FOCAL_PX);
+        SOL::Thruster::PLAYER_NOZZLE_RADIUS_M, PLAYERTHR_VIEW_M, PLAYERTHR_FOCAL_PX);
     const FSOLPlumeInstance mixed = PlayerThrPlume(FVector3f(2.2f, 1.3f, -0.7f)).Plume;
     TestTrue(TEXT("floats equal PlumeInstance of the forward G"), FMath::IsNearlyEqual(mixed.Colour, expected.Colour,
         1.0e-6f) && FMath::IsNearlyEqual(mixed.Brightness, expected.Brightness, 1.0e-6f)
@@ -195,7 +195,7 @@ bool FSOLPlayerThrusterLightTest::RunTest(const FString& /*parameters*/)
     TestNearlyEqual(TEXT("disabled: the plume still burns"), static_cast<double>(disabled.Plume.Brightness), 0.6641,
         PLAYERTHR_TOL);
 
-    // Far away (the plume under its pixel cut): no plume floats, the light still follows b
+    // Far away (the nozzle glow under its 0.5 px fade): no plume floats, the light still follows b
     const FSOLPlayerPlume far = SOLThruster::PlayerPlume(FVector3f(3.0f, 0.0f, 0.0f), false, 1.0e9, PLAYERTHR_FOCAL_PX,
         true);
     TestEqual(TEXT("far: plume cut"), far.Plume.Brightness, 0.0f);

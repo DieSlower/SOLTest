@@ -6,37 +6,45 @@
 #   /Game/SOL/Fx/T_SOLThrusterNoise
 #       A seeded, periodic (tiling) value-noise texture written by this script: R = streak noise (fine around, coarse
 #       along), G and B = isotropic fBm (the gas puffs). Linear, TC_Masks.
-#   /Game/SOL/Fx/M_SOLThrusterPlume
-#       Unlit, additive, two-sided, ISM usage. The vertex stage re-places each plume shell vertex in true metres from
-#       its nozzle anchor (true length L_p, true nozzle radius, tail 0.35 r_n) or collapses it when off or under the
-#       pixel fade; the pixel stage draws the colour ramp from c, the white-hot core, the shock diamonds and the panning
-#       noise streaks (Shaders/Private/SOLThruster.ush, SOLTH_PlumeVertex / SOLTH_PlumePixel).
+#   (M_SOLThrusterPlume, the 51b cone plume, is retired by SDD 51 R10: the one-piece flame below replaces it.)
 #   /Game/SOL/Fx/M_SOLThrusterGlow
 #       Unlit, additive, two-sided, ISM usage: the camera-facing nozzle glow with its 1 px floor (SOLTH_GlowVertex).
 #   /Game/SOL/Fx/M_SOLThrusterBurst
 #       Unlit, translucent (not hot additive), two-sided, ISM usage: the short, nearly transparent grey-white gas puffs,
 #       noise-dissolved and flickering with the per-instance random as phase (SOLTH_BurstVertex / SOLTH_BurstOpacity).
-#   /Game/SOL/Fx/M_SOLThrusterTrail
-#       Unlit, additive, two-sided, Niagara ribbon usage: the curved ribbon (particle colour x alpha, soft profile).
+#   /Game/SOL/Fx/M_SOLThrusterTrail (SDD 51 R10)
+#       Unlit, additive, two-sided, Niagara ribbon usage: the one-piece flame on the Niagara tube ribbon. Particle colour
+#       r = s / L_f, g = alpha, b = sharpness, a = the end-cap fraction; dynamic parameter 0 = the flame header (c, b, L_p, r_n); UV0.y around
+#       the tube and the tangent give the radial fraction (SOLTH_FlameNoiseUv, SOLTH_FlamePixel).
+#   /Game/SOL/Fx/M_SOLThrusterRibbon (part 51e, SDD 51 R7, R10)
+#       Unlit, additive, two-sided, ISM usage: the GPU strip pool's flames. The vertex stage Loads a flame's points,
+#       neighbours, header and width from the float texture ThrusterRibbonTex and places the same
+#       FLAME_TUBE_SIDES-sided tube as the Niagara ribbon with the 1 px device floor (SOLTH_FlameVertex); the pixel stage is M_SOLThrusterTrail's
+#       SOLTH_FlamePixel. The block mesh is not an asset: the pool component builds it at runtime (layout in the header
+#       of SOLThruster.ush).
+#   /Game/SOL/Fx/T_SOLThrusterFloatDefault
+#       A linear (TC_HDR, nearest) copy of the engine default texture: ThrusterRibbonTex's placeholder default.
 #   /Game/SOL/Fx/SM_SOLNpcHullCone, SM_SOLNpcHullBox
 #       The NPC placeholder hulls (a generated 100 cm cone and cube of the engine Cone / Cube's size and pivot, slot
 #       Hull = M_SOLNpcHull) plus the thruster
-#       sections: slot Plume (one 16-sided cone on the aft nozzle), slot Glow (one quad), slot Burst (6 puffs on the
+#       sections: slot Glow (one quad on the aft nozzle), slot Burst (6 puffs on the
 #       SOL::Thruster port table: a bow pair, 4 side ports). Built in mesh local units for the instance scale of
 #       HullTransform in Source/SOLTest/Npc/SOLNpcVisuals.cpp (read from there), at full length.
 #   /Game/SOL/Fx/SM_SOLPlayerThrusters
-#       The player's thruster sections in the hull frame (cm): two plumes and glows on the engine nozzles, 6 bursts.
+#       The player's thruster sections in the hull frame (cm): two glows on the engine nozzles, 6 bursts.
 #   /Game/SOL/Fx/NS_SOLThrusterTrails
-#       One CPU-sim emitter, one particle per ribbon point fed from the SOL::ThrusterTrailParams arrays (a one-shot burst
-#       of TrailMaxPoints particles that never die; point i is trail i / TrailPointsPerTrail, link order i % it), a
-#       ribbon renderer with M_SOLThrusterTrail.
+#       One CPU-sim emitter, one particle per flame spine point fed from the SOL::ThrusterTrailParams arrays (a one-shot
+#       burst of TrailMaxPoints particles that never die; point i is trail i / TrailPointsPerTrail, link order i % it),
+#       the flame header user vector copied into every particle's dynamic material parameter, a screen-facing ribbon
+#       renderer with M_SOLThrusterTrail, tessellation off, Shape Tube with FLAME_TUBE_SIDES subdivisions (camera-facing
+#       normals). One flame per system instance (TrailMaxPoints = FLAME_DRAWN_POINTS: the spine and its two end caps).
 # Section vertex layout and the per-ship floats: see the header of Shaders/Private/SOLThruster.ush. Asset paths are
 # SOL::Paths::THRUSTER_*, parameter names SOL::ThrusterMaterialParams / SOL::ThrusterTrailParams, every default value
 # SOL::Thruster (all read from Source/SOLTest/SOLConstants.h, so the assets cannot drift from the C++; the test
 # SOLTest.Thruster.MaterialAssets checks the defaults against SOLThrusterMirror::MaterialVectors).
 # Run (editor closed):
 #   UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/Fx/create_thruster_assets.py"
-#       -unattended -AllowCommandletRendering [-SOLRebuild] [-SOLOnly=M_SOLThrusterPlume,SM_SOLNpcHullCone]
+#       -unattended -AllowCommandletRendering [-SOLRebuild] [-SOLOnly=M_SOLThrusterTrail,SM_SOLNpcHullCone]
 # -AllowCommandletRendering makes the commandlet compile the materials' shaders, so an HLSL error fails the run.
 # Without -SOLRebuild existing assets are left untouched. -SOLOnly=<name>[,<name>] limits the run to those assets.
 # A rebuild edits materials, the texture and meshes in place; the Niagara system is deleted and created again (a
@@ -58,7 +66,6 @@ THRUSTER_INCLUDE = "/Project/SOLTest/Private/SOLThruster.ush"   # SOL::SHADER_VI
 HULL_CONE_SEGMENTS = 24
 NOISE_SIZE = 256
 NOISE_SEED = 51
-PLUME_SEGMENTS = 16
 BURST_SEGMENTS = 6
 COMMAND_LINE = unreal.SystemLibrary.get_command_line()
 REBUILD = ("-solrebuild" in COMMAND_LINE.lower()) or bool(globals().get("SOL_REBUILD"))
@@ -146,17 +153,6 @@ def text_constant(name, scope):
     return match.group(1)
 
 
-# Returns the ribbon ship count of a quality preset from SOL::Thruster::RIBBON_COUNTS_BY_QUALITY (literal entries)
-def ribbon_count(preset):
-    match = re.search(r"RIBBON_COUNTS_BY_QUALITY\[\]\s*=\s*\{([^}]*)\}", namespace_block("Thruster"))
-    if match is None:
-        raise RuntimeError("create_thruster_assets: Thruster::RIBBON_COUNTS_BY_QUALITY not found")
-    entry = match.group(1).split(",")[preset].strip()
-    if not entry.isdigit():
-        raise RuntimeError("create_thruster_assets: RIBBON_COUNTS_BY_QUALITY[%d] = %s is not a literal" % (preset,
-                                                                                                         entry))
-    return int(entry)
-
 
 # Returns (package path, folder, asset name) of a SOL::Paths constant "/Game/A/B.B"
 def asset_path(name):
@@ -189,7 +185,7 @@ def material_vectors():
         p("CORE_1"): colour("CORE_YELLOW") + (1.0,), p("CORE_2"): colour("CORE_RED") + (1.0,),
         p("RAMP"): (n("COLOUR_YELLOW_C"), 0.0, 0.0, 0.0),
         p("SHOCK"): (n("SHOCK_SPACING_FACTOR"), n("SHOCK_BRIGHTNESS_GAIN"), n("SHOCK_DECAY"), n("SHOCK_ZONE")),
-        p("SHAPE"): (n("SHOCK_MAX_KNOTS"), n("TAIL_RADIUS_RATIO"), n("SHOCK_KNOT_HALF_LENGTH"),
+        p("SHAPE"): (n("SHOCK_MAX_KNOTS"), n("FLAME_STREAK_TAIL_STRENGTH"), n("SHOCK_KNOT_HALF_LENGTH"),
                      n("SHOCK_KNOT_HALF_WIDTH")),
         p("LOOK"): (n("PLUME_EMISSIVE"), n("PLUME_CORE_POWER"), n("SHOCK_KNOT_GAIN"), n("STREAK_STRENGTH")),
         p("STREAK"): (n("STREAK_TILES_AROUND"), n("STREAK_TILE_LENGTH_RADII"), n("STREAK_PAN_TILES_PER_S"), 0.0),
@@ -200,7 +196,11 @@ def material_vectors():
         p("BURST_SHAPE"): (n("BURST_BASE_RADIUS_LENGTHS"), n("BURST_TAIL_RADIUS_LENGTHS"), n("CONE_FADE_LOW_PX"),
                            n("CONE_FADE_HIGH_PX")),
         p("BURST_COLOUR"): colour("BURST_COLOUR") + (1.0,),
-        p("TRAIL"): (n("TRAIL_EMISSIVE"), 0.0, 0.0, 0.0),
+        p("FLAME"): (n("FLAME_LENGTH_FACTOR"), n("FLAME_TAIL_WIDTH_RATIO"), n("FLAME_SHARP_LOW_PX"),
+                     n("FLAME_SHARP_HIGH_PX")),
+        p("RIBBON"): (n("RIBBON_MIN_WIDTH_PX"), n("RIBBON_TEXELS_PER_TRAIL"), n("RIBBON_TRAILS_PER_BLOCK"),
+                      n("FLAME_DRAWN_POINTS")),
+        p("RIBBON_FRAME"): (0.0, 0.0, 0.0, 0.0),   # set per frame by the pool; 0 live trails draws nothing
     }
     return {name: unreal.LinearColor(*value) for name, value in vectors.items()}
 
@@ -310,26 +310,6 @@ def build_noise_texture():
 # Materials
 # ---------------------------------------------------------------------------------------------------------------------
 
-PLUME_VERTEX_HLSL = r"""// Thruster plume vertex (SDD 51 4.4): the shell re-placed in true metres from its nozzle anchor
-const float3 anchor = float3(Uv2.x, Uv2.y, Uv3.x);
-const float3 offsetW = TransformLocalVectorToWorld(Parameters, Parameters.PreSkinnedPosition - anchor);
-const float3 axisW = TransformLocalVectorToWorld(Parameters, float3(Uv4.x, Uv4.y, Uv5.x));
-const float3 cameraToVertexW = GetTranslatedWorldPosition(Parameters) - ResolvedView.TranslatedWorldCameraOrigin;
-float4 interp0;
-float4 interp1;
-float2 interp2;
-const float3 offset = SOLTH_PlumeVertex(offsetW, axisW, Uv0, Uv3.y, ShipC, ShipB, ShipLength, cameraToVertexW,
-    ResolvedView.ViewToClip[0][0], ResolvedView.ViewSizeAndInvSize.xy, ResolvedView.RealTime, Shock, Shape, Streak,
-    Fade, interp0, interp1, interp2);
-Interp0 = interp0;
-Interp1 = interp1;
-Interp2 = interp2;
-return offset;"""
-
-PLUME_PIXEL_HLSL = r"""// Thruster plume colour (SDD 51 4.3, 4.4)
-return SOLTH_PlumePixel(Interp0, Interp1, Noise, Ramp, Rim0.rgb, Rim1.rgb, Rim2.rgb, Core0.rgb, Core1.rgb, Core2.rgb,
-    Shock, Shape, Look);"""
-
 GLOW_VERTEX_HLSL = r"""// Thruster nozzle glow vertex (SDD 51 4.4, Q13, Q33): a camera-facing disc at the nozzle anchor
 const float3 anchor = float3(Uv2.x, Uv2.y, Uv3.x);
 const float3 offsetW = TransformLocalVectorToWorld(Parameters, Parameters.PreSkinnedPosition - anchor);
@@ -360,9 +340,61 @@ const float noise = Texture2DSample(Noise, NoiseSampler, SOLTH_BurstNoiseUv(Uv0,
 Opacity = SOLTH_BurstOpacity(Interp0, noise, Phase, ResolvedView.RealTime, Burst);
 return BurstColour.rgb * Burst.w;"""
 
-TRAIL_PIXEL_HLSL = r"""// Thruster ribbon colour (SDD 51 4.8)
-return SOLTH_TrailPixel(Uv, Colour, Alpha, Trail);"""
+TRAIL_NOISE_HLSL = r"""// Thruster flame streak coordinates (SDD 51 R10-3): particle colour r = s / L_f, UV0.y = around the tube
+return SOLTH_FlameNoiseUv(Colour.r, Uv.y, Header, ResolvedView.GameTime, Streak, Flame);"""
 
+TRAIL_PIXEL_HLSL = r"""// Thruster flame colour on the Niagara tube (SDD 51 R10): UV0.y around the tube and the spine tangent;
+// particle colour a is the end-cap fraction (0 on a cap point)
+return SOLTH_FlamePixel(Colour.r, Colour.g, Colour.b, Cap, Header, Uv.y, Parameters.TangentToWorld[0], Parameters.CameraVector, Noise, Ramp, Rim0.rgb, Rim1.rgb, Rim2.rgb, Core0.rgb, Core1.rgb, Core2.rgb, Shock, Shape,
+    Look, Flame);"""
+
+RIBBON_VERTEX_HLSL = r"""// Thruster flame tube vertex (SDD 51 R7, R10): the block mesh sits at the render-space origin with
+// identity instances, so the offset is the target render position minus the local position; a flame past the live count collapses
+const float3 LocalPos = Parameters.PreSkinnedPosition;
+Interp0 = float4(0.0, 0.0, 0.0, 0.0);
+Interp1 = float4(0.0, 0.0, 0.0, 0.0);
+Interp2 = float4(0.0, 0.0, 0.0, 0.0);
+const float trail = BlockFirst + floor(Uv1.x + 0.5);
+if (!(trail < Frame.w))
+{
+    return -LocalPos;
+}
+const int p = (int)floor(Uv0.x + 0.5);
+const int last = (int)(Ribbon.w + 0.5) - 1;
+
+// Drawn point p (0 and last the end caps: radius 0, the end point's width for the sharpness, cap fraction 0); its
+// arc fraction is its spine point's (a cap shares its end point's)
+const bool bCap = p == 0 || p >= last;
+const int shade = clamp(p, 1, last - 1);
+const float arcFraction = (float)(shade - 1) / max((float)(last - 2), 1.0);
+
+// The point, its neighbours (clamped to the flame), the header and the shading point's width texel
+const float4 here = RibbonTex.Load(SOLTH_RibbonTexel(trail, p, Ribbon));
+const float3 p1 = RibbonTex.Load(SOLTH_RibbonTexel(trail, max(p - 1, 0), Ribbon)).xyz;
+const float3 p2 = RibbonTex.Load(SOLTH_RibbonTexel(trail, max(p - 2, 0), Ribbon)).xyz;
+const float3 n1 = RibbonTex.Load(SOLTH_RibbonTexel(trail, min(p + 1, last), Ribbon)).xyz;
+const float3 n2 = RibbonTex.Load(SOLTH_RibbonTexel(trail, min(p + 2, last), Ribbon)).xyz;
+const float4 header = RibbonTex.Load(SOLTH_RibbonTexel(trail, last + 1, Ribbon));
+const float4 widths = RibbonTex.Load(SOLTH_RibbonTexel(trail, last + 2 + max(shade - 2, 0) / 4, Ribbon));
+const float3 direction = SOLTH_RibbonTangent(p2, p1, here.xyz, n1, n2, p == 0, p >= last);
+float4 interp0;
+float3 tangentW;
+const float3 offset = SOLTH_FlameVertex(here, direction, SOLTH_RibbonPointWidth(shade, header, widths),
+    bCap ? 0.0 : 1.0, Uv0.y, arcFraction, LocalPos, GetTranslatedWorldPosition(Parameters) - LocalPos, ResolvedView.TranslatedWorldCameraOrigin,
+    ResolvedView.ViewToClip[1][1], ResolvedView.ViewSizeAndInvSize.y * ResolvedView.ResolutionFractionAndInv.y, Frame,
+    Ribbon, Flame, interp0, tangentW);
+Interp0 = interp0;
+Interp1 = header;
+Interp2 = float4(tangentW, bCap ? 0.0 : 1.0);
+return offset;"""
+
+RIBBON_NOISE_HLSL = r"""// Thruster flame streak coordinates: the same as M_SOLThrusterTrail's (SDD 51 R7 parity)
+return SOLTH_FlameNoiseUv(Interp0.x, Interp0.z, Interp1, ResolvedView.GameTime, Streak, Flame);"""
+
+RIBBON_PIXEL_HLSL = r"""// Thruster flame colour: the same pixel as M_SOLThrusterTrail (SDD 51 R7 parity)
+return SOLTH_FlamePixel(Interp0.x, Interp0.y, Interp0.w, Interp2.w, Interp1, Interp0.z, Interp2.xyz,
+    Parameters.CameraVector,
+    Noise, Ramp, Rim0.rgb, Rim1.rgb, Rim2.rgb, Core0.rgb, Core1.rgb, Core2.rgb, Shock, Shape, Look, Flame);"""
 
 # Adds an expression of the given class at an editor position
 def add(material, cls, x, y):
@@ -466,54 +498,6 @@ def connect_vectors(nodes, names, custom, pins):
         MEL.connect_material_expressions(nodes[name], "RGBA", custom, pin)
 
 
-# Builds the plume material graph
-def build_plume(material, noise, vectors):
-    set_translucent(material, unreal.BlendMode.BLEND_ADDITIVE)
-    material.set_editor_property("used_with_instanced_static_meshes", True)
-    p = lambda key: text_constant(key, "ThrusterMaterialParams")
-    uvs = add_uvs(material, [0, 2, 3, 4, 5], -1800, -500)
-    ship_c = add_ship_float(material, param_index("CUSTOM_COLOUR"), -1800, -60)
-    ship_b = add_ship_float(material, param_index("CUSTOM_BRIGHTNESS"), -1800, 100)
-    ship_length = add_ship_float(material, param_index("CUSTOM_PLUME_LENGTH_M"), -1800, 260)
-    vertex_names = [p("SHOCK"), p("SHAPE"), p("STREAK"), p("FADE")]
-    pixel_names = ramp_names() + [p("LOOK")]
-    nodes = add_vectors(material, vertex_names + pixel_names, vectors, -2200, -500)
-
-    # Vertex stage: the world position offset and three interpolated vectors
-    vertex = add_custom(material, -1300, -400, "SOLThrusterPlumeVertex", PLUME_VERTEX_HLSL,
-        unreal.CustomMaterialOutputType.CMOT_FLOAT3,
-        ["Uv0", "Uv2", "Uv3", "Uv4", "Uv5", "ShipC", "ShipB", "ShipLength", "Shock", "Shape", "Streak", "Fade"],
-        [("Interp0", unreal.CustomMaterialOutputType.CMOT_FLOAT4),
-         ("Interp1", unreal.CustomMaterialOutputType.CMOT_FLOAT4),
-         ("Interp2", unreal.CustomMaterialOutputType.CMOT_FLOAT2)])
-    for channel in (0, 2, 3, 4, 5):
-        MEL.connect_material_expressions(uvs[channel], "", vertex, "Uv%d" % channel)
-    MEL.connect_material_expressions(ship_c, "", vertex, "ShipC")
-    MEL.connect_material_expressions(ship_b, "", vertex, "ShipB")
-    MEL.connect_material_expressions(ship_length, "", vertex, "ShipLength")
-    connect_vectors(nodes, vertex_names, vertex, ["Shock", "Shape", "Streak", "Fade"])
-    MEL.connect_material_property(vertex, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
-    interp = [add_interpolator(material, vertex, name, -900, -300 + 120 * row)
-              for row, name in enumerate(["Interp0", "Interp1", "Interp2"])]
-
-    # Pixel stage: the streak noise sampled at the interpolated coordinates, then the colour
-    sample = add(material, unreal.MaterialExpressionTextureSampleParameter2D, -700, 100)
-    sample.set_editor_property("parameter_name", text_constant("NOISE_TEXTURE", "ThrusterMaterialParams"))
-    sample.set_editor_property("texture", noise)
-    sample.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
-    MEL.connect_material_expressions(interp[2], "PS", sample, "UVs")
-    pixel = add_custom(material, -400, 0, "SOLThrusterPlumePixel", PLUME_PIXEL_HLSL,
-        unreal.CustomMaterialOutputType.CMOT_FLOAT3,
-        ["Interp0", "Interp1", "Noise", "Ramp", "Rim0", "Rim1", "Rim2", "Core0", "Core1", "Core2", "Shock", "Shape",
-         "Look"])
-    MEL.connect_material_expressions(interp[0], "PS", pixel, "Interp0")
-    MEL.connect_material_expressions(interp[1], "PS", pixel, "Interp1")
-    MEL.connect_material_expressions(sample, "R", pixel, "Noise")
-    connect_vectors(nodes, pixel_names, pixel, ["Ramp", "Rim0", "Rim1", "Rim2", "Core0", "Core1", "Core2", "Look"])
-    connect_vectors(nodes, [p("SHOCK"), p("SHAPE")], pixel, ["Shock", "Shape"])
-    MEL.connect_material_property(pixel, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-
-
 # Builds the nozzle glow material graph
 def build_glow(material, vectors):
     set_translucent(material, unreal.BlendMode.BLEND_ADDITIVE)
@@ -588,22 +572,119 @@ def build_burst(material, noise, vectors):
     MEL.connect_material_property(pixel, "Opacity", unreal.MaterialProperty.MP_OPACITY)
 
 
-# Builds the ribbon material graph
-def build_trail(material, vectors):
+# Returns the flame look's parameter names (the ramp, then shock, shape, look, streak and flame vectors)
+def flame_names():
+    p = lambda key: text_constant(key, "ThrusterMaterialParams")
+    return ramp_names() + [p("SHOCK"), p("SHAPE"), p("LOOK"), p("STREAK"), p("FLAME")]
+
+
+# Custom node pins of flame_names(), in the same order
+FLAME_PINS = ["Ramp", "Rim0", "Rim1", "Rim2", "Core0", "Core1", "Core2", "Shock", "Shape", "Look", "Streak", "Flame"]
+
+
+# Connects one material output to a Custom node pin; fails when the output or pin is not found
+def connect(source, output, target, pin):
+    if not MEL.connect_material_expressions(source, output, target, pin):
+        raise RuntimeError("create_thruster_assets: could not connect %s.%s to %s" % (source.get_name(), output, pin))
+
+
+# Adds the streak noise sample of the flame look (UVs from a Custom node), returning the sample node
+def add_flame_noise(material, noise, uv_source, x, y):
+    sample = add(material, unreal.MaterialExpressionTextureSampleParameter2D, x, y)
+    sample.set_editor_property("parameter_name", text_constant("NOISE_TEXTURE", "ThrusterMaterialParams"))
+    sample.set_editor_property("texture", noise)
+    sample.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
+    connect(uv_source, "", sample, "UVs")
+    return sample
+
+
+# Builds the Niagara flame material graph (SDD 51 R10): particle colour (s / L_f, alpha), dynamic parameter 0 (the
+# flame header), UV0.y around the tube; the pixel is SOLTH_FlamePixel
+def build_trail(material, noise, vectors):
     set_translucent(material, unreal.BlendMode.BLEND_ADDITIVE)
     MEL.set_base_material_usage(material, unreal.MaterialUsage.MATUSAGE_NIAGARA_RIBBONS)
-    p = lambda key: text_constant(key, "ThrusterMaterialParams")
-    uv = add(material, unreal.MaterialExpressionTextureCoordinate, -900, -100)
-    particle = add(material, unreal.MaterialExpressionParticleColor, -900, 0)
-    nodes = add_vectors(material, [p("TRAIL")], vectors, -900, 200)
-    pixel = add_custom(material, -400, 0, "SOLThrusterTrailPixel", TRAIL_PIXEL_HLSL,
-        unreal.CustomMaterialOutputType.CMOT_FLOAT3, ["Uv", "Colour", "Alpha", "Trail"])
-    MEL.connect_material_expressions(uv, "", pixel, "Uv")
-    MEL.connect_material_expressions(particle, "RGB", pixel, "Colour")
-    MEL.connect_material_expressions(particle, "A", pixel, "Alpha")
-    connect_vectors(nodes, [p("TRAIL")], pixel, ["Trail"])
+    uv = add(material, unreal.MaterialExpressionTextureCoordinate, -1500, -300)
+    particle = add(material, unreal.MaterialExpressionParticleColor, -1500, -150)
+    header = add(material, unreal.MaterialExpressionDynamicParameter, -1500, 0)
+    names = flame_names()
+    nodes = add_vectors(material, names, vectors, -2000, -500)
+
+    # The streak coordinates, the noise sample, then the colour
+    noise_uv = add_custom(material, -1000, -300, "SOLThrusterFlameNoiseUv", TRAIL_NOISE_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT2, ["Colour", "Uv", "Header", "Streak", "Flame"])
+    connect(particle, "RGB", noise_uv, "Colour")
+    connect(uv, "", noise_uv, "Uv")
+    connect(header, "RGBA", noise_uv, "Header")
+    connect_vectors(nodes, [names[10], names[11]], noise_uv, ["Streak", "Flame"])
+    sample = add_flame_noise(material, noise, noise_uv, -700, -300)
+    pixel = add_custom(material, -400, 0, "SOLThrusterFlamePixel", TRAIL_PIXEL_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT3, ["Colour", "Cap", "Uv", "Header", "Noise"] + FLAME_PINS)
+    connect(particle, "RGB", pixel, "Colour")
+    connect(particle, "A", pixel, "Cap")
+    connect(uv, "", pixel, "Uv")
+    connect(header, "RGBA", pixel, "Header")
+    connect(sample, "R", pixel, "Noise")
+    connect_vectors(nodes, names, pixel, FLAME_PINS)
     MEL.connect_material_property(pixel, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
+# Returns the linear float placeholder texture of the strip pool's texture parameter (a copy of the engine default
+# texture, TC_HDR, nearest), creating it when missing
+def ensure_float_default_texture():
+    package, folder, name = asset_path("THRUSTER_FLOAT_DEFAULT_TEXTURE")
+    if EAL.does_asset_exist(package):
+        return EAL.load_asset(package)
+    texture = EAL.duplicate_asset("/Engine/EngineResources/DefaultTexture", package)
+    texture.set_editor_property("srgb", False)
+    texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_HDR)
+    texture.set_editor_property("filter", unreal.TextureFilter.TF_NEAREST)
+    EAL.save_loaded_asset(texture)
+    log("built %s" % package)
+    return texture
+
+
+# Builds the strip pool flame material graph (SDD 51 R7, R10): the vertex stage reads the flame's points from the float
+# texture and places the tube, the pixel stage is M_SOLThrusterTrail's
+def build_ribbon(material, noise, vectors):
+    set_translucent(material, unreal.BlendMode.BLEND_ADDITIVE)
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+    p = lambda key: text_constant(key, "ThrusterMaterialParams")
+    uvs = add_uvs(material, [0, 1], -1800, -500)
+    block_first = add(material, unreal.MaterialExpressionPerInstanceCustomData, -1800, -300)
+    block_first.set_editor_property("data_index", 0)
+    texture = add(material, unreal.MaterialExpressionTextureObjectParameter, -1800, -150)
+    texture.set_editor_property("parameter_name", p("RIBBON_TEXTURE"))
+    texture.set_editor_property("texture", ensure_float_default_texture())
+    texture.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    names = flame_names()
+    nodes = add_vectors(material, [p("RIBBON_FRAME"), p("RIBBON")] + names, vectors, -2200, 50)
+
+    # Vertex stage: the world position offset and three interpolated vectors ((s / L_f, alpha, around, sharpness), the
+    # header, the spine direction)
+    vertex = add_custom(material, -1300, -400, "SOLThrusterFlameVertex", RIBBON_VERTEX_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT3, ["Uv0", "Uv1", "BlockFirst", "RibbonTex", "Frame", "Ribbon", "Flame"],
+        [("Interp%d" % i, unreal.CustomMaterialOutputType.CMOT_FLOAT4) for i in range(3)])
+    connect(uvs[0], "", vertex, "Uv0")
+    connect(uvs[1], "", vertex, "Uv1")
+    connect(block_first, "", vertex, "BlockFirst")
+    connect(texture, "", vertex, "RibbonTex")
+    connect_vectors(nodes, [p("RIBBON_FRAME"), p("RIBBON"), names[11]], vertex, ["Frame", "Ribbon", "Flame"])
+    MEL.connect_material_property(vertex, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    interp = [add_interpolator(material, vertex, "Interp%d" % row, -900, -300 + 120 * row) for row in range(3)]
+
+    # Pixel stage: the streak coordinates, the noise sample and SOLTH_FlamePixel exactly as M_SOLThrusterTrail calls it
+    noise_uv = add_custom(material, -700, -300, "SOLThrusterFlameNoiseUv", RIBBON_NOISE_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT2, ["Interp0", "Interp1", "Streak", "Flame"])
+    connect(interp[0], "PS", noise_uv, "Interp0")
+    connect(interp[1], "PS", noise_uv, "Interp1")
+    connect_vectors(nodes, [names[10], names[11]], noise_uv, ["Streak", "Flame"])
+    sample = add_flame_noise(material, noise, noise_uv, -550, -150)
+    pixel = add_custom(material, -400, 0, "SOLThrusterFlamePixel", RIBBON_PIXEL_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT3, ["Interp0", "Interp1", "Interp2", "Noise"] + FLAME_PINS)
+    for row in range(3):
+        connect(interp[row], "PS", pixel, "Interp%d" % row)
+    connect(sample, "R", pixel, "Noise")
+    connect_vectors(nodes, names, pixel, FLAME_PINS)
+    MEL.connect_material_property(pixel, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 # Removes every expression of a material (repeat: one pass can leave some behind)
 def clear_material(material):
@@ -656,10 +737,10 @@ def finish_material(material):
 # Builds the four materials; returns {path constant: material}
 def build_materials(noise):
     vectors = material_vectors()
-    builders = [("THRUSTER_PLUME_MATERIAL", lambda m: build_plume(m, noise, vectors)),
-                ("THRUSTER_GLOW_MATERIAL", lambda m: build_glow(m, vectors)),
+    builders = [("THRUSTER_GLOW_MATERIAL", lambda m: build_glow(m, vectors)),
                 ("THRUSTER_BURST_MATERIAL", lambda m: build_burst(m, noise, vectors)),
-                ("THRUSTER_TRAIL_MATERIAL", lambda m: build_trail(m, vectors))]
+                ("THRUSTER_TRAIL_MATERIAL", lambda m: build_trail(m, noise, vectors)),
+                ("THRUSTER_RIBBON_MATERIAL", lambda m: build_ribbon(m, noise, vectors))]
     materials = {}
     for path_name, builder in builders:
         material, build = material_for_build(path_name)
@@ -798,22 +879,20 @@ def burst_ports(prefix):
             ((side_x, 0.0, -side_z), (0.0, 0.0, -1.0), 3.0), ((side_x, 0.0, side_z), (0.0, 0.0, 1.0), 4.0)]
 
 
-# Returns the plume, glow and burst sections of a hull: nozzles [(position, radius)], its port prefix and length
+# Returns the glow and burst sections of a hull: nozzles [(position, radius)], its port prefix and length (the flame
+# itself is not a mesh section since SDD 51 R10: the flame renderers draw it)
 def thruster_sections(frame, nozzles, port_prefix, hull_length_m):
     exhaust = (-1.0, 0.0, 0.0)
-    tail = number("TAIL_RADIUS_RATIO")
     glow_radius = 0.5 * number("GLOW_DIAMETER_NOZZLE_RADII")
     burst_length = hull_length_m / number("BURST_LENGTH_HULL_DIVISOR")
-    plume = Section()
     glow = Section()
     burst = Section()
     for position, radius in nozzles:
-        plume.cone(frame, position, exhaust, hull_length_m, radius, radius * tail, PLUME_SEGMENTS, radius, 0.0)
         glow.quad(frame, position, exhaust, radius * glow_radius, radius)
     for position, axis, code in burst_ports(port_prefix):
         burst.cone(frame, position, axis, burst_length, burst_length * number("BURST_BASE_RADIUS_LENGTHS"),
                    burst_length * number("BURST_TAIL_RADIUS_LENGTHS"), BURST_SEGMENTS, burst_length, code)
-    return [plume, glow, burst]
+    return [glow, burst]
 
 
 # Writes a dynamic mesh into the static mesh asset of a SOL::Paths constant with named slots and the thruster build
@@ -904,9 +983,8 @@ def build_meshes(materials):
     npc_length = number("NPC_HULL_LENGTH_M", None)
     npc_nozzle = [((number("NPC_NOZZLE_X_M"), 0.0, 0.0), number("NPC_NOZZLE_RADIUS_M"))]
     hull_material = EAL.load_asset(text_constant("NPC_HULL_MATERIAL", "Paths").split(".")[0])
-    thruster_materials = [materials["THRUSTER_PLUME_MATERIAL"], materials["THRUSTER_GLOW_MATERIAL"],
-                          materials["THRUSTER_BURST_MATERIAL"]]
-    thruster_slots = [p("SLOT_PLUME"), p("SLOT_GLOW"), p("SLOT_BURST")]
+    thruster_materials = [materials["THRUSTER_GLOW_MATERIAL"], materials["THRUSTER_BURST_MATERIAL"]]
+    thruster_slots = [p("SLOT_GLOW"), p("SLOT_BURST")]
     jobs = [("THRUSTER_NPC_HULL_MESH_FACTION_0", "cone", cone_frame, "NPC_CONE"),
             ("THRUSTER_NPC_HULL_MESH_FACTION_1", "box", box_frame, "NPC_BOX")]
     for path_name, kind, frame, ports in jobs:
@@ -949,6 +1027,7 @@ T_BOOL = "/Script/Niagara.NiagaraBool"
 T_POSITION = "/Script/Niagara.NiagaraPosition"
 T_VEC3 = "/Script/CoreUObject.Vector3f"
 T_COLOR = "/Script/CoreUObject.LinearColor"
+T_VEC4 = "/Script/CoreUObject.Vector4f"
 T_ARRAY_FLOAT3 = "/Script/Niagara.NiagaraDataInterfaceArrayFloat3"
 T_ARRAY_COLOR = "/Script/Niagara.NiagaraDataInterfaceArrayColor"
 T_ARRAY_FLOAT = "/Script/Niagara.NiagaraDataInterfaceArrayFloat"
@@ -963,6 +1042,7 @@ ZERO = {
     T_POSITION: {"struct": {"refPath": T_POSITION}, "value": {"x": 0.0, "y": 0.0, "z": 0.0}},
     T_VEC3: {"struct": {"refPath": T_VEC3}, "value": {"x": 0.0, "y": 0.0, "z": 0.0}},
     T_COLOR: {"struct": {"refPath": T_COLOR}, "value": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0}},
+    T_VEC4: {"struct": {"refPath": T_VEC4}, "value": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0}},
 }
 
 
@@ -1068,8 +1148,9 @@ def int_type_handle(system_path):
 # Builds the emitter, user parameters and ribbon renderer into an empty system
 def build_trails_system(system_path, material_path):
     names = lambda key: text_constant(key, "ThrusterTrailParams")
-    points_per_trail = int(number("RIBBON_POINTS_PER_TRAIL"))
-    max_points = points_per_trail * (ribbon_count(3) + 1)   # the Epic default: 32 NPC trails and the player's
+    points_per_trail = int(number("FLAME_DRAWN_POINTS"))
+    tube_sides = int(number("FLAME_TUBE_SIDES"))
+    max_points = points_per_trail   # one trail per system (51e-0: trails sharing a system merged into a zigzag)
     bounds = number("NPC_RENDER_SPACE_BOUNDS_CM", None)
 
     # System: loop forever (the template already does; write only on a difference, an unchanged write is refused)
@@ -1086,7 +1167,9 @@ def build_trails_system(system_path, material_path):
          "description": "Particles spawned once; must cover every trail's points (trails x points per trail)"},
         {"name": "User." + names("POINTS_PER_TRAIL"), "type": niagara_type(T_INT),
          "defaultValue": value(T_INT, {"value": points_per_trail}),
-         "description": "Points per trail (SOL::Thruster::RIBBON_POINTS_PER_TRAIL)"}]})
+         "description": "Points per trail (SOL::Thruster::FLAME_DRAWN_POINTS: the spine and its two end caps)"},
+        {"name": "User." + names("FLAME_HEADER"), "type": niagara_type(T_VEC4), "defaultValue": ZERO[T_VEC4],
+         "description": "The flame header (c, b, L_p, r_n), every particle's dynamic material parameter 0"}]})
 
     # Emitter: CPU sim (the bolt system's GPU variant never drew), local space, fixed render-space bounds
     tool("AddEmitter", {"system": {"refPath": system_path}, "templateEmitter": {"refPath": EMITTER_TEMPLATE},
@@ -1114,7 +1197,8 @@ def build_trails_system(system_path, material_path):
               value(T_INT, {"value": 1}))
     add_set_parameters(system_path, "EmitterUpdateScript", [
         ("Emitter.TrailPointCount", T_INT, linked("User." + names("POINT_COUNT"), T_INT)),
-        ("Emitter.TrailPointsPerTrail", T_INT, linked("User." + names("POINTS_PER_TRAIL"), T_INT))])
+        ("Emitter.TrailPointsPerTrail", T_INT, linked("User." + names("POINTS_PER_TRAIL"), T_INT)),
+        ("Emitter.TrailFlame", T_VEC4, linked("User." + names("FLAME_HEADER"), T_VEC4))])
 
     # Particle update: never kill; read the point's position, colour and width; hide points past the live count;
     # the ribbon id and link order from the point index
@@ -1131,6 +1215,7 @@ def build_trails_system(system_path, material_path):
         ("Particles.Position", T_POSITION, hlsl("Particles.TrailPositionCm")),
         ("Particles.Color", T_COLOR, hlsl("%s ? Particles.TrailColour : float4(0.0, 0.0, 0.0, 0.0)" % live)),
         ("Particles.RibbonWidth", T_FLOAT, hlsl("%s ? Particles.TrailWidthCm : 0.0" % live)),
+        ("Particles.DynamicMaterialParameter", T_VEC4, hlsl("Emitter.TrailFlame")),
         ("Particles.TrailRibbon", T_INT, hlsl("Particles.UniqueID / max(Emitter.TrailPointsPerTrail, 1)")),
         ("Particles.RibbonLinkOrder", T_FLOAT, hlsl(
             "(float)(Particles.UniqueID - (Particles.UniqueID / max(Emitter.TrailPointsPerTrail, 1))"
@@ -1151,15 +1236,25 @@ def build_trails_system(system_path, material_path):
     ribbon_id["paramMapVariable"] = {"name": "Particles.TrailRibbon", "typeDefHandle": int_type}
     ribbon_id["dataSetName"] = "TrailRibbon"
     ribbon_id["cachedDisplayName"] = "Particles.TrailRibbon"
-    wanted = {"Material": {"refPath": material_path}, "FacingMode": "Screen", "MotionVectorSetting": "Disable",
-              "bCastShadows": False, "bIncludeInHitProxy": False, "RibbonIdBinding": ribbon_id}
+    # Tessellation off: straight segments between the points, like the strip pool's M_SOLThrusterRibbon (51e, R7); a
+    # FLAME_TUBE_SIDES-sided tube (R10-Q2) with the default camera-facing normals (geometry normals draw nothing in
+    # 5.8; the flame pixel takes its radial fraction from UV0.y around the tube, SOLTH_FlameRadialFraction)
+    wanted = {"Material": {"refPath": material_path}, "FacingMode": "Screen", "TessellationMode": "Disabled",
+              "Shape": "Tube", "TubeSubdivisions": tube_sides, "bUseGeometryNormals": False,
+              "MotionVectorSetting": "Disable", "bCastShadows": False, "bIncludeInHitProxy": False,
+              "RibbonIdBinding": ribbon_id}
     data = {key: entry for key, entry in wanted.items() if key in current}
     log("ribbon renderer properties not found: %s" % sorted(set(wanted) - set(data)))
     tool("SetRendererData", {"renderer": ref(system_path, EMITTER_NAME, "", "", index),
                              "rendererData": {"propertyValues": json.dumps(data)}})
-    bound = json.loads(tool("GetRendererData", {"rendererRef": ref(system_path, EMITTER_NAME, "", "", index)})
-                       ["propertyValues"])["RibbonIdBinding"]
-    log("ribbon id binding: %s" % json.dumps(bound.get("paramMapVariable")))
+    readback = json.loads(tool("GetRendererData", {"rendererRef": ref(system_path, EMITTER_NAME, "", "", index)})
+                          ["propertyValues"])
+    log("ribbon id binding: %s" % json.dumps(readback["RibbonIdBinding"].get("paramMapVariable")))
+    # SetRendererData drops unknown keys silently: the parity settings must read back
+    for key in ("FacingMode", "TessellationMode", "Shape", "TubeSubdivisions", "bUseGeometryNormals"):
+        if readback.get(key) != wanted[key]:
+            raise RuntimeError("create_thruster_assets: ribbon renderer %s is %r, wanted %r" % (
+                key, readback.get(key), wanted[key]))
 
     # Toggling a module forces a real recompile, so no stale compiled renderer is saved (SDD 6 Amendment 15)
     for enabled in (False, True):
@@ -1191,8 +1286,23 @@ def build_trails(material):
     log("built %s" % package)
 
 
+# Assets an earlier part built that the current design no longer uses (SDD 51 R10: the cone plume's material); deleted
+# on a rebuild once nothing references them (the meshes above are rebuilt first)
+RETIRED_ASSETS = ["/Game/SOL/Fx/M_SOLThrusterPlume"]
+
+
+# Deletes the retired assets that still exist (rebuild only)
+def delete_retired_assets():
+    for package in RETIRED_ASSETS:
+        if REBUILD and EAL.does_asset_exist(package):
+            if not EAL.delete_asset(package):
+                raise RuntimeError("create_thruster_assets: could not delete the retired %s" % package)
+            log("deleted the retired %s" % package)
+
+
 noise_texture = build_noise_texture()
 thruster_materials = build_materials(noise_texture)
 build_meshes(thruster_materials)
+delete_retired_assets()
 build_trails(thruster_materials["THRUSTER_TRAIL_MATERIAL"])
 log("done")

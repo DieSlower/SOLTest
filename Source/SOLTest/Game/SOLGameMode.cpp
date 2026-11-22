@@ -28,6 +28,7 @@
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Visuals/SOLBodyVisuals.h"
 #include "Visuals/SOLHologramVisuals.h"
+#include "Visuals/SOLThrusterRibbons.h"
 
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
@@ -103,6 +104,8 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLCombatVisuals>(ASOLCombatVisuals::StaticClass(), FTransform::Identity, params);
     NpcVisuals = GetWorld()->SpawnActor<ASOLNpcVisuals>(ASOLNpcVisuals::StaticClass(), FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLNpcCombatVisuals>(ASOLNpcCombatVisuals::StaticClass(), FTransform::Identity, params);
+    ThrusterRibbons = GetWorld()->SpawnActor<ASOLThrusterRibbons>(ASOLThrusterRibbons::StaticClass(),
+        FTransform::Identity, params);
     OrbitLineVisuals = GetWorld()->SpawnActor<ASOLOrbitLineVisuals>(ASOLOrbitLineVisuals::StaticClass(),
         FTransform::Identity, params);
 
@@ -110,6 +113,9 @@ void ASOLGameMode::StartPlay()
     if (NpcVisuals != nullptr)
     {
         NpcVisuals->SetOrbitLineVisuals(OrbitLineVisuals);
+
+        // ...and feed the thruster ribbons from their placement pass (SDD 51 R7)
+        NpcVisuals->SetThrusterRibbons(ThrusterRibbons);
     }
     GetWorld()->SpawnActor<ASOLCombatAudio>(ASOLCombatAudio::StaticClass(), FTransform::Identity, params);
     HologramVisuals = GetWorld()->SpawnActor<ASOLHologramVisuals>(ASOLHologramVisuals::StaticClass(),
