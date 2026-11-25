@@ -69,21 +69,83 @@ metrics (`Tools\UpdateMetrics.bat`) in the same commit.
 6. Re-validate `NpcScaleMathTest`, `NpcTrafficMathTest`, `NpcRailTest` and `NpcTunnelFarFieldTest` (stale 8-lane
    assumptions re-pinned), `FloatPathAtMaxLength` at **151 AU** (SDD 53 4.7, O8).
 
-### 53c2: ship blocks, spawn, traffic shader, CPU point layer
+### 53c2a: ship blocks, spawn, group table upload, CPU side (pure logic first)
 
-1. Spawn and traffic: ship blocks (O1: 4,000 blocks of 100, moved only through the free pool), profiles frozen per
-   episode, partial rail upload on a block move; the early stop (`LegFitsWindow`, `LaneShipLegDrawn`) in the group
-   texel window floats, `SOLNpcTraffic.ush` and the CPU point layer changed together; docked ships not drawn;
-   closed-lane ships promoted as usual (Q26), docking at demotion with no fade (O9); merge readout hidden for closed
-   lanes (Q30), lane search skips closed lanes.
-2. **Group columns:** when schedule slots 8 and up get ships, use `FSOLNpcGroupTable::LaneSlotColumn(slot)` (and
-   `LaneSlotCapacity()`), not the slot number: slots from `LaneCount` on map to the columns after the clusters and
-   battles, so no slot shares a cluster or battle column; `INDEX_NONE` past the capacity.
-3. Re-validate `NpcLaneMathTest` and the traffic tests that still assume 8 lanes (deleted or re-pinned). Smokes
-   `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcLanes`, `-SOLSmokeLaneMerge` at 1280x720, 1920x1080 and 4K, plus a warp run
-   across several epoch changes (lanes appear and drain, no ship vanishes mid-leg, island links appear);
-   `GameUserSettings.ini` MD5 unchanged.
-4. The final-rule re-measure was done in 53c1 (SDD 53 4.3, 4.4, 7.3). A figure that breaks a bound (columns over 64,
+Contract: [`53-lane-network-contract.md`](53-lane-network-contract.md) section "53c2 additions", cases 16-24 and 26.
+**Gate:** open. The user answered P1-P6 on 2026-11-25 (contract table "Resolved decisions", SDD 53 section 18): P1
+a turn follows the leg after it, P2 a promoted ship is demoted and docked at once, P3 / P4 as recommended
+(contiguous blocks of 100, last block partial; joins only at an episode open; ascending slot order when the pool is
+short; a full exact re-share at a time jump), P5 inactive lanes hidden always (overlay on or off) with the 2.4 px
+threshold scaled by `LaneTunnelQualityScale`, P6 an Approach on a closing lane is Stale (Hold unchanged until 53e).
+Every assertion in cases 16-26 is pinned; the test author writes all of them.
+
+1. Test author (`opus`, high, **contract only, no implementation shown**): write
+   `Source/SOLTest/Tests/LaneNetworkTrafficTest.cpp` (`SOLTest.LaneNetworkTraffic.*`, cases 16-24, 26); stub the
+   signatures so it compiles; `Tools\RunTests.bat -Build -Filter SOLTest.LaneNetworkTraffic` fails for the right
+   reason.
+2. Pure code: the block layout and pool (`ShipBlockCount`, `AssignShipBlocks`, `ReleaseShipBlocks`, `TakeShipBlocks`,
+   `CanReleaseSlotBlocks`, `LaneEpisodeOpens`, `EpisodeTakeOrder`, `SlotBlockLists`, `SumBlockCounts`, `ShipBlockDirtyRanges`),
+   `LaneShipInSpace`, `LaneWindowGpuS` / `LaneWindowTexel`, `LaneTrafficRadiusPx` / `LaneTrafficActive`,
+   `LaneOpenAt` in `Traffic/SOLLaneNetworkMath`; the `MakeSpawn` block overload, `CountBlockSpawns` and
+   `LaneShipAiTier` in `Npc/SOLNpcScaleMath`; `RailTexelRegions`, `LaneRailGroup`, `IsParked`, `GpuParkedRailTexels`,
+   `WriteLaneWindowRow` and `SlotLaneProfile` in `Npc/SOLNpcRail`; the constants (`NPC_GROUP_TEXTURE_ROWS` 6 -> 7 and the rest of the
+   contract's table) with their `static_assert`s.
+3. Spawn: the lane ships go into blocks shared over the spawn epoch's slotted set (exact, every block assigned); a
+   lane rail's group is `LaneRailGroup(slot)` = `FSOLNpcGroupTable::LaneSlotColumn(slot)` (and `LaneSlotCapacity()`),
+   never the slot number, so slots from `LaneCount` on use the columns after the clusters and battles and none shares
+   a cluster or battle column; the group table and rail frame cover every slotted column; each slot's profile is
+   frozen at its episode open (`SlotLaneProfile` from `SumBlockCounts` of its blocks' in-wall counts). **`Npc/SOLNpcLaneMath`
+   must become column-aware too:** `BuildLaneFrame`, `WriteLaneGroupTexelW`, `CountLaneShips` / `AccumulateLaneShips`
+   and the ribbon layout (`BuildLaneRibbonLayout`) work on lanes 0 .. `LaneCount` - 1 today, so a slot column at 34 and
+   up would get row 0 `.w` = 0, which the point material reads as "line stays, point hides": partner-lane ships would
+   vanish whenever the Lanes overlay is on. This ends the 53c1 interim (Earth-Moon about 31 %).
+4. Block moves: release, take, slot block lists, dirty ranges and the partial rail upload (`RailTexelRegions`, the
+   `UpdateTextureRegions` rects) built and tested headless, the 0.5 ms per-move gate measured. **Interim:** the
+   per-epoch moves are switched on only in 53c2b, because parked and docked ships need the shader's hide (the current
+   shader would draw a parked rail as a midpoint disc). Until then each lane keeps its spawn blocks and a Gone lane
+   that still owns blocks keeps its slot held (`SetSlotHeld`; a column overflow is reported as usual). Consequences
+   of the interim, accepted only until 53c2b: a lane that opens after the spawn has no ships, a closed lane still
+   shows its ships (the shader ignores the window until 53c2b), and held slots can overflow the columns in a long
+   warp run.
+5. Group texel row 6 written every frame (`WriteLaneWindowRow`): each slot's window from `GetSlotWindow` relative to
+   the GPU epoch, and the active flag (`LaneTrafficActive` with the live focal and the slot's CPU-tier ship count).
+   The active flag uses `LaneTrafficActive(px, cpuTierShips, LaneTunnelQualityScale(QualityPreset))` (P5) and does
+   not depend on the Lanes overlay. The shader reads the window from 53c2b and the active flag from 53d (step 4).
+6. Tiers: a docked lane ship (`LaneShipInSpace`, double; a turning ship follows the leg after the turn, P1) is never
+   promoted (`LaneShipAiTier`, Q26); a promoted ship whose leg ends where the next leg is not flown is demoted to Far
+   and docked at once, no fade (P2). Merge readout and lane search skip closed lanes (`FSOLLaneMergeLane::bOpenNow`,
+   Q30); `CheckLaneLatch` returns Stale for an Approach on a closed lane (dropped and searched again, P6), Hold is
+   unchanged until 53e.
+7. CPU point layer: the slot column mapping and parked rails skipped. **SDD R8 says the shader and its CPU mirror
+   change together**, so the window gate on the CPU point layer (case 25) lands in 53c2b with the shader, not here.
+8. Re-validate `NpcScaleMathTest` (`MakeSpawn`, `CountLaneSpawns`), `NpcLaneMathTest`, `NpcRailTest` (the
+   "6 group rows" case re-pinned to 7), `NpcTrafficMathTest`, `LaneTrafficMathTest` / `LaneAutoRulesTest`
+   (`MergeReadout`, `FindLaneLeg`, `CheckLaneLatch` and `LaneAutoDecide` with `bOpenNow`) and the tests that still assume 8 lanes (deleted or re-pinned);
+   full suite; adversarial review; commit and push.
+
+### 53c2b: traffic shader window, mirror, block moves on, smokes
+
+1. Test author (`opus`, high, contract case 25 only): `SOLTest.NpcRail.GpuLaneWindowMirror` in
+   `Tests/NpcRailTest.cpp` (agreement with `LaneShipInSpace` outside the float band, no flicker within an epoch and
+   across a re-epoch, window extremes, parked rails).
+2. `SOLNTR_LaneShipDrawn` in `Shaders/Private/SOLNpcTraffic.ush` and `SOLNpcTrafficMirror::LaneShipWindowDrawn` in
+   the same change (R8); the point material's vertex HLSL in `Tools/Npc/create_npc_assets.py` loads row 6 and hides
+   docked and parked lane ships (a new call, so the material is rebuilt in the editor and the asset saved); the CPU
+   point layer draws a Point-tier lane ship only when the mirror says drawn.
+3. Block moves switched on per epoch step (release, take, partial upload) by the P4 policy: only slots whose episode
+   opens take blocks (`EpisodeTakeOrder`, ascending slot order when the pool is short), targets from `LaneShipShares`
+   over the current set, no mid-episode top-up; a time jump re-shares every block exactly (`AssignShipBlocks`, one
+   full rail upload). Two parked conventions exist and a moved block must re-bucket both: the rail's group
+   (`FSOLNpcRail::Group` = `NPC_RAIL_PARKED_GROUP`, 0xFFFF) and the Mass group fragment, whose parked ships sit in the
+   trailing bucket at index `groupCount` (`FSOLNpcGroupTable::Num()`); a take moves a ship out of both, a release into
+   both. `SOLNpcRail::EvaluateAtTimeM` (and `EvaluateM`) silently return the universe origin for an invalid group (a
+   parked rail included), so any consumer that evaluates a released ship before its re-bucket reads the origin, not an
+   error: guard on `IsParked` or assert. Re-measure `SOLTest.NpcRail.BlockMoveCost` with the full move (release, take,
+   re-bucket, partial upload); 53c2a's figure is a partial measurement.
+4. Smokes `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcLanes`, `-SOLSmokeLaneMerge` at 1280x720, 1920x1080 and 4K, plus a warp
+   run across several epoch changes (lanes appear and drain, no ship vanishes mid-leg, island links appear, block
+   moves within the 0.5 ms gate); `GameUserSettings.ini` MD5 unchanged; temporary screenshots deleted.
+5. The final-rule re-measure was done in 53c1 (SDD 53 4.3, 4.4, 7.3). A figure that breaks a bound (columns over 64,
    pool over 24, horizon under the longest leg) or visible island-link churn is reported to the user, not fixed unasked.
 
 ### 53d: tunnel classes and pool
@@ -97,8 +159,10 @@ metrics (`Tools\UpdateMetrics.bat`) in the same commit.
 3. Legacy controls (Q20): `NPC_LANE_FADE_NEAR/FAR_RADII` and the label band restated in reference px of the lane
    radius with the live focal; `.ush` and CPU mirror changed together, `NpcTunnelMirrorTest` extended. The 4-label cap
    stays (already in `TECH_DEBT.md`).
-4. Tunnel open fade (3 s real, Q9) on close and reopen; point vertex shader early-out for inactive and docked ships
-   (Q21, Q22).
+4. Tunnel open fade (3 s real, Q9) on close and reopen; point vertex shader early-out for inactive lanes (Q21, Q22:
+   reads the group texel row 6 active flag uploaded since 53c2a; inactive lanes are hidden always, with the Lanes
+   overlay on or off, and the flag's 2.4 px threshold is already scaled by the QualityPreset, P5), skipping
+   the rail evaluation of inactive and docked ships (the docked hide itself is done in 53c2b).
 5. `-SOLSmokeNpcTunnel` gains a pool-full forced view (24 Full), a class-switch view and a closing-lane view; PIE
    screenshots of the Earth hub and the belt.
 
@@ -164,3 +228,65 @@ metrics (`Tools\UpdateMetrics.bat`) in the same commit.
   step 0.0056-0.0077 ms per frame at 30 d/s and 60 fps (gate 0.01 ms, was 0.0265). Routes over the lane graph ignore
   windows beyond the 960 d horizon (user decision, SDD 6.3, R11). The final-rule 250-year figures are in SDD 4.3, 4.4
   and 7.3. 53c2 next, using `LaneSlotColumn`.
+- 2026-11-25: 53c2 split into 53c2a (pure logic, blocks, spawn, group texel row 6, tiers, merge and search skip) and
+  53c2b (shader window and mirror, block moves on, smokes). The 53c2 contract (cases 16-26) is written; pending user
+  decisions P1-P6 (U-turn window, promoted ship at leg end, block membership for other populations, pool policy, Q22
+  scope, Approach latch on a closing lane) gate the code and assertions that depend on them, not the rest of the
+  test file.
+- 2026-11-25: the user answered P1-P6: P1 the leg after the turn decides (the ship vanishes at the end ring on arrival,
+  matching the future station docking), P2 demoted and docked at once (no fade), P3 / P4 as recommended, P5 changed
+  (inactive lanes hidden always, also with the overlay off; the 2.4 px threshold scales with `LaneTunnelQualityScale`,
+  so `LaneTrafficActive` takes a `thresholdScale`), P6 an Approach on a closing lane is Stale, Hold unchanged until
+  53e. Contract cases 16-26 pinned in full (new `EpisodeTakeOrder`, scaled activation rows, P6 latch cases); 53c2a
+  may start with the test author.
+- 2026-11-25: 53c2a steps 1-2 done (pending commit). The test file `LaneNetworkTrafficTest.cpp` (cases 16-24, 26) is
+  green, 11 of 11, with the pure code in place: the block layout and pool, `LaneShipInSpace`, the window texel, the
+  activation test with its quality scale, `LaneOpenAt` (`Traffic/SOLLaneNetworkMath`); the `MakeSpawn` block overload,
+  `CountBlockSpawns`, `LaneShipAiTier` (`Npc/SOLNpcScaleMath`); `RailTexelRegions`, `LaneRailGroup`, `IsParked`,
+  `GpuParkedRailTexels`, `WriteLaneWindowRow`, `SlotLaneProfile` (`Npc/SOLNpcRail`); `MergeReadout` and `FindLaneLeg`
+  skip a lane with `bOpenNow` false, and `CheckLaneLatch` returns Stale for an Approach on such a lane (P6). The 7-row
+  group texture was checked: every material reads it by integer `Load(int3(column, row, 0))` and the C++ sizes it from
+  `NPC_GROUP_TEXTURE_ROWS`, so the extra row breaks nothing. **Next: steps 3-7** (spawn into blocks, the column-aware
+  `SOLNpcLaneMath` / frame / buckets, the row 6 upload, tiers, the CPU point layer), still under the interim of step 4:
+  no block moves until 53c2b.
+- 2026-11-25: 53c2a steps 3-7 wired (pending commit). `Spawn()` builds the node table, configures the network and
+  advances it to the spawn epoch first (`ConfigureLaneNetwork`), then fills the slot columns (`BuildSlotColumns`: a
+  partner lane's radius is the larger region radius, O5; weights `LaneWeight` of the end tiers over the spawn epoch's
+  set), shares the blocks exactly (`AssignShipBlocks`), freezes each column's profile from its blocks' in-wall counts
+  (`CountBlockSpawns` + `SumBlockCounts`) and builds the rails with the block `MakeSpawn` and `LaneRailGroup`. The group
+  table's lane arrays, the rail frame, `SOLNpcLaneMath` (lane frame, `.w` rows, counts, ribbon) and the tunnel / visuals
+  code are indexed by column (`FSOLNpcGroupTable::ExtraSlotCount`, `ColumnSlot`, `LaneColumnEnd`); parked rails get a
+  trailing bucket (no clamp into a battle column), hidden GPU texels and no CPU point. A node without a registry body
+  (an asteroid) is an end point index past the registry, its position from `SOLLaneNodeTable::PositionsAt` each frame
+  and its speed bound from the node table. Row 6 is written each frame at the rail texels' GPU epoch; the tier rule
+  (`LaneShipAiTier`, P1 / P2) runs in the tier processor's Select pass from each column's window in rail time; the lane
+  table carries each column's slot and `bOpenNow` (merge readout and AUTO search skip closed lanes). The per-move CPU
+  cost is asserted by `SOLTest.NpcRail.BlockMoveCost` (0.024 ms measured, gate 0.5 ms). **That figure is a partial
+  measurement:** it covers the spawn, rail and GPU texels of 100 ships plus the dirty range and its texel rects only,
+  not the release, the take, the Mass re-bucket or the render-thread upload; it is re-measured with the full move in
+  53c2b. **Not built yet:** the gated dirty-range rail upload in `ASOLNpcVisuals` (the pure
+  `ShipBlockDirtyRanges` / `RailTexelRegions` exist); row 6 is written but read by nothing until 53c2b, so it is
+  unverified on screen. Suite 2128 / 2128. Smokes at 1920x1080: `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeLaneMerge`
+  15 / 15, `-SOLSmokeNpcTraffic` 19 / 19 after two stale smoke assumptions were fixed (production code unchanged):
+  V5's bit-for-bit row check ran over every group row and so compared the new row 6 (lane window) with zeros, now it
+  covers rows 2-5 only; V2 took the steady mid-lane ship nearest the middle whatever its speed, and with the new share
+  that was a 9.8 km/s ship, which the 4 s closest-time clamp started 39 km away, inside the 50 km Full radius (Far
+  straight to Full, never Mid; ticket 50's passing run had a 28 km/s ship), now it takes only ships of at least 2 Full radii per
+  4 s, 25 km/s (87 km/s taken, 1 promotion, 1 demotion, 479 Mid hull frames). Spawn: 50 slots, 42 extra columns, 0 parked. The
+  tunnel's fixed 8-lane vertex budget is exceeded (15 lanes drawn, logged), a fixed-pool limitation until 53d.
+  **Interim until 53c2b (accepted by the user):** no block moves and no exact re-share at a time jump, so every slot
+  that owns blocks at the spawn is held (`SetSlotHeld`) and keeps its ships: a lane that opens after the spawn has no
+  ships, a closed lane still shows its far-layer points (the shader ignores the window until 53c2b), and held slots
+  can overflow the columns in a long warp run (reported by the usual overflow log). Docked ships (outside their
+  slot's window) are never promoted and are demoted at once, so near the camera (inside the Mid radius, where the far
+  layer hides lane ships) a docked ship is not drawn while far away the far layer still draws it. Lanes that end on an
+  asteroid node have ships and points but no tunnel and no merge view yet (both key on registry bodies; 53d / 53e).
+- 2026-11-25, 53c2a review fixes: the live wiring is routed through pure functions and pinned by
+  `SOLTest.NpcRail.LaneWindowWiring` (`LaneRailFromSpawn`: a spawn's rail group is its block's slot column;
+  `RailTimeS` / `SetSlotWindowRailS`: a slot's J2000 window at its column in rail time, the epoch taken off once, tested
+  at an 8e8 s epoch so a dropped or doubled subtraction fails; `LaneRailInSpace`: the Select pass's docked tier rule).
+  `CountBlockSpawns` runs in parallel over runs of 256 blocks (deterministic, `SOLTest.NpcRail.BlockSpawnCountsParallel`);
+  `LaneEndpointPositions` evaluates only the 10 asteroid nodes (`SOLLaneNodeTable::AsteroidPositionsAt`) and no longer
+  copies the registry: `BuildFrame` takes the node positions as a second view (`SOLTest.NpcRail.NodeEndpoints`); trace
+  scopes on `UpdateLaneWindows` and `LaneEndpointPositions`. The in-game lane readout and AUTO texts now say "open
+  lane" (the Help page screenshots were not regenerated). Suite 2131 / 2131.

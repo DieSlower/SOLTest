@@ -55,4 +55,9 @@ namespace SOLLaneNodeTable
     // Reads only const data, so it may run on worker threads (the schedule's parallel rebuild)
     SOLTEST_API void PositionsAt(const FTable& table, const FSOLBodyRegistry& registry, double secondsSinceJ2000,
         TArrayView<FVector3d> outPositionsM);
+
+    // Writes only the asteroid nodes' Sun-frame positions at a sim time into a node-indexed array (the same values as
+    // PositionsAt), leaving the registry nodes' entries untouched
+    SOLTEST_API void AsteroidPositionsAt(const FTable& table, double secondsSinceJ2000,
+        TArrayView<FVector3d> outPositionsM);
 }

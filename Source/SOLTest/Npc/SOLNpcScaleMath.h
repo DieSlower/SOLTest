@@ -287,6 +287,18 @@ namespace SOLNpcScale
     SOLTEST_API FSpawn MakeSpawn(uint32 seed, int32 npcIndex, const FCounts& counts, const FLayout& layout,
         const FBattleParams& battle);
 
+    // Returns the spawn parameters with lane ships in blocks (SDD 53 4.5): a lane ship's group is its block's slot
+    // (blockSlot[lane-local index / blockSize]), INDEX_NONE for a free block (parked); every other field as above
+    SOLTEST_API FSpawn MakeSpawn(uint32 seed, int32 npcIndex, const FCounts& counts, const FLayout& layout,
+        const FBattleParams& battle, TConstArrayView<int32> blockSlot, int32 blockSize);
+
+    // Counts each ship block's lane ships inside the wall and in the halo (one entry per block, by bLaneHalo)
+    SOLTEST_API void CountBlockSpawns(uint32 seed, const FCounts& counts, int32 blockSize, TArray<int32>& outInWall,
+        TArray<int32>& outHalo);
+
+    // Returns a lane ship's AI tier: the selected tier in space, Far when docked (never promoted, demoted at once, P2)
+    SOLTEST_API EAiTier LaneShipAiTier(EAiTier previous, EAiTier selected, bool bInSpace);
+
     // Returns a battle centre's offset from the player's frame
     SOLTEST_API FVector3d BattleCenterOffsetM(uint32 seed, int32 battleIndex, const FBattleParams& battle);
 

@@ -645,7 +645,7 @@ namespace SOLMenuText
             TEXT("Shows the kind of route. A move shows the leg you are flying, how much of the route is done and "
                 "the time to its end; a patrol shows the next waypoint and the time to reach it. When a route is paused, {Resume} re-plans it from where you are and resumes.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Lane traffic readout"),
-            TEXT("Inside a lane's outer traffic (within twice its tunnel's radius, between its end rings) a line "
+            TEXT("Inside an open lane's outer traffic (within twice its tunnel's radius, between its end rings) a line "
                 "reads \"Traffic\" with the speed of the lane's traffic where you are and \"You\" with your speed "
                 "along the lane: the tunnel label's last line when it fits there, otherwise under your speed. "
                 "MATCHED in green means within 5% of the traffic, TOO FAST or TOO SLOW in amber within 20%, and in "
@@ -695,8 +695,8 @@ namespace SOLMenuText
     inline constexpr FGlossaryDescriptionOnly GLOSSARY_DESCRIPTION_ONLY[] =
     {
         { TEXT("Space dust"), TEXT("Faint specks in the scene around the ship, not a HUD symbol") },
-        { TEXT("Lane traffic readout"), TEXT("A text line that shows only inside a lane's outer traffic, coloured by "
-            "the verdict") },
+        { TEXT("Lane traffic readout"), TEXT("A text line that shows only inside an open lane's outer traffic, "
+            "coloured by the verdict") },
     };
 
     // The generated player guide, Docs/PLAYER_GUIDE.md (SDD 33 section 9, SOLPlayerGuide): its fixed text. In
@@ -815,8 +815,8 @@ namespace SOLMenuText
         TEXT("The autopilot (AUTO) flies you to a body and hands back to assisted flight when it arrives. Any thrust, "
             "roll, mouse steering or stop spin of yours takes control back in assisted flight at once, as does "
             "{ToggleAssist}; a key already held when the autopilot starts counts only after you let it go. With NPC "
-            "ships out (the Demo page) it follows the lane rules wherever its straight path runs along a traffic lane "
-            "for at least 20 lane radii inside the outer traffic (a path that only crosses a lane is flown as "
+            "ships out (the Demo page) it follows the lane rules wherever its straight path runs along an open traffic "
+            "lane for at least 20 lane radii inside the outer traffic (a path that only crosses a lane is flown as "
             "usual): it slows to the traffic speed where it joins, on the right half of the lane, keeps to the right "
             "and holds the traffic speed to the lane's end, turning over at the middle like the lane ships, then "
             "flies on to its target. The trip is slower (Earth to Mars takes over two weeks, 16 days, instead of "

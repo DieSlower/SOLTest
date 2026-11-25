@@ -4,6 +4,7 @@
 */
 
 #include "Traffic/SOLLaneTrafficSubsystem.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 
 //////////////////////////////////////////////////////////////////////////
 // Replaces the lane table from per-lane arrays (the shortest list sets the lane count)
@@ -47,7 +48,39 @@ void USOLLaneTrafficSubsystem::ClearNetwork()
 // Brings the lane network to the epoch of a sim time
 ESOLLaneNetworkAdvance USOLLaneTrafficSubsystem::AdvanceNetwork(const double secondsSinceJ2000)
 {
-    return mNetwork.Advance(secondsSinceJ2000);
+    const ESOLLaneNetworkAdvance advance = mNetwork.Advance(secondsSinceJ2000);
+
+    // Each slotted entry's open flag at this time (Q30): open while the time is inside its slot's window
+    for (FSOLLaneTrafficEntry& entry : mLanes)
+    {
+        if (entry.Slot == INDEX_NONE)
+        {
+            continue;
+        }
+        double openStartS = 0.0;
+        double closeS = 0.0;
+        entry.bOpenNow = mNetwork.GetSlotWindow(entry.Slot, openStartS, closeS)
+            && SOLLaneNetwork::LaneOpenAt(secondsSinceJ2000, openStartS, closeS);
+    }
+    return advance;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets each lane table entry's network slot (INDEX_NONE: no slot, always open)
+void USOLLaneTrafficSubsystem::SetLaneSlots(const TConstArrayView<int32> slotByEntry)
+{
+    for (int32 lane = 0; lane < mLanes.Num(); ++lane)
+    {
+        mLanes[lane].Slot = slotByEntry.IsValidIndex(lane) ? slotByEntry[lane] : INDEX_NONE;
+        mLanes[lane].bOpenNow = true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Marks a network slot held (its lane keeps the slot after leaving the set)
+void USOLLaneTrafficSubsystem::SetNetworkSlotHeld(const int32 slot, const bool bHeld)
+{
+    mNetwork.SetSlotHeld(slot, bHeld);
 }
 
 //////////////////////////////////////////////////////////////////////////

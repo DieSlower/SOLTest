@@ -758,7 +758,7 @@ void FSOLNpcLaneSmoke::CheckGroupTexels()
 {
     const FSOLNpcGroupTable& groups = mNpcs->GetGroups();
     TArray<int32> counts;
-    SOLNpcLane::CountLaneShips(mNpcs->GetRails(), groups.LaneCount, counts);
+    SOLNpcLane::CountLaneShips(mNpcs->GetRails(), groups.LaneColumnEnd(), counts);
     FSOLNpcLaneFrame expected;
     SOLNpcLane::BuildLaneFrame(groups, mNpcs->GetRailFrame(), counts, expected);
     const TConstArrayView<FVector4f> texels = mVisuals->GetLastGroupTexels();
@@ -770,7 +770,9 @@ void FSOLNpcLaneSmoke::CheckGroupTexels()
     for (int32 lane = 0; bOk && lane < expected.Lanes.Num(); ++lane)
     {
         const FSOLNpcLaneEntry& entry = expected.Lanes[lane];
-        const float weight = entry.bDrawn ? static_cast<float>(entry.TrafficWeight) : -1.0f;
+        // A cluster or battle column between the lane columns (53c2) keeps 0 in both rows
+        const float weight = !entry.bLaneColumn ? 0.0f : (entry.bDrawn ? static_cast<float>(entry.TrafficWeight)
+            : -1.0f);
         bOk &= frame.Lanes[lane].ShipCount == entry.ShipCount && texels[lane].W == static_cast<float>(entry.RadiusM)
             && texels[width + lane].W == weight;
         drawn += entry.bDrawn ? 1 : 0;

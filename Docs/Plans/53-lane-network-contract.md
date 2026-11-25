@@ -569,3 +569,432 @@ called from worker threads in the parallel rebuild), the same position for the s
 | `FSOLLaneEdge::PlanOpenFromS` | default +inf; a departure at or after it ignores the edge's window (the schedule sets the horizon end, SDD 53 6.3) |
 | `FSOLNpcGroupTable::LaneSlotCapacity()` | lane network slots the group texture leaves: 64 - clusters - battles |
 | `FSOLNpcGroupTable::LaneSlotColumn(slot)` | base slots 0 .. `LaneCount` - 1 keep their lane columns, slots from `LaneCount` on map to `slot + clusters + battles`, `INDEX_NONE` past the capacity; 53c2 uses it for schedule slots 8 and up |
+
+## 53c2 additions (ship blocks, windows, activation; test first)
+
+For the 53c2a test author (cases 16-24, 26) and the 53c2b test author (case 25), from SDD 53 4.5 (O1), 5.4 (Q8, Q10,
+Q26, Q30), 7.2 (Q21, Q22), 18 (P1-P6, user 2026-11-25), R8, R12, R14. Pure functions only; write the tests from this section, never from the code.
+Cases 16-24 and 26 go in **`Source/SOLTest/Tests/LaneNetworkTrafficTest.cpp`**, paths
+`SOLTest.LaneNetworkTraffic.<Case>` (run with `Tools\RunTests.bat -Build -Filter SOLTest.LaneNetworkTraffic`); case 25
+extends `Source/SOLTest/Tests/NpcRailTest.cpp` as `SOLTest.NpcRail.GpuLaneWindowMirror`. Cases 6 (`LegFitsWindow`,
+`LaneDepartureStopS`, `LaneShipLegDrawn`) and 12 (`LaneShipShares`) are reused as they stand, not restated. Module
+rule (SDD 53 section 10): `Traffic/` includes `SOLConstants.h` and `SOLLaneTrafficMath.h` only, never `Npc/`.
+
+**Status column:** *pinned* = from the SDD or the user; *implementer* = an encoding or tie order with no visible
+effect, the implementer may change it if the tests change with it. The six decisions the SDD left open (P1-P6) were
+**answered by the user on 2026-11-25** (table below, SDD 53 section 18); every assertion in cases 16-26 is pinned and
+the test author writes all of them.
+
+### Resolved decisions (user, 2026-11-25)
+
+| Id | Question | Answer (pinned) |
+|---|---|---|
+| P1 | Which window governs a ship in a **U-turn** (between two legs; the shader draws `turnA` / `turnB` today)? | **The leg after the turn:** a turning ship is drawn iff that leg fits (`LegFitsWindow(turn end, T_leg, open, close)`), so a ship that arrives where its next leg is not flown vanishes at the end ring on arrival (R12). **Design note:** this matches the future goal of ships docking at a station at the lane's end: the arrival at the end ring becomes the docking moment (case 21) |
+| P2 | A **promoted** (Mid / Full) lane ship whose leg ends and whose next leg is not flown (Q26, R12) | **Demoted and docked at once**, no fade (O9): `LaneShipAiTier` returns Far for any docked ship (case 21) |
+| P3 | **Block membership and size** for populations whose lane ship count is not 400,000 (NpcCount, LaneFraction, ramp stages) | As recommended: block `b` = the lane-local ship indices `[100 b, 100 b + 100)` (contiguous, so a block move is one contiguous rail range; the spread along the lane comes from each ship's own hashed phase); block count = ceil(lane ships / 100), the last block partial (case 16) |
+| P4 | **Pool policy after spawn**: (a) an opening lane's target; (b) the order when the free pool is short; (c) top-up of a short lane later in its episode; (d) a time jump | As recommended: (a) its `LaneShipShares` block share over the current set's slotted lanes; (b) ascending slot order; (c) none: blocks join a lane only at its episode open (`EpisodeTakeOrder`, case 17); (d) a full exact re-share of every block at a time jump, as at spawn (`AssignShipBlocks`, one full rail upload per jump) |
+| P5 | **Q22 scope**: overlay off, and the quality scale | **Changed from the recommendation:** inactive lanes are hidden **always**, with the Lanes overlay on or off (the flag does not depend on the overlay), and the 2.4 px threshold **scales with the QualityPreset** by `LaneTunnelQualityScale` (the same scale as the tunnel classes, case 10): `LaneTrafficActive` takes a `thresholdScale` (case 23). The shader reads the flag in 53d (plan 53d step 4) |
+| P6 | **Q30 and the AUTO latch**: `CheckLaneLatch` re-checks an Approach through `FindLaneLeg`, so skipping closed lanes there would turn an Approach on a lane that closes into `Release` (Left, terminal for the order) | As recommended: an **Approach** on a lane that closes is **`Stale`** (dropped, searched again); a **Hold** on a closed lane is unchanged (`Keep`) until 53e's finish-if-safe (case 24) |
+
+**SDD wording note (not a decision):** SDD 5.4 names the slot floats `openStart` and `departStop` (= close - `T_leg`),
+but `T_leg` is per ship (effort, `LaneShipLegS`), so one per-slot `departStop` cannot serve every ship. The texel
+carries `openStart` and **`close`**, and each ship tests its own leg with `LegFitsWindow` (case 6), as SDD 5.4's rule
+"open over all of `[t, t + T_leg]`" requires.
+
+### Constants (`SOLConstants.h`)
+
+| Name | Type | Value | Status |
+|---|---|---|---|
+| `NPC_GROUP_TEXTURE_ROWS` | int32 | **7** (was 6) | implementer: one new row holds the window and active flag (all 24 channels of rows 0-5 are in use) |
+| `NPC_GROUP_WINDOW_ROW` | int32 | 6 | implementer; invariant: `< NPC_GROUP_TEXTURE_ROWS` |
+| `NPC_LANE_WINDOW_FAR_S` | double | 1.0e30 | implementer: the finite stand-in for +-inf in the group texel (the shader compiles with fast math, which may assume no infinities); invariant: `< FLT_MAX` and `> 1e3 x NPC_LANE_NETWORK_HORIZON_EPOCHS x NPC_LANE_NETWORK_EPOCH_S` |
+| `NPC_LANE_SHIP_BLOCK_COUNT_DEFAULT` | int32 | `NPC_LANE_SHIP_DEFAULT_COUNT / NPC_LANE_SHIP_BLOCK_SIZE` = 4,000 | pinned (O1); `static_assert` == 4000 |
+| `NPC_LANE_TRAFFIC_ACTIVE_PX` | double | 2.4 | pinned (Q22); `static_assert` == `NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_LANE_FADE_FAR_RADII` (960 / 400) |
+| `NPC_LANE_SHIP_PARKED_LEG_S` | double | -1.0 | implementer: the rail texel leg time (`railB.w`) of a parked ship (free-pool block); invariant: `< 0` |
+| `NPC_RAIL_PARKED_GROUP` | uint16 | 0xFFFF | implementer: `FSOLNpcRail::Group` of a parked ship; invariant: `>= NPC_GROUP_TEXTURE_WIDTH` |
+
+### Time bases (pinned)
+
+Schedule windows (`GetSlotWindow`) are **seconds since J2000**. Rail time = J2000 seconds -
+`mEpochSecondsSinceJ2000` (`USOLNpcSubsystem`). The shader's time `t` = rail time - `mGpuRailEpochS`. So a window bound
+goes to the texel as `bound - gpuEpochS` with `gpuEpochS = mEpochSecondsSinceJ2000 + mGpuRailEpochS`, subtracted in
+double, then rounded once to float (`LaneWindowGpuS`, case 22). Row 6 is written with the same `mGpuRailEpochS` as
+the rail texels the shader reads that frame.
+
+### Types
+
+```cpp
+// Traffic/SOLLaneNetworkMath.h
+struct FSOLShipRange { int32 First = 0; int32 Count = 0; };          // lane-local ship indices [First, First + Count)
+
+// Npc/SOLNpcRail.h
+struct FSOLTexelRegion { int32 X = 0; int32 Y = 0; int32 Width = 0; int32 Height = 0; };   // one UpdateTextureRegions rect
+
+// Traffic/SOLLaneTrafficMath.h: FSOLLaneMergeLane gains one field (default keeps every existing test valid)
+bool bOpenNow = true;      // The lane is open now (LaneOpenAt over its slot window); Q30
+```
+
+### 16. Ship block layout (case `ShipBlocks`, P3)
+
+```cpp
+int32 ShipBlockCount(int32 laneShipCount, int32 blockSize);                       // SOLLaneNetwork
+int32 ShipBlockSize(int32 block, int32 laneShipCount, int32 blockSize);
+int32 ShipBlockOfLaneShip(int32 laneShipIndex, int32 laneShipCount, int32 blockSize);
+```
+
+- `ShipBlockCount` = ceil(count / size): (400,000, 100) -> 4,000 (= `NPC_LANE_SHIP_BLOCK_COUNT_DEFAULT`); (400,001,
+  100) -> 4,001; (400,050, 100) -> 4,001; (99, 100) -> 1; (0, 100) -> 0; (-5, 100) -> 0; (100, 0) -> 0. Pinned (P3:
+  ceil, the last block partial).
+- `ShipBlockSize`: (3,999, 400,000, 100) -> 100; (4,000, 400,050, 100) -> 50 (P3, the partial last block); (4,000,
+  400,001, 100) -> 1; (0, 99, 100) -> 99; (0, 3,200, 100) -> 100; (31, 3,200, 100) -> 100; (4,000, 400,000, 100) -> 0
+  (out of range); (4,001, 400,050, 100) -> 0; (-1, ...) -> 0. The sizes of all blocks sum to the lane ship count:
+  400,050 for (400,050, 100), 99 for (99, 100).
+- `ShipBlockOfLaneShip` = index / size (P3, contiguous membership): (12,345, 400,000, 100) -> 123; (0, ...) -> 0;
+  (99, 400,000, 100) -> 0; (100, 400,000, 100) -> 1; (399,999, 400,000, 100) -> 3,999; (400,049, 400,050, 100) ->
+  4,000 (in the partial block); (400,050, 400,050, 100) -> `INDEX_NONE`; index < 0 or >= count, or size <= 0 ->
+  `INDEX_NONE`.
+
+### 17. Block pool (case `BlockPool`, O1, R14)
+
+```cpp
+void AssignShipBlocks(int32 blockCount, TConstArrayView<double> slotWeights, TArray<int32>& outBlockSlot);
+int32 ReleaseShipBlocks(TConstArrayView<uint8> slotRelease, TArray<int32>& inOutBlockSlot);
+int32 TakeShipBlocks(TConstArrayView<int32> slotOrder, TConstArrayView<int32> slotTargets,
+    TArray<int32>& inOutBlockSlot, TArray<int32>& outMovedBlocks);
+bool CanReleaseSlotBlocks(bool bLaneInSetNow, int32 cpuTierShipsOfSlot);
+bool LaneEpisodeOpens(const FSOLLanePair& previousSlotLane, bool bPreviousInSet, const FSOLLanePair& slotLane,
+    bool bInSetNow);
+void EpisodeTakeOrder(TConstArrayView<uint8> slotEpisodeOpens, TArray<int32>& outSlotOrder);   // P4 b, c
+```
+
+`outBlockSlot` / `inOutBlockSlot`: one entry per block, the slot that holds it or `INDEX_NONE` (free pool).
+- **`AssignShipBlocks` (spawn, exact):** reset first, `blockCount` entries (0 for `blockCount <= 0`); targets =
+  `LaneShipShares(blockCount, slotWeights)` (case 12; a weight of 0 for a free or unslotted slot); slot `s` gets the
+  next `target[s]` blocks in ascending slot order (contiguous; implementer order); no positive weight: every block
+  free. Every block is assigned whenever a weight is positive, so the slots' ship counts (case 18) sum to the lane ship
+  count exactly.
+  - 10, {1, 1, 1}: {0, 0, 0, 0, 1, 1, 1, 2, 2, 2}. 6, {1, 0, 2}: {0, 0, 2, 2, 2, 2}. 3, {0, 0}: {-1, -1, -1}.
+  - 4,000 over the 8 base weights of case 12 (2, sqrt 20, 10, sqrt 60, sqrt 12, 2, sqrt 2, 1): slot `s` holds blocks
+    [start_s, start_{s+1}) with starts {0, 249, 807, 2,053, 3,018, 3,450, 3,699, 3,875, 4,000}.
+  - 4 blocks (a partial last block changes nothing here, blocks are counted, P3) over {1, 1}: {0, 0, 1, 1}.
+  - **Time jump (P4 d, pinned):** the caller re-shares every block exactly by calling `AssignShipBlocks` over the new
+    set's weights, whatever the old map held. `outBlockSlot` pre-filled with {2, 2, 2, -1, 0, 1, 1, 1, 1, 1, 7, 7}
+    (12 entries) and called with 10, {1, 1, 1}: {0, 0, 0, 0, 1, 1, 1, 2, 2, 2} (10 entries, equal to a fresh call).
+- **Opening lane's target (P4 a, pinned):** the caller passes `slotTargets = LaneShipShares(blockCount, w)` with `w`
+  the current set's slotted lanes' weights (0 for a free or unslotted slot), the same targets as `AssignShipBlocks`.
+  4,000 over the 8 base weights: targets {249, 558, 1,246, 965, 432, 249, 176, 125} (the differences of the starts
+  above; sum 4,000). 10 over {1, 1, 1}: {4, 3, 3}.
+- **`ReleaseShipBlocks`:** every block whose slot `s` has `slotRelease[s] == 1` becomes free; returns the number
+  released; slots past `slotRelease` are kept. {0, 0, 3, 1, 3, 4, 2, 4}, release {0, 1, 0, 0, 1}: {0, 0, 3, -1, 3, -1,
+  2, -1}, returns 3.
+- **`TakeShipBlocks`:** for each slot in `slotOrder` (the caller passes `EpisodeTakeOrder`'s ascending list, P4 b), the slot takes the lowest-index free
+  blocks until it holds `slotTargets[slot]` blocks in all (blocks it already holds count); returns the total shortfall;
+  `outMovedBlocks` (reset first) lists the taken blocks in take order. Slots out of range of `slotTargets` are skipped.
+  - {0, 0, -1, 1, -1, -1, 2, -1}, order {3, 4}, targets {0, 0, 0, 2, 3}: {0, 0, 3, 1, 3, 4, 2, 4}, moved {2, 4, 5, 7},
+    returns 1 (slot 4 short by one). This is the pinned P4 b outcome: when slots 3 and 4 open together and the pool
+    is short, the ascending order {3, 4} serves slot 3 first.
+  - Same with order {4, 3} (the function follows whatever order it is given; the caller never passes it): slot 4
+    takes 2, 4, 5 and slot 3 takes 7: {0, 0, 4, 1, 4, 4, 2, 3}, moved {2, 4, 5, 7}, returns 1 (slot 3 short by one).
+  - No free block: nothing moves, returns the sum of the targets. A target at or below what the slot holds: nothing.
+  - Determinism: the same inputs twice give identical outputs.
+- **`CanReleaseSlotBlocks`** (pinned: ships change lane only while their block is empty, SDD 4.5): true iff
+  `!bLaneInSetNow && cpuTierShipsOfSlot <= 0`. (false, 0) -> true; (false, 2) -> false; (true, 0) -> false. A Sun-closed
+  lane is still in the set and keeps its blocks (Q10). The early stop leaves no GPU ship in flight at the close, so
+  only promoted ships can delay a release, and only until their leg ends: a promoted ship is demoted and docked at
+  once at its end ring (P2, case 21), so `cpuTierShipsOfSlot` falls to 0 within one leg time of the close. The caller
+  holds the slot (`SetSlotHeld`) while its blocks are not released, so a slot is never reused under blocks that still
+  point at it.
+- **`LaneEpisodeOpens`** (the profile freeze and the block take happen here, SDD 4.5): true iff `bInSetNow` and
+  (`previousSlotLane != slotLane` or `!bPreviousInSet`). ((2, 5), true, (2, 5), true) -> false; ((2, 5), false, (2, 5),
+  true) -> true (back after leaving, even in a held slot); ((-1, -1), false, (2, 5), true) -> true; ((2, 5), true, (4,
+  6), true) -> true; (any, any, (2, 5), false) -> false.
+- **`EpisodeTakeOrder`** (P4 b and c, pinned): `outSlotOrder` (reset first) = the slots `s` with
+  `slotEpisodeOpens[s] != 0`, in ascending order. The caller fills `slotEpisodeOpens` from `LaneEpisodeOpens` per slot
+  at an epoch step, so **only a slot whose episode opens this step takes blocks**; a lane left short keeps what it
+  holds until its next episode (no top-up mid-episode, so no ship appears mid-leg). {0, 1, 0, 1, 1}: {1, 3, 4};
+  {1, 0, 0}: {0}; all 0: {}; {}: {}; values 2 and 255 count as opening ({0, 2, 255}: {1, 2}). With the
+  `TakeShipBlocks` example above and `slotEpisodeOpens` {0, 0, 0, 1, 1}: order {3, 4}, so the outcome is the first
+  example's. A short slot that does not open takes nothing: block map {0, -1, -1}, targets {3}, `slotEpisodeOpens`
+  {0}: order {}, `TakeShipBlocks` moves nothing, returns 0, the map stays {0, -1, -1}; with {1}: order {0}, map
+  {0, 0, 0}, moved {1, 2}, returns 0.
+
+### 18. Per-slot lists and sums (case `BlockLists`)
+
+```cpp
+void SlotBlockLists(TConstArrayView<int32> blockSlot, int32 slotCount, TArray<int32>& outSlotStart,
+    TArray<int32>& outBlocks);
+void SumBlockCounts(TConstArrayView<int32> blockSlot, TConstArrayView<int32> perBlock, int32 slotCount,
+    TArray<int32>& outPerSlot);
+```
+
+- `SlotBlockLists` (CSR): `outSlotStart` has `slotCount + 1` entries; slot `s`'s blocks are `outBlocks[outSlotStart[s]
+  .. outSlotStart[s + 1])`, ascending; free blocks and slots >= `slotCount` are not listed; both reset first.
+  {0, 0, 3, 1, 3, 4, 2, 4}, 5: starts {0, 2, 3, 4, 6, 8}, blocks {0, 1, 3, 6, 2, 4, 5, 7}. slotCount 0: starts {0},
+  blocks empty.
+- `SumBlockCounts`: per slot, the sum of `perBlock` over its blocks (block sizes give the ship count, block in-wall
+  counts give `Rw`'s input). {0, 0, 3, 1, 3, 4, 2, 4}, values {100 x 7, 50}, 5: {200, 100, 100, 200, 150} (sum 750 =
+  the lane ships). A block past `perBlock` adds 0.
+
+### 19. Partial upload ranges (cases `DirtyRanges`, `TexelRegions`; SDD 13 gate 0.5 ms per block move)
+
+```cpp
+void ShipBlockDirtyRanges(TConstArrayView<int32> movedBlocks, int32 laneShipCount, int32 blockSize,
+    TArray<FSOLShipRange>& outRanges);                                              // SOLLaneNetwork
+void RailTexelRegions(int32 firstTexel, int32 texelCount, int32 textureWidth, TArray<FSOLTexelRegion>& outRegions);
+                                                                                    // SOLNpcRail
+```
+
+- Pinned (P3, contiguous membership): block `b` covers the lane-local ships `[b x size, min((b + 1) x size, count))`.
+- `ShipBlockDirtyRanges`: blocks in any order, repeats allowed, out-of-range ignored; output sorted, adjacent and
+  repeated blocks merged, reset first. {7, 2, 3, 3, 5}, 750, 100: {(200, 200), (500, 100), (700, 50)}. {} -> {}.
+- The Npc side maps a range to rail texels: first texel = 2 x (battle ships + `First`), count = 2 x `Count` (two
+  texels per ship, `ClassifyIndex` puts lane ships after the battle ships).
+- `RailTexelRegions` splits a linear texel span of a `textureWidth`-wide texture into at most three rects (head part
+  row, full rows, tail part row), reset first. Width 2,048: (100, 200) -> {(100, 0, 200, 1)}; (2,000, 200) ->
+  {(2,000, 0, 48, 1), (0, 1, 152, 1)}; (2,000, 4,154) -> {(2,000, 0, 48, 1), (0, 1, 2,048, 2), (0, 3, 10, 1)}; (0,
+  4,096) -> {(0, 0, 2,048, 2)}; count <= 0, width <= 0 or first < 0 -> empty.
+
+### 20. Lane spawn into blocks (case `LaneSpawnBlocks`; `SOLNpcScale`, `SOLNpcRail`)
+
+```cpp
+FSpawn MakeSpawn(uint32 seed, int32 npcIndex, const FCounts& counts, const FLayout& layout,
+    const FBattleParams& battle, TConstArrayView<int32> blockSlot, int32 blockSize);   // overload
+void CountBlockSpawns(uint32 seed, const FCounts& counts, int32 blockSize, TArray<int32>& outInWall,
+    TArray<int32>& outHalo);
+uint16 LaneRailGroup(const FSOLNpcGroupTable& groups, int32 slot);                     // SOLNpcRail
+bool IsParked(const FSOLNpcRail& rail);                                                // SOLNpcRail
+void GpuParkedRailTexels(int32 faction, FVector4f& outTexelA, FVector4f& outTexelB);  // SOLNpcRail
+```
+
+Population for the cases: `NPC_DEFAULT_SEED`, total 10,000, battle 2,000, lane fraction 0.4 (`SplitCounts`: battle
+2,000, lane 3,200, cluster 4,800; 32 blocks), `DefaultLayout()`, blocks from `AssignShipBlocks(32, w)` with `w` the 8
+base weights of case 12 unless stated (32 blocks over those weights: targets `LaneShipShares(32, w)`, slot `s` holding
+a contiguous run in ascending slot order). The block of a lane ship is `j / blockSize` (P3, contiguous membership,
+pinned); 3,200 is a multiple of 100, so no partial block arises. **Partial block row (P3):** total 10,000, battle
+2,000, lane fraction 0.40625 (exact in double): `SplitCounts` gives lane 3,250, cluster 4,750; `CountBlockSpawns`
+gives 33 entries, blocks 0-31 have in-wall + halo == 100 and block 32 has 50; with `AssignShipBlocks(33, w)` every
+lane ship `j` in [3,200, 3,250) has `GroupIndex == blockSlot[32]`, and the per-slot ship counts (`SumBlockCounts` of
+the block sizes) sum to 3,250.
+- **Lane fields unchanged:** for every lane ship (lane-local index `j`), the overload's `GroupIndex` ==
+  `blockSlot[j / blockSize]` (the slot), and Faction, LanePhase, LaneEffort, LaneRho, LaneClockRad and bLaneHalo equal
+  the legacy `MakeSpawn` (same hash streams); every battle and cluster ship equals the legacy result field for field.
+- **Parked:** a ship whose block is free has `GroupIndex == INDEX_NONE` and its lane fields still filled (equal to the
+  legacy values).
+- `CountBlockSpawns`: both arrays reset to `ShipBlockCount(counts.Lane, blockSize)` entries; in-wall + halo of block
+  `b` == `ShipBlockSize(b, ...)`; the halo total equals the number of lane ships with legacy `bLaneHalo`; summed per
+  slot with `SumBlockCounts` they equal a direct tally of the overload's spawns per slot.
+- `LaneRailGroup` = `groups.LaneSlotColumn(slot)` as uint16, `NPC_RAIL_PARKED_GROUP` for `INDEX_NONE` or a slot past
+  the capacity. With 8 lanes, 10 clusters, 16 battles: slot 3 -> 3; slot 8 -> 34; slot 37 -> 63; slot 38 -> 0xFFFF;
+  -1 -> 0xFFFF.
+- `IsParked`: Kind Lane and Group == `NPC_RAIL_PARKED_GROUP`. `GpuParkedRailTexels`: texel A = (kind Lane + 4 x
+  faction, packed as `GpuRailTexels` packs it with group 0 and fraction 0, then 0, 0, 0), texel B = (0, 0, 0,
+  `NPC_LANE_SHIP_PARKED_LEG_S`). Implementer encoding; the 53c2b shader and mirror hide `railB.w < 0` (case 25).
+
+### 21. In space or docked (case `InSpace`, SDD 5.4, R12; P1)
+
+```cpp
+bool LaneShipInSpace(const FSOLLaneCycle& cycle, double phase, double railTimeS, double openStartRailS,
+    double closeRailS);                                                              // SOLLaneNetwork
+```
+
+The double form (tiers, tests); windows in rail time. Invalid cycle (`LegS` or `CycleS` not finite and positive):
+true iff `openStart <= t < close` (a lane that is not drivable draws its midpoint disc, as today, while open;
+implementer). Otherwise `p = CycleSegmentAt(cycle, phase, t)`: on a leg (Outbound, Inbound) the result is
+`LaneShipLegDrawn(t, t - p.SegmentTimeS, LegS, open, LaneDepartureStopS(close, LegS))` (case 6); in a U-turn
+(TurnAtA, TurnAtB) it is governed by **the leg after the turn** (P1, pinned): `LegFitsWindow(t - p.SegmentTimeS +
+TurnS, LegS, open, close)`. So a ship arriving at an end ring whose next leg is not flown is docked from the moment
+it arrives (it vanishes at the end ring; the future station docking), and a ship whose next leg is flown is drawn
+through the whole turn. NaN window: false.
+Cycle {LegS 30, TurnS 5, CycleS 70} built directly, phase 0 (Outbound [0, 30), TurnAtB [30, 35), Inbound [35, 65),
+TurnAtA [65, 70)). Times stay off the segment boundaries on purpose (floating `frac`).
+
+| Window [open, close) | t = 10 (Out, dep 0) | 50 (In, dep 35) | 75 (Out, dep 70) | 99.5 (Out, dep 70) | 120 (In, dep 105) | 32 (TurnB) | 67 (TurnA) | 102 (TurnB) |
+|---|---|---|---|---|---|---|---|---|
+| [-0.5, 100.5) | true | true | true | true | false | true | true | false |
+| [40.5, 100.5) | false | false | true | true | false | false | true | false |
+| [0, 20) (shorter than the leg) | false | false | false | false | false | false | false | false |
+| [-inf, +inf) | true | true | true | true | true | true | true | true |
+| NaN | false at every t | | | | | | | |
+
+Turn columns (P1): t = 32 is in TurnAtB [30, 35), next leg Inbound [35, 65): fits [-0.5, 100.5) (35 >= -0.5, 65 <=
+100.5), not [40.5, 100.5) (35 < 40.5). t = 67 is in TurnAtA [65, 70), next leg Outbound [70, 100): fits both (100 <=
+100.5). t = 102 is in TurnAtB [100, 105) of the second cycle, next leg Inbound [105, 135): fits neither (135 > 100.5).
+Extra turn rows, pinned: t = 33 and 34.5, window [-0.5, 100.5): true (same turn as 32); t = 31, window [40.5, 100.5):
+false; t = 66 and 69.5, window [40.5, 100.5): true; t = 67, window [70.5, 100.5): false (next leg departs 70 < 70.5);
+t = 67, window [69.5, 99.5): false (arrives 100 > 99.5). The first row opens at -0.5, not 0: `t - SegmentTimeS`
+rebuilt from `frac(t / T_cyc)` can land an ulp off the true departure 0. Phase 0.5, t = 10, window [-0.5, 100.5):
+true (Inbound, departure about 0). **No ship vanishes mid-leg:** window [-0.5, 100.5), t stepped by 0.25 over
+[0.125, 210): on every leg the result is constant from its departure to its arrival, and **on every turn the result
+is constant over the turn and equal to the result of the leg that follows it** (P1), so a drawn ship is drawn from
+the start of a turn to the end of the next leg, and an undrawn turn is never followed by a drawn leg of the same
+cycle position. With window [40.5, 100.5) over that sweep the drawn set is exactly t in [65, 100) (TurnAtA and the
+Outbound leg that follows it); t in [0.125, 65) and [100, 210) is false. Invalid cycle {0, 0, 0}: (t 5, [0, 10))
+true, (t 10.5, [0, 10)) false.
+
+```cpp
+EAiTier LaneShipAiTier(EAiTier previous, EAiTier selected, bool bInSpace);           // SOLNpcScale
+```
+
+Pinned (Q26): in space -> `selected`; docked and `previous == Far` -> Far (a docked ship is never promoted). (Far,
+Mid, true) -> Mid; (Mid, Mid, true) -> Mid; (Far, Mid, false) -> Far; (Far, Far, false) -> Far. Docked and previously
+Mid or Full (P2, pinned): **Far at once**, whatever `selected` is, no fade or grace frame: (Mid, Mid, false) -> Far;
+(Mid, Full, false) -> Far; (Full, Full, false) -> Far; (Full, Mid, false) -> Far; (Mid, Far, false) -> Far. In space
+the previous tier does not matter: (Full, Far, true) -> Far; (Mid, Full, true) -> Full. So the result is Far iff
+`!bInSpace`, else `selected`. **Sequence (pinned):** cycle {30, 5, 70}, phase 0, window [40.5, 100.5), `selected`
+= Mid at every step: t 99.875 (Outbound, in space) -> Mid; t 100.125 (TurnAtB, next leg Inbound [105, 135) not
+flown, docked) -> Far with previous Mid; t 100.375 -> Far.
+
+### 22. Group texel window row (case `WindowTexel`; `SOLLaneNetwork`, `SOLNpcRail`)
+
+```cpp
+float LaneWindowGpuS(double windowS, double gpuEpochS);
+FVector4f LaneWindowTexel(bool bHasWindow, double openStartS, double closeS, double gpuEpochS, bool bActive);
+void WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, const FSOLNpcGroupTable& groups,
+    TArrayView<FVector4f> groupTexels);                                              // SOLNpcRail
+```
+
+- `LaneWindowGpuS` = float(clamp(window - epoch, -FAR, +FAR)), FAR = `NPC_LANE_WINDOW_FAR_S`; +inf -> +FAR, -inf ->
+  -FAR; NaN -> NaN. With epoch 810,005,000 (= 9,375 E + 5,000): 9,375 E -> -5,000.0f; 9,380 E -> 427,000.0f;
+  892,944,000 -> 82,939,000.0f; 892,944,003 -> 82,939,000.0f (float rounding, ulp 8 s there); -inf ->
+  `static_cast<float>(NPC_LANE_WINDOW_FAR_S)` negated.
+- `LaneWindowTexel` = (`LaneWindowGpuS(open)`, `LaneWindowGpuS(close)`, active ? 1 : 0, 0) when `bHasWindow`, neither
+  bound NaN and open < close; otherwise the **empty window** (+FAR, -FAR, active ? 1 : 0, 0), so nothing is drawn (a
+  free slot, a lane closed now, a Gone lane in its fade).
+- `WriteLaneWindowRow`: row `NPC_GROUP_WINDOW_ROW` (texel `6 x 64 + column`), column = `LaneSlotColumn(slot)` for each
+  slot of `windowBySlot`; slots without a column skipped; every other column of row 6 zero; rows 0-5 untouched; a
+  buffer under `NPC_GROUP_TEXTURE_ROWS` rows is not touched. With 8 lanes, 10 clusters, 16 battles and 9 slot
+  texels, slot 8's texel lands at column 34, column 8 (a cluster) is zero.
+- **Profile per episode (SDD 4.5, pinned):**
+
+  ```cpp
+  FSOLLaneProfile SlotLaneProfile(double laneRadiusM, int32 inWallCount, double nominalLengthM,
+      double bodyRadiusAM, double bodyRadiusBM);                                     // SOLNpcRail
+  ```
+
+  Identity: `== SOLLaneTraffic::MakeLaneProfile(SOLNpcTunnel::TunnelRadiusM(laneRadiusM, inWallCount),
+  nominalLengthM, bodyRadiusAM, bodyRadiusBM)`, and equal to the entry `BuildLaneProfiles` gives for the same inputs
+  (one lane, in-wall count, nominal length, radii). Inputs per slot: the lane radius = the larger region radius of its
+  two nodes (O5; Earth-Moon's hand row 2e5 m), the in-wall count = `SumBlockCounts` of its blocks' in-wall counts at the
+  open, the nominal length = `LaneNominalLengthM` (case 13), the radii = the nodes' `ClearanceRadiusM`. Row: lane radius
+  4e6, in-wall 0 (an empty slot): the wall radius is `4e6 x NPC_TUNNEL_RADIUS_MIN_SCALE` (`TunnelRadiusM` of an empty
+  lane). The caller recomputes a slot's profile only when `LaneEpisodeOpens` is true (and at spawn and at a time
+  jump, where every block is re-shared, P4 d), so its rows 2-5 do not change mid-episode.
+
+### 23. Traffic activation (case `Activation`, Q21, Q22; P5)
+
+```cpp
+double LaneTrafficRadiusPx(const FVector3d& cameraM, const FVector3d& aM, const FVector3d& bM, double laneRadiusM,
+    double focalRefPx);
+bool LaneTrafficActive(double laneRadiusPx, int32 cpuTierShipsOfLane, double thresholdScale);
+```
+
+`LaneTrafficRadiusPx` = `LaneTunnelMaxRadiusPx(segment distance camera -> [A, B], laneRadiusM, focalRefPx)` (case 10:
+d <= 0 -> +inf, NaN distance, R <= 0 or f <= 0 -> 0); `focalRefPx` is the live view's focal (SDD 7.1). The lane radius
+is `FSOLNpcGroupTable::LaneRadiusM` (the radius the point fade uses), not the tunnel radius. `LaneTrafficActive` =
+`laneRadiusPx >= NPC_LANE_TRAFFIC_ACTIVE_PX x s || cpuTierShipsOfLane > 0` (no hysteresis), with `s` =
+`thresholdScale`, which the caller sets to `LaneTunnelQualityScale(QualityPreset)` (P5, the same scale as the tunnel
+classes, case 10: Low 10, Medium 4.6, High 2.2, Epic and Cinematic 1); a NaN, infinite or non-positive scale reads as
+1, as in `StepTunnelClass`. So the thresholds are Low 24 px, Medium 11.04 px, High 5.28 px, Epic and Cinematic 2.4 px.
+**Overlay (P5, pinned):** neither function takes the Lanes overlay state; the flag is written the same with the overlay
+on or off, and in 53d the point vertex shader hides an inactive lane's ships **always** (with the overlay off too).
+A (0, 0, 0), B (1e10, 0, 0), R 2e6, f 960 (px values relative 1e-12; the camera at (5e9, y, 0) gives 1.92e9 / y px):
+- **Scale 1 (Epic):** camera (5e9, 8e8, 0): 2.4 px; (5e9, 7.9e8, 0): 2.4303797 px, active; (5e9, 8.1e8, 0):
+  2.3703704 px, inactive; the same with 1 CPU-tier ship: active. Inclusive threshold, asserted directly:
+  `LaneTrafficActive(NPC_LANE_TRAFFIC_ACTIVE_PX, 0, 1.0)` true, `LaneTrafficActive(NPC_LANE_TRAFFIC_ACTIVE_PX x (1 -
+  1e-9), 0, 1.0)` false, (NaN, 0, 1.0) false, (NaN, 1, 1.0) true.
+- **Scaled rows (P5), scale = `LaneTunnelQualityScale(preset)`:**
+
+  | Camera y | px | Low (0, x10) | Medium (1, x4.6) | High (2, x2.2) | Epic (3) / Cinematic (4) |
+  |---|---|---|---|---|---|
+  | 7.9e7 | 24.303797 | active | active | active | active |
+  | 8.1e7 | 23.703704 | inactive | active | active | active |
+  | 1.7e8 | 11.294118 | inactive | active | active | active |
+  | 1.8e8 | 10.666667 | inactive | inactive | active | active |
+  | 3.6e8 | 5.3333333 | inactive | inactive | active | active |
+  | 3.7e8 | 5.1891892 | inactive | inactive | inactive | active |
+  | 7.9e8 | 2.4303797 | inactive | inactive | inactive | active |
+  | 8.1e8 | 2.3703704 | inactive | inactive | inactive | inactive |
+
+  Every inactive cell is active with 1 CPU-tier ship. Inclusive at each scale, asserted directly for presets 0-4 with
+  `s = LaneTunnelQualityScale(preset)`: `LaneTrafficActive(NPC_LANE_TRAFFIC_ACTIVE_PX x s, 0, s)` true,
+  `LaneTrafficActive(NPC_LANE_TRAFFIC_ACTIVE_PX x s x (1 - 1e-9), 0, s)` false.
+- **Bad scale:** NaN, +inf, 0 and -2 read as 1: (2.4303797, 0, s) active and (2.3703704, 0, s) inactive for each.
+- camera (-6e8, 0, 0) (beyond end A): 3.2 px (active at scale 1, inactive at High 2.2 = 5.28 px). Camera on the
+  segment: +inf, active at every scale. A == B: distance to the point. NaN camera: 0 px, inactive unless a CPU-tier
+  ship exists.
+
+### 24. Merge readout and lane search skip closed lanes (case `MergeSkip`, Q30; P6)
+
+```cpp
+bool LaneOpenAt(double nowS, double openStartS, double closeS);                      // SOLLaneNetwork
+```
+
+- `LaneOpenAt` = `openStart <= now < close`; NaN anywhere -> false. (5, 0, 10) true; (0, 0, 10) true; (10, 0, 10)
+  false; (-1, 0, 10) false; (5, -inf, +inf) true. A Draining lane (open now, closing within a leg) is open: its
+  readout shows (Q30). The caller sets `FSOLLaneMergeLane::bOpenNow = GetSlotWindow(...) && LaneOpenAt(...)`.
+- `SOLLaneTraffic::MergeReadout` and `FindLaneLeg` skip a lane with `bOpenNow == false` exactly as they skip an
+  invalid lane today. Two identical lanes from `MakeMergeLane(MakeLaneProfile(6.0e6, 4.0e11, 6.371e6, 3.3895e6), 0, 1,
+  A, B, 0, 0)` with A (1.0e11, 2.0e10, 0), B (5.0e11, 2.0e10, 0) (both off the origin, as case 7's frames), the player
+  on the axis at the midpoint (3.0e11, 2.0e10, 0) moving along +x: first assert the readout is shown on lane 0 with
+  both open (so a hidden result below is the flag's doing); lane 0 closed: lane 1; both closed: hidden. `FindLaneLeg`
+  from (2.0e11, 2.0e10, 0) to (4.0e11, 2.0e10, 0): lane 0 (asserted found first); lane 0 closed: lane 1; both closed:
+  not found.
+- **`CheckLaneLatch` (P6, pinned):** an **Approach** whose latched lane has `bOpenNow == false` returns **`Stale`**
+  (never `Release`): the check sits with the "lane gone or replaced" checks, before the target-left and 20-radius
+  checks, so a closed lane is Stale even when the target has also left. A **Hold** ignores `bOpenNow` (`Keep` as
+  today; 53e decides a held lane that closes; so the open flag is not folded into the lane-usable test that makes a
+  replaced lane Stale). The other modes are unchanged (None and Left: `Keep`). Setup: the two
+  lanes above, ship (2.0e11, 2.0e10, 0), target (4.0e11, 2.0e10, 0), `leg0 = FindLaneLeg(lanes both open, ship,
+  target)` (lane 0, bodies 0 and 1, target inside):
+  - both open: Approach -> Keep, Hold -> Keep (baseline, so the results below are the flag's doing);
+  - lane 0 closed: Approach -> **Stale**; Hold -> **Keep**; None -> Keep; Left -> Keep;
+  - lane 0 closed and the target moved sideways out of the halo to (4.0e11, 2.0e10 + 1.0e9, 0) (1e9 m off the axis,
+    far outside the halo of a 6e6 m lane): Approach -> **Stale** (not Release); Hold -> Release (as today, the target left);
+  - lane 1 closed, lane 0 open: Approach on `leg0` -> Keep (only its own lane counts);
+  - `leg1 = FindLaneLeg` with lane 0 closed (lane 1, asserted); then lane 1 closed as well: Approach on `leg1` ->
+    Stale.
+- **`LaneAutoDecide` after a Stale Approach (P6, pinned: "dropped, searched again"):** latched leg `leg0`, latched mode
+  Approach, lane 0 closed, lane 1 open, input ship and target as above, `bSearch` true, `bIgnoreLanes` false: the
+  decision's `Leg.bFound` true and `Leg.Lane` == 1, `Mode` is not `Left` (the order is not ended). Same with
+  `bSearch` false: `Leg.bFound` false, `Mode` == None. Both lanes closed, `bSearch` true: `Leg.bFound` false, `Mode`
+  == None. Control: lane 0 open, latched Approach: `Leg.Lane` == 0.
+
+### 25. Shader window test and its mirror (case `NpcRail.GpuLaneWindowMirror`, 53c2b; R8; P1)
+
+```cpp
+bool SOLNpcTrafficMirror::LaneShipWindowDrawn(const FVector4f& railA, const FVector4f& railB, const FVector4f* rows,
+    float timeS);                       // rows: the column's NPC_GROUP_TEXTURE_ROWS texels as uploaded
+// HLSL, Shaders/Private/SOLNpcTraffic.ush, statement for statement the same:
+// bool SOLNTR_LaneShipDrawn(float4 railA, float4 railB, float4 g4, float4 g5, float4 g6, float t)
+```
+
+The float form of case 21 on the GPU inputs. `g6 = (openStart, close, active, 0)` relative to the GPU epoch (case
+22). The segment logic is `SOLNTR_LaneShipRelM`'s; the departure (leg) or the next leg's departure (turn: the turn
+end, P1, pinned) and the arrival
+are built **only from per-epoch constants** (the epoch parts, `tau0` low and `T_leg`'s rounding; never `t`), so the
+decision cannot flicker from frame to frame. Parked (`railB.w < 0`): false. Not drivable (`g4.z <= 0`) or `railB.w ==
+0`: `g6.x <= t < g6.y`. `SOLNTR_LaneShipRelM` and `LaneShipRelM` are unchanged (the position ignores row 6).
+- **Agreement:** rails from `GpuRailTexels` of real profiles (Earth-Moon 4.06e8 m, Mars-Jupiter 7.121 AU, a 128 AU
+  lane), windows on epoch boundaries, open and draining, t sampled over [0, `NPC_GPU_RAIL_EPOCH_S`]: the mirror equals
+  `LaneShipInSpace` (leg and turn segments; a turn follows the leg after it, P1) except where the double departure or arrival lies within a band tau
+  of a window bound (float rounding, a documented limit). *Implementer, confirmed by measurement in 53c2b:* tau = 4 x
+  ulp_f(max(T_cyc, |open|, |close|)) + 1e-3 s is the starting value; the measured band and the number of ships it
+  affects are reported, not assumed.
+- **No flicker:** for each leg, and for each turn together with the leg after it (P1), the decision is the same at
+  every sampled t of that span inside one GPU epoch, and on
+  both sides of a re-epoch (`GpuRailTexels` at epoch e and e + 1e4 s, windows re-based the same way) for legs outside
+  the band above.
+- **Window extremes:** empty window: false for every ship; (-FAR, +FAR): true for every non-parked ship, so the point
+  layer then draws exactly what it draws today.
+- **Active flag:** `g6.z` does not change the result of `LaneShipWindowDrawn` / `SOLNTR_LaneShipDrawn` (the same
+  inputs with `g6.z` 0 and 1 give the same answer); the shader starts hiding inactive lanes in 53d, always, with the
+  Lanes overlay on or off (P5).
+- **CPU point layer (R8):** `ASOLNpcVisuals` draws a Point-tier lane ship only if `LaneShipWindowDrawn` on the same
+  uploaded texels is true; `CpuPointHandOver` itself is unchanged.
+
+### 26. Constants (case `Constants`)
+
+`static_assert`s and a test: `NPC_GROUP_WINDOW_ROW < NPC_GROUP_TEXTURE_ROWS`; `NPC_LANE_SHIP_BLOCK_COUNT_DEFAULT ==
+4000`; `NPC_LANE_TRAFFIC_ACTIVE_PX == NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_LANE_FADE_FAR_RADII` (exact in double);
+`NPC_LANE_SHIP_PARKED_LEG_S < 0`; `NPC_RAIL_PARKED_GROUP >= NPC_GROUP_TEXTURE_WIDTH`; `NPC_LANE_WINDOW_FAR_S` finite
+in float and far beyond the horizon.

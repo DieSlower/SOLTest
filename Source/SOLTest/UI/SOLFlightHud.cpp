@@ -2821,6 +2821,7 @@ void ASOLFlightHud::UpdateMergeReadout(const bool bAllowed)
         const FSOLLaneTrafficEntry& entry = table[lane];
         FSOLLaneMergeLane& mergeLane = mMergeLanes[lane];
         mergeLane.Profile = entry.Profile;
+        mergeLane.bOpenNow = entry.bOpenNow;
         const bool bBodies = entry.BodyA >= 0 && entry.BodyA < registry.Num() && entry.BodyB >= 0
             && entry.BodyB < registry.Num();
         mergeLane.Frame = bBodies ? SOLLaneTraffic::MakeLaneFrame(entry.Profile, registry.GetPositionM(entry.BodyA),

@@ -320,6 +320,18 @@ bool FSOLLaneNetworkNodeTableTest::RunTest(const FString& /*parameters*/)
             positions[node] == updated.GetPositionM(table.Nodes[node].BodyIndex));
     }
 
+    // The asteroid-only path (the NPC lane end points, 53c2a): the same asteroid positions, registry entries untouched
+    const FVector3d sentinelM(-1.0, -2.0, -3.0);
+    TArray<FVector3d> asteroidPositions;
+    asteroidPositions.Init(sentinelM, 24);
+    SOLLaneNodeTable::AsteroidPositionsAt(table, LANESCHED_2026_S, asteroidPositions);
+    for (int32 node = 0; node < 24; ++node)
+    {
+        const bool bAsteroid = node >= SOLLaneNodeTable::FIRST_ASTEROID_NODE;
+        TestTrue(FString::Printf(TEXT("asteroid-only node %d: %s"), node, bAsteroid ? TEXT("equals PositionsAt")
+            : TEXT("left untouched")), asteroidPositions[node] == (bAsteroid ? positions[node] : sentinelM));
+    }
+
     // The position-only Kepler path equals ElementsToState's position, for every registry orbit over two centuries
     for (int32 body = 0; body < fixture.Registry.Num(); ++body)
     {

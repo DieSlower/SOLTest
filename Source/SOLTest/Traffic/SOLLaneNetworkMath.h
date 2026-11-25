@@ -105,6 +105,13 @@ enum class ESOLTunnelClass : uint8
     Full
 };
 
+// A range of lane-local ship indices [First, First + Count) (a block move's rail upload, SDD 53 4.5)
+struct FSOLShipRange
+{
+    int32 First = 0;
+    int32 Count = 0;
+};
+
 // One node's partner-pick hysteresis state (SDD 53 O3)
 struct FSOLPartnerPick
 {
@@ -255,4 +262,69 @@ namespace SOLLaneNetwork
     // Returns the arrival point: the target, or the zone-edge point facing the ship when the target is inside the zone
     SOLTEST_API FVector3d SunSafeArrivalM(const FVector3d& shipM, const FVector3d& targetM, double zoneRadiusM,
         double edgeRadiusM);
+
+    // Part 53c2: ship blocks, open windows and traffic activation (contract cases 16-24)
+
+    // Returns the number of ship blocks, ceil(lane ships / block size); 0 for a non-positive count or size (P3)
+    SOLTEST_API int32 ShipBlockCount(int32 laneShipCount, int32 blockSize);
+
+    // Returns the ship count of one block (the last block partial); 0 out of range
+    SOLTEST_API int32 ShipBlockSize(int32 block, int32 laneShipCount, int32 blockSize);
+
+    // Returns the block of a lane-local ship index, index / size; INDEX_NONE out of range
+    SOLTEST_API int32 ShipBlockOfLaneShip(int32 laneShipIndex, int32 laneShipCount, int32 blockSize);
+
+    // Writes every block's slot from the slot weights (exact LaneShipShares, ascending slot order; spawn and time jump)
+    SOLTEST_API void AssignShipBlocks(int32 blockCount, TConstArrayView<double> slotWeights,
+        TArray<int32>& outBlockSlot);
+
+    // Frees every block whose slot is marked for release and returns the number freed
+    SOLTEST_API int32 ReleaseShipBlocks(TConstArrayView<uint8> slotRelease, TArray<int32>& inOutBlockSlot);
+
+    // Gives each slot in order the lowest free blocks up to its target and returns the total shortfall
+    SOLTEST_API int32 TakeShipBlocks(TConstArrayView<int32> slotOrder, TConstArrayView<int32> slotTargets,
+        TArray<int32>& inOutBlockSlot, TArray<int32>& outMovedBlocks);
+
+    // Returns whether a slot's blocks may be released: its lane left the set and it has no CPU-tier ship
+    SOLTEST_API bool CanReleaseSlotBlocks(bool bLaneInSetNow, int32 cpuTierShipsOfSlot);
+
+    // Returns whether a slot's lane episode opens this step (in the set now, and new or back)
+    SOLTEST_API bool LaneEpisodeOpens(const FSOLLanePair& previousSlotLane, bool bPreviousInSet,
+        const FSOLLanePair& slotLane, bool bInSetNow);
+
+    // Writes the slots whose episode opens, ascending (the block take order, P4 b and c)
+    SOLTEST_API void EpisodeTakeOrder(TConstArrayView<uint8> slotEpisodeOpens, TArray<int32>& outSlotOrder);
+
+    // Writes each slot's blocks as a CSR list (slotCount + 1 starts, blocks ascending per slot)
+    SOLTEST_API void SlotBlockLists(TConstArrayView<int32> blockSlot, int32 slotCount, TArray<int32>& outSlotStart,
+        TArray<int32>& outBlocks);
+
+    // Writes per slot the sum of a per-block value over its blocks
+    SOLTEST_API void SumBlockCounts(TConstArrayView<int32> blockSlot, TConstArrayView<int32> perBlock,
+        int32 slotCount, TArray<int32>& outPerSlot);
+
+    // Writes the sorted, merged lane-local ship ranges of the moved blocks
+    SOLTEST_API void ShipBlockDirtyRanges(TConstArrayView<int32> movedBlocks, int32 laneShipCount, int32 blockSize,
+        TArray<FSOLShipRange>& outRanges);
+
+    // Returns whether a lane ship is in space (drawn) at a rail time; a U-turn follows the leg after it (P1)
+    SOLTEST_API bool LaneShipInSpace(const FSOLLaneCycle& cycle, double phase, double railTimeS,
+        double openStartRailS, double closeRailS);
+
+    // Returns a window bound relative to the GPU epoch, clamped to +-NPC_LANE_WINDOW_FAR_S, rounded once to float
+    SOLTEST_API float LaneWindowGpuS(double windowS, double gpuEpochS);
+
+    // Returns a slot's group texel row 6: (open, close, active, 0), or the empty window when there is none
+    SOLTEST_API FVector4f LaneWindowTexel(bool bHasWindow, double openStartS, double closeS, double gpuEpochS,
+        bool bActive);
+
+    // Returns a lane's largest on-screen radius from the camera's distance to the segment A-B (reference pixels)
+    SOLTEST_API double LaneTrafficRadiusPx(const FVector3d& cameraM, const FVector3d& aM, const FVector3d& bM,
+        double laneRadiusM, double focalRefPx);
+
+    // Returns whether a lane's traffic is active: radius at or above the scaled threshold, or a CPU-tier ship
+    SOLTEST_API bool LaneTrafficActive(double laneRadiusPx, int32 cpuTierShipsOfLane, double thresholdScale);
+
+    // Returns whether a lane is open now, openStart <= now < close (false for NaN)
+    SOLTEST_API bool LaneOpenAt(double nowS, double openStartS, double closeS);
 }

@@ -32,15 +32,18 @@ namespace
         lane.Profile = entry.Profile;
         lane.BodyA = entry.BodyA;
         lane.BodyB = entry.BodyB;
+        lane.bOpenNow = entry.bOpenNow;
         if (!bodiesM.IsValidIndex(entry.BodyA) || !bodiesM.IsValidIndex(entry.BodyB)
             || !bodyVelocitiesMps.IsValidIndex(entry.BodyA) || !bodyVelocitiesMps.IsValidIndex(entry.BodyB))
         {
             return lane;
         }
-        return SOLLaneTraffic::MakeMergeLane(entry.Profile, entry.BodyA, entry.BodyB,
+        lane = SOLLaneTraffic::MakeMergeLane(entry.Profile, entry.BodyA, entry.BodyB,
             SOLRender::EclipticToUnreal(bodiesM[entry.BodyA]), SOLRender::EclipticToUnreal(bodiesM[entry.BodyB]),
             SOLRender::EclipticToUnreal(bodyVelocitiesMps[entry.BodyA]),
             SOLRender::EclipticToUnreal(bodyVelocitiesMps[entry.BodyB]));
+        lane.bOpenNow = entry.bOpenNow;
+        return lane;
     }
 
     //////////////////////////////////////////////////////////////////////////

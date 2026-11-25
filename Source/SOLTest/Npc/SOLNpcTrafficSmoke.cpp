@@ -74,6 +74,11 @@ namespace
     constexpr double NPCTRAFFIC_V2_MISS_M = 5000.0;          // V2: the fly-by passes the tracked ship this close...
     constexpr double NPCTRAFFIC_V2_MIN_CLOSEST_S = 1.5;      // ...this long after the move at the earliest (2 Full
     constexpr double NPCTRAFFIC_V2_MAX_CLOSEST_S = 4.0;      // radii out at the relative speed) and at the latest
+    constexpr double NPCTRAFFIC_V2_START_RADII = 2.0;        // V2: the fly-by starts this many Full radii away, so
+                                                             // a ship slower than that over the latest closest time
+                                                             // (it would start inside the Full radius) is not taken
+    constexpr int32 NPCTRAFFIC_FIRST_TRAFFIC_ROW = 2;        // V5: the group rows WriteLaneTrafficTexels writes
+    constexpr int32 NPCTRAFFIC_LAST_TRAFFIC_ROW = 5;         // (row 6 is the lane window, SDD 53 5.4)
     constexpr double NPCTRAFFIC_HANDOFF_DEG = 3.0;           // V2: the tracked nose's change at promotion / demotion
     constexpr int32 NPCTRAFFIC_HEADING_SAMPLES = 4000;       // V2: sampled rails for the heading categories
     constexpr double NPCTRAFFIC_CLEARANCE_TOLERANCE_RADII = 1.0e-3;  // V3: rounding of the D14 clearance
@@ -405,7 +410,7 @@ bool FSOLNpcTrafficSmoke::BuildSamples()
 
     // Count each lane's rails, then take every k-th so the samples spread over the lane
     TArray<int32> counts;
-    counts.SetNumZeroed(groups.LaneCount);
+    counts.SetNumZeroed(groups.LaneColumnEnd());
     for (const FSOLNpcRail& rail : rails)
     {
         if (rail.Kind == laneKind && counts.IsValidIndex(rail.Group))
@@ -414,8 +419,8 @@ bool FSOLNpcTrafficSmoke::BuildSamples()
         }
     }
     TArray<int32> seen;
-    seen.SetNumZeroed(groups.LaneCount);
-    mSamples.SetNum(groups.LaneCount);
+    seen.SetNumZeroed(groups.LaneColumnEnd());
+    mSamples.SetNum(groups.LaneColumnEnd());
     mLaneShips.Reset(mLane != INDEX_NONE ? counts[mLane] : 0);
     for (int32 index = 0; index < rails.Num(); ++index)
     {
@@ -472,8 +477,28 @@ void FSOLNpcTrafficSmoke::SetupFlyBy()
     const double lengthM = (laneFrame.BM - laneFrame.AM).Size();
     mFlyBy = FFlyBy();
 
-    // The candidate nearest the middle whose thrust state is the same now and after the fly-by
+    // Returns a rail's universe velocity (the last two rail frames, so the lane's own motion is included) relative to
+    // the reference frame the viewpoint rests in
+    const double stepS = mLastFrame.RailTimeS - mPrevFrame.RailTimeS;
+    const FVector3d referenceMps = SOLRender::EclipticToUnreal(mShips->GetReferenceVelocityMps());
+    const auto relativeVelocityMps = [this, &frame, stepS, &referenceMps](const int32 npc)
+    {
+        const FSOLNpcRail& rail = mNpcs->GetRails()[npc];
+        const bool bHasStep = stepS > 0.0 && mPrevFrame.GroupPointAM.IsValidIndex(rail.Group)
+            && mPrevFrame.LaneFrame.IsValidIndex(rail.Group) && mLastFrame.LaneFrame.IsValidIndex(rail.Group);
+        const FVector3d velocityMps = bHasStep ? (SOLNpcRail::EvaluateM(rail, mLastFrame)
+            - SOLNpcRail::EvaluateM(rail, mPrevFrame)) / stepS : SOLNpcRail::Motion(rail, frame, npc).VelocityMps;
+        return velocityMps - referenceMps;
+    };
+
+    // The candidate nearest the middle whose thrust state is the same now and after the fly-by and that is fast enough
+    // to start the fly-by beyond the Full radius (a slow ship would start inside it, Far straight to Full, never Mid);
+    // when none is, the fastest steady one (the checks then fail honestly)
+    const double minRelativeMps = NPCTRAFFIC_V2_START_RADII * mNpcs->GetStats().FullRadiusM
+        / NPCTRAFFIC_V2_MAX_CLOSEST_S;
     double bestOffset = TNumericLimits<double>::Max();
+    double fastestMps = 0.0;
+    int32 fastest = INDEX_NONE;
     const int32 stride = FMath::Max(1, mLaneShips.Num() / NPCTRAFFIC_HEADING_SAMPLES);
     for (int32 sample = 0; sample < mLaneShips.Num(); sample += stride)
     {
@@ -487,11 +512,27 @@ void FSOLNpcTrafficSmoke::SetupFlyBy()
         const bool bSteady = !TrafficSmokeIsTurn(now.Segment) && now.Segment == after.Segment
             && now.Thrust == ESOLLaneThrust::Coast && after.Thrust == ESOLLaneThrust::Coast
             && now.FlipFraction == after.FlipFraction && (now.FlipFraction <= 0.0 || now.FlipFraction >= 1.0);
-        if (bSteady && FMath::Abs(fraction - NPCTRAFFIC_V2_FRACTION) < bestOffset)
+        if (!bSteady)
+        {
+            continue;
+        }
+        const double speedMps = relativeVelocityMps(mLaneShips[sample]).Size();
+        if (speedMps > fastestMps)
+        {
+            fastestMps = speedMps;
+            fastest = mLaneShips[sample];
+        }
+        if (speedMps >= minRelativeMps && FMath::Abs(fraction - NPCTRAFFIC_V2_FRACTION) < bestOffset)
         {
             bestOffset = FMath::Abs(fraction - NPCTRAFFIC_V2_FRACTION);
             mFlyBy.Npc = mLaneShips[sample];
         }
+    }
+    if (mFlyBy.Npc == INDEX_NONE && fastest != INDEX_NONE)
+    {
+        mFlyBy.Npc = fastest;
+        UE_LOG(LogSOL, Warning, TEXT("SmokeNpcTraffic: no steady Earth-Mars ship at %.1f km/s relative or faster; "
+            "flying past the fastest, %.1f km/s"), minRelativeMps / 1000.0, fastestMps / 1000.0);
     }
     if (mFlyBy.Npc == INDEX_NONE)
     {
@@ -499,23 +540,18 @@ void FSOLNpcTrafficSmoke::SetupFlyBy()
         return;
     }
 
-    // Its universe velocity (the last two rail frames, so the lane's own motion is included) relative to the reference
-    // frame the viewpoint rests in, and the point it passes in the closest-approach time
+    // The point it passes in the closest-approach time
     const FSOLNpcRail& rail = rails[mFlyBy.Npc];
     const FVector3d positionM = SOLNpcRail::EvaluateM(rail, frame);
-    const double stepS = mLastFrame.RailTimeS - mPrevFrame.RailTimeS;
-    const bool bHasStep = stepS > 0.0 && mPrevFrame.GroupPointAM.IsValidIndex(rail.Group)
-        && mPrevFrame.LaneFrame.IsValidIndex(rail.Group) && mLastFrame.LaneFrame.IsValidIndex(rail.Group);
-    const FVector3d velocityMps = bHasStep ? (SOLNpcRail::EvaluateM(rail, mLastFrame)
-        - SOLNpcRail::EvaluateM(rail, mPrevFrame)) / stepS : SOLNpcRail::Motion(rail, frame, mFlyBy.Npc).VelocityMps;
-    const FVector3d relativeMps = velocityMps - SOLRender::EclipticToUnreal(mShips->GetReferenceVelocityMps());
+    const FVector3d relativeMps = relativeVelocityMps(mFlyBy.Npc);
     mFlyBy.RelativeSpeedMps = relativeMps.Size();
-    const double closestS = FMath::Clamp(2.0 * mNpcs->GetStats().FullRadiusM / FMath::Max(mFlyBy.RelativeSpeedMps,
-        1.0), NPCTRAFFIC_V2_MIN_CLOSEST_S, NPCTRAFFIC_V2_MAX_CLOSEST_S);
+    const double closestS = FMath::Clamp(NPCTRAFFIC_V2_START_RADII * mNpcs->GetStats().FullRadiusM
+        / FMath::Max(mFlyBy.RelativeSpeedMps, 1.0), NPCTRAFFIC_V2_MIN_CLOSEST_S, NPCTRAFFIC_V2_MAX_CLOSEST_S);
     SetupShip(positionM + relativeMps * closestS + laneFrame.Up * NPCTRAFFIC_V2_MISS_M, -relativeMps.GetSafeNormal());
     UE_LOG(LogSOL, Log, TEXT("SmokeNpcTraffic: V2 fly-by of ship %d, %.3f of the lane from its middle, %.1f km/s "
-        "relative, closest in %.2f s (Full radius %.0f km)"), mFlyBy.Npc, bestOffset,
-        mFlyBy.RelativeSpeedMps / 1000.0, closestS, mNpcs->GetStats().FullRadiusM / 1000.0);
+        "relative (at least %.1f km/s wanted), closest in %.2f s, starting %.0f km away (Full radius %.0f km)"),
+        mFlyBy.Npc, bestOffset, mFlyBy.RelativeSpeedMps / 1000.0, minRelativeMps / 1000.0, closestS,
+        mFlyBy.RelativeSpeedMps * closestS / 1000.0, mNpcs->GetStats().FullRadiusM / 1000.0);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -595,8 +631,8 @@ void FSOLNpcTrafficSmoke::CheckHalo()
     const uint8 laneKind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane);
     TArray<int32> halo;
     TArray<int32> total;
-    halo.SetNumZeroed(groups.LaneCount);
-    total.SetNumZeroed(groups.LaneCount);
+    halo.SetNumZeroed(groups.LaneColumnEnd());
+    total.SetNumZeroed(groups.LaneColumnEnd());
     for (const FSOLNpcRail& rail : mNpcs->GetRails())
     {
         if (rail.Kind == laneKind && groups.LaneProfile.IsValidIndex(rail.Group))
@@ -608,7 +644,7 @@ void FSOLNpcTrafficSmoke::CheckHalo()
     int32 haloSum = 0;
     int32 totalSum = 0;
     FString detail;
-    for (int32 lane = 0; lane < groups.LaneCount; ++lane)
+    for (int32 lane = 0; lane < groups.LaneColumnEnd(); ++lane)
     {
         haloSum += halo[lane];
         totalSum += total[lane];
@@ -1073,16 +1109,21 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
         return;
     }
 
-    // The lane column as uploaded; rows 2-5 against WriteLaneTrafficTexels of this frame (bit for bit)
+    // The lane column as uploaded; rows 2-5 against WriteLaneTrafficTexels of this frame (bit for bit). Row 6, the lane
+    // window (written by WriteLaneWindowRow, read by the shader from 53c2b), is not one of these rows
     FVector4f rows[SOL::NPC_GROUP_TEXTURE_ROWS];
     TArray<FVector4f> scratch;
     scratch.Init(FVector4f(0.0f, 0.0f, 0.0f, 0.0f), width * SOL::NPC_GROUP_TEXTURE_ROWS);
     SOLNpcRail::WriteLaneTrafficTexels(frame, scratch);
     bool bRowsMatch = true;
+    int32 firstBadRow = INDEX_NONE;
     for (int32 row = 0; row < SOL::NPC_GROUP_TEXTURE_ROWS; ++row)
     {
         rows[row] = texels[row * width + mLane];
-        bRowsMatch &= row < 2 || rows[row] == scratch[row * width + mLane];
+        const bool bTrafficRow = row >= NPCTRAFFIC_FIRST_TRAFFIC_ROW && row <= NPCTRAFFIC_LAST_TRAFFIC_ROW;
+        const bool bRowMatches = !bTrafficRow || rows[row] == scratch[row * width + mLane];
+        firstBadRow = !bRowMatches && firstBadRow == INDEX_NONE ? row : firstBadRow;
+        bRowsMatch &= bRowMatches;
     }
 
     // The viewpoint the rows were written for: the anchor's when it reproduces row 0 exactly, else A - row 0
@@ -1293,7 +1334,8 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
         "%.3f of the case-10 bound, %d over it; epoch re-base worst %.3f m; rows 2-5 as written %s, viewpoint %s "
         "(epoch %.1f s, shader time %.2f s)"), handOverCount, realCount, NPCTRAFFIC_BAND_MIN, NPCTRAFFIC_BAND_MAX,
         handOverCount - realCount, nearestM / 1000.0, farthestM / 1000.0, midRadiusM / 1000.0, outOfBand,
-        worstErrorM / 1000.0, worstRatio, failures, worstEpochM, bRowsMatch ? TEXT("yes") : TEXT("NO"),
+        worstErrorM / 1000.0, worstRatio, failures, worstEpochM, bRowsMatch ? TEXT("yes")
+        : *FString::Printf(TEXT("NO (row %d first differs)"), firstBadRow),
         bAnchorMatch ? TEXT("from the anchor") : TEXT("from row 0"), epochS, shaderTimeS));
     Check(*FString::Printf(TEXT("%s-handover-px"), label), crossings > 0 && outOfBand == 0
         && worstHandOverPx <= NPCTRAFFIC_HANDOVER_PX, FString::Printf(TEXT("%d Mid-radius crossings over 1 s at 60 Hz: "

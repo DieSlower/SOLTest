@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Npc/SOLLaneNodeTable.h"
 #include "Npc/SOLNpcCombat.h"
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
@@ -29,6 +30,16 @@ struct FMassEntityManager;
 
 // Fired after the NPCs are updated for the frame (positions and tiers final)
 DECLARE_MULTICAST_DELEGATE(FSOLOnNpcsUpdated);
+
+// One lane slot's open window this frame (SDD 53 5.4, seconds since J2000) and its traffic active flag (Q22, P5): the
+// inputs of the group texture's row 6 (SOLLaneNetwork::LaneWindowTexel, written by ASOLNpcVisuals at its GPU epoch)
+struct FSOLNpcLaneSlotWindow
+{
+    double OpenStartS = 0.0;
+    double CloseS = 0.0;
+    bool bHasWindow = false;
+    bool bActive = false;
+};
 
 // Per-frame NPC statistics (the 10b measurements; the 10e overlay later)
 struct FSOLNpcStats
@@ -149,6 +160,12 @@ public:
 
     // Returns this frame's CPU-simulated (Mid and Full) ships, for the renderer
     TConstArrayView<FSOLNpcCpuShip> GetCpuShips() const { return mCpuShips; }
+
+    // Returns this frame's lane slot windows and active flags, per slot (empty without a lane network)
+    TConstArrayView<FSOLNpcLaneSlotWindow> GetLaneSlotWindows() const { return mLaneSlotWindows; }
+
+    // Returns the sim time (seconds since J2000) of the population's rail epoch
+    double GetEpochSecondsSinceJ2000() const { return mEpochSecondsSinceJ2000; }
 
     // Returns this frame's statistics
     const FSOLNpcStats& GetStats() const { return mStats; }
@@ -301,6 +318,32 @@ private:
     // The sim clock's time-set count last seen: a change (any SetJulianDate) marks a lane network time jump
     // (SDD 53 4.3)
     uint32 mSeenClockTimeSetCount = 0;
+
+    // Lane network wiring (SDD 53 4.5, part 53c2a). Lane ships sit in ship blocks, each owned by a slot at the spawn
+    // epoch; block moves stay off until 53c2b, so every slot that owns blocks is held
+    SOLLaneNodeTable::FTable mNodeTable;                    // The spawn's node table (asteroid node positions)
+    bool mHasNodeEndpoints = false;                         // A lane column ends on a node without a registry body
+    TArray<FVector3d> mNodePositionsM;                      // Per node, this frame's asteroid positions (scratch)
+    TArray<int32> mBlockSlot;                               // Per ship block, its slot (INDEX_NONE = parked)
+    TArray<double> mGroupOpenStartRailS;                    // Per lane column: its slot's window in rail time (NaN
+    TArray<double> mGroupCloseRailS;                        // = none); empty without a network
+    TArray<FSOLNpcLaneSlotWindow> mLaneSlotWindows;         // Per slot: this frame's window and active flag (row 6)
+    TArray<int32> mColumnCpuShips;                          // Per column: this frame's CPU-tier ships (scratch)
+
+    // Configures the lane network for the spawn epoch and advances it there (the slots exist before the rails);
+    // false without a network (node table incomplete)
+    bool ConfigureLaneNetwork(const SOLNpcScale::FLayout& layout);
+
+    // Fills the slot columns (end points, radii) and returns each slot's traffic weight over the spawn epoch's set
+    void BuildSlotColumns(const SOLNpcScale::FLayout& layout, bool bNetwork, TArray<double>& outSlotWeights);
+
+    // Returns this frame's node positions for the end points past the registry (only the asteroid nodes evaluated),
+    // empty when no lane column ends on one
+    TConstArrayView<FVector3d> LaneEndpointPositions();
+
+    // Writes this frame's slot windows (rail time per column for the tiers, J2000 per slot for row 6) and the active
+    // flags (SDD 53 Q22, P5)
+    void UpdateLaneWindows(double railTimeS, const FVector3d& viewpointM);
 
     // Stats overlay (Part 10e)
     bool mIsStatsVisible = false;

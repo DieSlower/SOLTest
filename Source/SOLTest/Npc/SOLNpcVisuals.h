@@ -291,7 +291,8 @@ private:
                                                                             // instance holds zeros
     double mPlumeFocalRefPx = 0.0;                    // 1080p-reference focal length of the last redraw
     bool mArePlumeMeshes = true;                      // The thruster hull meshes are applied (sol.NpcPlumes)
-    TArray<int32> mLaneShipCounts;                    // Lane ships per lane of the population (SDD 38 D13)
+    TArray<int32> mLaneShipCounts;                    // Lane ships per group column of the population (SDD 38 D13)
+    TArray<FVector4f> mLaneWindowTexels;              // Per lane slot: this frame's row 6 texel (scratch, SDD 53 5.4)
     FSOLNpcLaneFrame mLaneFrame;                      // This frame's lanes (sized once per population)
     FSOLGlowScaleFeed mLaneGlowFeed;                  // HUD glow scale last pushed to the lane material (SDD 37)
     double mLaneFlowClockS = 0.0;                     // Real seconds of dash flow (no warp, never held)

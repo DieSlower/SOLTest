@@ -19,6 +19,8 @@ struct FSOLLaneTrafficEntry
     int32 BodyA = INDEX_NONE;       // Registry index of body A (INDEX_NONE if unknown)
     int32 BodyB = INDEX_NONE;       // Registry index of body B
     FSOLLaneProfile Profile;        // Frozen at spawn (wall radius, nominal leg, end arcs, U-turn)
+    int32 Slot = INDEX_NONE;        // Lane network slot (SDD 53 4.5), INDEX_NONE without one
+    bool bOpenNow = true;           // Inside its slot's open window now (Q30; always true without a slot)
 };
 
 /**
@@ -54,6 +56,13 @@ public:
 
     // Makes the next AdvanceNetwork a time jump (a clock set)
     void MarkNetworkTimeJump();
+
+    // Sets each lane table entry's network slot (by entry index; INDEX_NONE or past the list: no slot, always open);
+    // AdvanceNetwork then refreshes each slotted entry's bOpenNow
+    void SetLaneSlots(TConstArrayView<int32> slotByEntry);
+
+    // Marks a network slot held (SDD 53 4.5: a slot whose ships still fly keeps its column after its lane leaves)
+    void SetNetworkSlotHeld(int32 slot, bool bHeld);
 
     // Returns the lane network's schedule (the daily set, slots, windows and the route query)
     const FSOLLaneNetworkSchedule& GetNetwork() const { return mNetwork; }

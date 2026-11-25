@@ -6,6 +6,7 @@
 #include "Npc/SOLNpcRail.h"
 
 #include "Npc/SOLNpcTunnelMath.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 
 namespace
 {
@@ -103,6 +104,22 @@ int32 FSOLNpcGroupTable::LaneSlotColumn(const int32 slot) const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a column's lane network slot: base lane columns first, then the slot columns after the battles
+int32 FSOLNpcGroupTable::ColumnSlot(const int32 column) const
+{
+    if (column < 0 || column >= Num())
+    {
+        return INDEX_NONE;
+    }
+    if (column < LaneCount)
+    {
+        return column;
+    }
+    const int32 firstExtra = LaneCount + FMath::Max(ClusterCount, 0) + FMath::Max(BattleCount, 0);
+    return column >= firstExtra ? column - firstExtra + LaneCount : INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Packs the kind-specific spawn fields into the rail's float parameters
 FSOLNpcRail SOLNpcRail::FromSpawn(const SOLNpcScale::FSpawn& spawn, int32 groupBase,
     const FSOLLaneProfile& laneProfile, double bodyGM)
@@ -148,38 +165,58 @@ FSOLNpcRail SOLNpcRail::FromSpawn(const SOLNpcScale::FSpawn& spawn, int32 groupB
 //////////////////////////////////////////////////////////////////////////
 // Fills each group's anchor points from the current body positions
 void SOLNpcRail::BuildFrame(const FSOLNpcGroupTable& groups, TConstArrayView<FVector3d> bodyPositionsM,
-    double railTimeS, FSOLNpcRailFrame& outFrame)
+    double railTimeS, FSOLNpcRailFrame& outFrame, TConstArrayView<FVector3d> nodePositionsM)
 {
     outFrame.RailTimeS = railTimeS;
     outFrame.GroupPointAM.SetNumUninitialized(groups.Num(), EAllowShrinking::No);
     outFrame.GroupPointBM.SetNumUninitialized(groups.Num(), EAllowShrinking::No);
     outFrame.GroupBodyM.SetNumUninitialized(groups.Num(), EAllowShrinking::No);
 
-    // Returns a body's position, or the universe origin for an unknown index
-    const auto bodyAt = [&bodyPositionsM](int32 body)
+    // Returns whether an end point index resolves: a registry body, else a node position past the registry
+    const int32 registryCount = bodyPositionsM.Num();
+    const auto hasEndpoint = [&nodePositionsM, registryCount](int32 body)
     {
-        return bodyPositionsM.IsValidIndex(body) ? bodyPositionsM[body] : FVector3d::ZeroVector;
+        return body >= 0 && (body < registryCount || nodePositionsM.IsValidIndex(body - registryCount));
     };
 
-    // Lanes: the end bodies, the frozen profile copy and the current lane frame (invalid for an unresolved body)
-    const int32 laneCount = FMath::Max(groups.LaneCount, 0);
-    outFrame.LaneProfile.SetNum(laneCount, EAllowShrinking::No);
-    outFrame.LaneFrame.SetNum(laneCount, EAllowShrinking::No);
-    int32 group = 0;
-    for (int32 lane = 0; lane < groups.LaneCount; ++lane, ++group)
+    // Returns an end point's position, or the universe origin for an unknown index
+    const auto bodyAt = [&bodyPositionsM, &nodePositionsM, registryCount](int32 body)
     {
-        const int32 bodyA = groups.LaneBodyA[lane];
-        const int32 bodyB = groups.LaneBodyB[lane];
-        outFrame.GroupPointAM[group] = bodyAt(bodyA);
-        outFrame.GroupPointBM[group] = bodyAt(bodyB);
-        outFrame.GroupBodyM[group] = outFrame.GroupPointAM[group];
-        const FSOLLaneProfile& profile = groups.LaneProfile.IsValidIndex(lane) ? groups.LaneProfile[lane]
+        if (bodyPositionsM.IsValidIndex(body))
+        {
+            return bodyPositionsM[body];
+        }
+        return body >= registryCount && nodePositionsM.IsValidIndex(body - registryCount)
+            ? nodePositionsM[body - registryCount] : FVector3d::ZeroVector;
+    };
+
+    // Lane columns (base lanes, then the slot columns after the battles): the end points, the frozen profile copy and
+    // the current lane frame (invalid for an unresolved end); cluster and battle columns in between get a default
+    // profile and an invalid frame, their points are written below
+    const int32 laneColumnEnd = FMath::Max(groups.LaneColumnEnd(), 0);
+    outFrame.LaneProfile.SetNum(laneColumnEnd, EAllowShrinking::No);
+    outFrame.LaneFrame.SetNum(laneColumnEnd, EAllowShrinking::No);
+    for (int32 column = 0; column < laneColumnEnd; ++column)
+    {
+        if (!groups.IsLaneColumn(column))
+        {
+            outFrame.LaneProfile[column] = FSOLLaneProfile();
+            outFrame.LaneFrame[column] = FSOLLaneFrame();
+            continue;
+        }
+        const int32 bodyA = groups.LaneBodyA.IsValidIndex(column) ? groups.LaneBodyA[column] : INDEX_NONE;
+        const int32 bodyB = groups.LaneBodyB.IsValidIndex(column) ? groups.LaneBodyB[column] : INDEX_NONE;
+        outFrame.GroupPointAM[column] = bodyAt(bodyA);
+        outFrame.GroupPointBM[column] = bodyAt(bodyB);
+        outFrame.GroupBodyM[column] = outFrame.GroupPointAM[column];
+        const FSOLLaneProfile& profile = groups.LaneProfile.IsValidIndex(column) ? groups.LaneProfile[column]
             : FSOLLaneProfile();
-        outFrame.LaneProfile[lane] = profile;
-        outFrame.LaneFrame[lane] = bodyPositionsM.IsValidIndex(bodyA) && bodyPositionsM.IsValidIndex(bodyB)
-            ? SOLLaneTraffic::MakeLaneFrame(profile, outFrame.GroupPointAM[group], outFrame.GroupPointBM[group])
+        outFrame.LaneProfile[column] = profile;
+        outFrame.LaneFrame[column] = hasEndpoint(bodyA) && hasEndpoint(bodyB)
+            ? SOLLaneTraffic::MakeLaneFrame(profile, outFrame.GroupPointAM[column], outFrame.GroupPointBM[column])
             : FSOLLaneFrame();
     }
+    int32 group = FMath::Max(groups.LaneCount, 0);
     for (int32 cluster = 0; cluster < groups.ClusterCount; ++cluster, ++group)
     {
         outFrame.GroupPointAM[group] = bodyAt(groups.ClusterBody[cluster]);
@@ -218,6 +255,11 @@ FVector3d SOLNpcRail::VelocityMps(const FSOLNpcRail& rail, const FSOLNpcRailFram
 // Evaluates a rail at a given rail time with the frame's group points held fixed
 FVector3d SOLNpcRail::EvaluateAtTimeM(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const double railTimeS)
 {
+    // A parked lane ship (NPC_RAIL_PARKED_GROUP) has no group points: the universe origin, never drawn or promoted
+    if (!frame.GroupPointAM.IsValidIndex(rail.Group))
+    {
+        return FVector3d::ZeroVector;
+    }
     const FVector3d& pointA = frame.GroupPointAM[rail.Group];
     switch (static_cast<SOLNpcScale::EPlacementKind>(rail.Kind))
     {
@@ -297,12 +339,12 @@ FSOLNpcRail SOLNpcRail::AdvancedToEpoch(const FSOLNpcRail& rail, const double de
 double SOLNpcRail::GroupDistanceM(const FSOLNpcGroupTable& groups, const FSOLNpcRailFrame& frame, int32 group,
     const FVector3d& pointM)
 {
-    if (group < groups.LaneCount)
+    if (groups.IsLaneColumn(group))
     {
         // The halo's outer radius H Rw bounds every lane ship laterally (the U-turn apexes stay above the bodies'
         // surfaces, so between A and B along the axis)
         const double radiusM = groups.LaneProfile.IsValidIndex(group) ? groups.LaneProfile[group].HaloOuterRadiusM
-            : groups.LaneRadiusM[group];
+            : (groups.LaneRadiusM.IsValidIndex(group) ? groups.LaneRadiusM[group] : 0.0);
         return SOLNpcScale::DistanceToLaneM(pointM, frame.GroupPointAM[group], frame.GroupPointBM[group], radiusM);
     }
     const int32 cluster = group - groups.LaneCount;
@@ -333,7 +375,7 @@ void SOLNpcRail::BuildLaneProfiles(FSOLNpcGroupTable& groups, TConstArrayView<in
     TConstArrayView<int32> haloCounts, TConstArrayView<double> nominalLengthsM, TConstArrayView<double> bodyRadiiAM,
     TConstArrayView<double> bodyRadiiBM)
 {
-    const int32 laneCount = FMath::Max(groups.LaneCount, 0);
+    const int32 laneCount = FMath::Max(groups.LaneColumnEnd(), 0);
     groups.LaneProfile.SetNum(laneCount);
     groups.LaneInWallCount.SetNum(laneCount);
     groups.LaneHaloCount.SetNum(laneCount);
@@ -346,6 +388,15 @@ void SOLNpcRail::BuildLaneProfiles(FSOLNpcGroupTable& groups, TConstArrayView<in
     };
     for (int32 lane = 0; lane < laneCount; ++lane)
     {
+        // Inputs are indexed by column; a cluster or battle column between the lane columns holds a default profile
+        if (!groups.IsLaneColumn(lane))
+        {
+            groups.LaneInWallCount[lane] = 0;
+            groups.LaneHaloCount[lane] = 0;
+            groups.LaneMaxPeakMps[lane] = 0.0;
+            groups.LaneProfile[lane] = FSOLLaneProfile();
+            continue;
+        }
         const int32 inWall = entryOf(inWallCounts, lane);
         const double laneRadiusM = groups.LaneRadiusM.IsValidIndex(lane) ? groups.LaneRadiusM[lane] : 0.0;
         groups.LaneInWallCount[lane] = inWall;
@@ -585,4 +636,151 @@ void SOLNpcRail::WriteLaneTrafficTexels(const FSOLNpcRailFrame& frame, TArrayVie
             groupTexels[(row + 2) * width + column] = rows[row];
         }
     }
+}
+
+// Part 53c2: lane network slots in the rail and group textures (contract cases 19, 20, 22)
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the at most three rects (head row part, full rows, tail row part) of a linear texel span
+void SOLNpcRail::RailTexelRegions(const int32 firstTexel, const int32 texelCount, const int32 textureWidth,
+    TArray<FSOLTexelRegion>& outRegions)
+{
+    outRegions.Reset();
+    if (texelCount <= 0 || textureWidth <= 0 || firstTexel < 0)
+    {
+        return;
+    }
+
+    // The head: the part of the first row from the first texel, unless the span starts a row
+    int64 next = firstTexel;
+    const int64 end = static_cast<int64>(firstTexel) + texelCount;
+    const int32 headX = static_cast<int32>(next % textureWidth);
+    if (headX != 0)
+    {
+        const int32 width = static_cast<int32>(FMath::Min<int64>(textureWidth - headX, end - next));
+        outRegions.Add(FSOLTexelRegion{headX, static_cast<int32>(next / textureWidth), width, 1});
+        next += width;
+    }
+
+    // The full rows in one rect, then the tail part row
+    const int64 fullRows = (end - next) / textureWidth;
+    if (fullRows > 0)
+    {
+        outRegions.Add(FSOLTexelRegion{0, static_cast<int32>(next / textureWidth), textureWidth,
+            static_cast<int32>(fullRows)});
+        next += fullRows * textureWidth;
+    }
+    if (next < end)
+    {
+        outRegions.Add(FSOLTexelRegion{0, static_cast<int32>(next / textureWidth), static_cast<int32>(end - next), 1});
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane slot's rail group, its group column; NPC_RAIL_PARKED_GROUP for no slot or one past the capacity
+uint16 SOLNpcRail::LaneRailGroup(const FSOLNpcGroupTable& groups, const int32 slot)
+{
+    const int32 column = groups.LaneSlotColumn(slot);
+    return column == INDEX_NONE ? SOL::NPC_RAIL_PARKED_GROUP : static_cast<uint16>(column);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane spawn's rail on its slot's column with that column's profile, parked for no slot
+FSOLNpcRail SOLNpcRail::LaneRailFromSpawn(const SOLNpcScale::FSpawn& spawn, const FSOLNpcGroupTable& groups)
+{
+    const uint16 group = LaneRailGroup(groups, spawn.GroupIndex);
+    const bool bParked = group == SOL::NPC_RAIL_PARKED_GROUP;
+    FSOLNpcRail rail = FromSpawn(spawn, 0, !bParked && groups.LaneProfile.IsValidIndex(group)
+        ? groups.LaneProfile[group] : FSOLLaneProfile(), 0.0);
+    rail.Group = group;
+    return rail;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the rail time of a sim time: seconds since J2000 less the population's spawn epoch
+double SOLNpcRail::RailTimeS(const double secondsSinceJ2000, const double epochSecondsSinceJ2000)
+{
+    return secondsSinceJ2000 - epochSecondsSinceJ2000;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes a slot's J2000 window in rail time at its column of the two arrays
+void SOLNpcRail::SetSlotWindowRailS(const FSOLNpcGroupTable& groups, const int32 slot, const double openStartS,
+    const double closeS, const double epochSecondsSinceJ2000, TArrayView<double> outOpenStartRailS,
+    TArrayView<double> outCloseRailS)
+{
+    const int32 column = groups.LaneSlotColumn(slot);
+    if (!outOpenStartRailS.IsValidIndex(column) || !outCloseRailS.IsValidIndex(column))
+    {
+        return;
+    }
+    outOpenStartRailS[column] = RailTimeS(openStartS, epochSecondsSinceJ2000);
+    outCloseRailS[column] = RailTimeS(closeS, epochSecondsSinceJ2000);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a rail is in space: a lane rail flying a leg inside its window, any other kind always
+bool SOLNpcRail::LaneRailInSpace(const FSOLNpcRail& rail, const FSOLLaneProfile& profile, const double railTimeS,
+    const double openStartRailS, const double closeRailS)
+{
+    if (static_cast<SOLNpcScale::EPlacementKind>(rail.Kind) != SOLNpcScale::EPlacementKind::Lane)
+    {
+        return true;
+    }
+    const FSOLLaneShip ship = LaneShipFromRail(rail);
+    const FSOLLaneCycle cycle = SOLLaneTraffic::MakeCycle(SOLLaneTraffic::LaneShipLegS(profile, ship),
+        profile.UTurnDepthM);
+    return SOLLaneNetwork::LaneShipInSpace(cycle, ship.Phase, railTimeS, openStartRailS, closeRailS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a rail is a parked lane ship (its block is in the free pool)
+bool SOLNpcRail::IsParked(const FSOLNpcRail& rail)
+{
+    return rail.Kind == static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane)
+        && rail.Group == SOL::NPC_RAIL_PARKED_GROUP;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the two GPU rail texels of a parked lane ship (the shader hides a negative leg time)
+void SOLNpcRail::GpuParkedRailTexels(const int32 faction, FVector4f& outTexelA, FVector4f& outTexelB)
+{
+    // Packed as GpuRailTexels packs it, with group 0 and no leg-time fraction
+    const float packed = static_cast<float>(static_cast<int32>(SOLNpcScale::EPlacementKind::Lane) + 4 * faction);
+    outTexelA = FVector4f(packed, 0.0f, 0.0f, 0.0f);
+    outTexelB = FVector4f(0.0f, 0.0f, 0.0f, static_cast<float>(SOL::NPC_LANE_SHIP_PARKED_LEG_S));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes row NPC_GROUP_WINDOW_ROW of the group texels: each slot's window texel at its column, other columns zero
+void SOLNpcRail::WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, const FSOLNpcGroupTable& groups,
+    TArrayView<FVector4f> groupTexels)
+{
+    const int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
+    if (groupTexels.Num() < width * SOL::NPC_GROUP_TEXTURE_ROWS)
+    {
+        return;
+    }
+    FVector4f* const row = groupTexels.GetData() + SOL::NPC_GROUP_WINDOW_ROW * width;
+    for (int32 column = 0; column < width; ++column)
+    {
+        row[column] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    for (int32 slot = 0; slot < windowBySlot.Num(); ++slot)
+    {
+        const int32 column = groups.LaneSlotColumn(slot);
+        if (column >= 0 && column < width)
+        {
+            row[column] = windowBySlot[slot];
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a slot's lane profile frozen at its episode open (MakeLaneProfile of the tunnel radius of its ships)
+FSOLLaneProfile SOLNpcRail::SlotLaneProfile(const double laneRadiusM, const int32 inWallCount,
+    const double nominalLengthM, const double bodyRadiusAM, const double bodyRadiusBM)
+{
+    return SOLLaneTraffic::MakeLaneProfile(SOLNpcTunnel::TunnelRadiusM(laneRadiusM, inWallCount), nominalLengthM,
+        bodyRadiusAM, bodyRadiusBM);
 }

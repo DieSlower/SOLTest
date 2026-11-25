@@ -428,13 +428,22 @@ void SOLNpcLane::CountLaneShips(const TConstArrayView<FSOLNpcRail> rails, const 
 void SOLNpcLane::BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRailFrame& frame,
     const TConstArrayView<int32> counts, FSOLNpcLaneFrame& outFrame)
 {
-    const int32 laneCount = FMath::Max(groups.LaneCount, 0);
+    const int32 laneCount = FMath::Max(groups.LaneColumnEnd(), 0);
     outFrame.Lanes.SetNum(laneCount, EAllowShrinking::No);
     const int32 framePoints = FMath::Min(frame.GroupPointAM.Num(), frame.GroupPointBM.Num());
     for (int32 lane = 0; lane < laneCount; ++lane)
     {
-        // A lane past the frame arrays or the counts has no ships this frame
+        // A cluster or battle column between the lane columns is an empty entry, never resolved or drawn
         FSOLNpcLaneEntry& entry = outFrame.Lanes[lane];
+        entry.bLaneColumn = groups.IsLaneColumn(lane);
+        if (!entry.bLaneColumn)
+        {
+            entry = FSOLNpcLaneEntry();
+            entry.bLaneColumn = false;
+            continue;
+        }
+
+        // A lane past the frame arrays or the counts has no ships this frame
         const bool bInFrame = lane < framePoints;
         entry.A = bInFrame ? frame.GroupPointAM[lane] : FVector3d::ZeroVector;
         entry.B = bInFrame ? frame.GroupPointBM[lane] : FVector3d::ZeroVector;
@@ -489,7 +498,7 @@ FLinearColor SOLNpcLane::LaneMaterialParams(const double flowPhase)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes each lane's radius (row 0) and weight or -1 (row 1) into the group texels' .w; other columns get 0
+// Writes each lane column's radius (row 0) and weight or -1 (row 1) into the group texels' .w; other columns get 0
 void SOLNpcLane::WriteLaneGroupTexelW(const FSOLNpcLaneFrame& frame, const TArrayView<FVector4f> groupTexels)
 {
     constexpr int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
@@ -502,7 +511,7 @@ void SOLNpcLane::WriteLaneGroupTexelW(const FSOLNpcLaneFrame& frame, const TArra
     {
         float radius = 0.0f;
         float weight = 0.0f;
-        if (column < laneCount)
+        if (column < laneCount && frame.Lanes[column].bLaneColumn)
         {
             const FSOLNpcLaneEntry& entry = frame.Lanes[column];
             radius = static_cast<float>(entry.RadiusM);

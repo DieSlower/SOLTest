@@ -22,10 +22,12 @@ struct FSOLNpcLaneEntry
     double WallRadiusM = 0.0;                // Frozen wall radius Rw of the lane profile (0 without a profile)
     bool bResolved = false;                  // Both bodies resolved and inside the frame arrays, any ship count
     bool bDrawn = false;                     // Ships on it and both bodies resolved (bResolved and a ship)
+    bool bLaneColumn = true;                 // False for a cluster or battle column between lane columns (53c2)
 };
 
-// The lanes of one frame, in lane order (global groups 0 .. LaneCount - 1). Built each frame by
-// SOLNpcLane::BuildLaneFrame without allocating once sized; the extension point for issue #49 (SDD 38 section 4.10)
+// The lanes of one frame, indexed by group column 0 .. FSOLNpcGroupTable::LaneColumnEnd() - 1 (base lanes, then the
+// network slot columns after the battles; the cluster and battle columns between are empty entries). Built each frame
+// by SOLNpcLane::BuildLaneFrame without allocating once sized; the extension point for issue #49 (SDD 38 section 4.10)
 struct FSOLNpcLaneFrame
 {
     TArray<FSOLNpcLaneEntry> Lanes;
@@ -152,9 +154,10 @@ namespace SOLNpcLane
     // kind Lane with a group below laneCount adds one to its group; cluster and battle rails are ignored
     SOLTEST_API void CountLaneShips(TConstArrayView<FSOLNpcRail> rails, int32 laneCount, TArray<int32>& outCounts);
 
-    // Fills one entry per lane (groups.LaneCount) from the frame's group points, the lane radii and the ship counts;
-    // a lane past the end of the counts or of the frame arrays has count 0 and is not drawn, and past the frame arrays
-    // it is not resolved either. Keeps outFrame's array when its size does not change (no allocation per frame)
+    // Fills one entry per column to groups.LaneColumnEnd() (cluster and battle columns empty) from the frame's group
+    // points, the lane radii and the ship counts; a lane past the end of the counts or of the frame arrays has count 0
+    // and is not drawn, and past the frame arrays it is not resolved either. Keeps outFrame's array when its size does
+    // not change (no allocation per frame)
     SOLTEST_API void BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRailFrame& frame,
         TConstArrayView<int32> counts, FSOLNpcLaneFrame& outFrame);
 

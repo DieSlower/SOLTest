@@ -26,6 +26,7 @@
 #include "Visuals/SOLThrusterRibbons.h"
 
 #include "Algo/BinarySearch.h"
+#include "Algo/Count.h"
 #include "Async/ParallelFor.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Blueprint/UserWidget.h"
@@ -571,6 +572,11 @@ void USOLNpcSubsystem::Despawn()
     mSpawnCreated = 0;
     mRails.Empty();
     mCpuShips.Reset();
+    mBlockSlot.Empty();
+    mGroupOpenStartRailS.Reset();
+    mGroupCloseRailS.Reset();
+    mLaneSlotWindows.Reset();
+    mHasNodeEndpoints = false;
     mCombat.Reset(0);
     mHasPrevCombatFrameBody = false;
     mSpawnedCount = 0;
@@ -618,6 +624,189 @@ void USOLNpcSubsystem::BuildGroups(const SOLNpcScale::FLayout& layout, const SOL
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Configures the lane network (the 24-node table at the spawn epoch) and advances it to the spawn epoch
+bool USOLNpcSubsystem::ConfigureLaneNetwork(const SOLNpcScale::FLayout& layout)
+{
+    mNodeTable = SOLLaneNodeTable::FTable();
+    USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>();
+    if (laneTraffic == nullptr)
+    {
+        return false;
+    }
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    mNodeTable = SOLLaneNodeTable::Build(registry, SOLAsteroidBelt::RealAsteroids(), layout.Lanes,
+        mEpochSecondsSinceJ2000);
+    if (!mNodeTable.bValid)
+    {
+        UE_LOG(LogSOL, Warning, TEXT("Lane network: node table incomplete, no lane network"));
+        laneTraffic->ClearNetwork();
+        return false;
+    }
+
+    // Node positions from the registry and the belt catalogue (SDD 53 4.2); the schedule is built here, at the spawn
+    // epoch, so the slots exist before the rails (the next Update's advance at the same epoch does nothing)
+    FSOLLaneNetworkConfig config;
+    config.Nodes = mNodeTable.Nodes;
+    config.NodeMaxSpeedMps = mNodeTable.MaxSpeedMps;
+    config.BaseLanes = mNodeTable.BaseLanes;
+    config.RootNode = SOLLaneNodeTable::EARTH_NODE;
+    config.SlotCapacity = mGroups.LaneSlotCapacity();   // Slot columns: FSOLNpcGroupTable::LaneSlotColumn
+    const FSOLBodyRegistry* registryPtr = &registry;
+    laneTraffic->ConfigureNetwork(config, [registryPtr, table = mNodeTable](const double secondsSinceJ2000,
+        TArrayView<FVector3d> outPositionsM)
+    {
+        SOLLaneNodeTable::PositionsAt(table, *registryPtr, secondsSinceJ2000, outPositionsM);
+    });
+    mSeenClockTimeSetCount = SimClock->GetTimeSetCount();
+    laneTraffic->AdvanceNetwork(mEpochSecondsSinceJ2000);
+    return laneTraffic->GetNetwork().IsBuilt();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the slot columns past the base lanes and writes each slot's weight over the spawn epoch's lane set
+void USOLNpcSubsystem::BuildSlotColumns(const SOLNpcScale::FLayout& layout, const bool bNetwork,
+    TArray<double>& outSlotWeights)
+{
+    outSlotWeights.Reset();
+    mHasNodeEndpoints = false;
+    if (!bNetwork)
+    {
+        // No network: the base lanes by the layout's weights
+        for (const SOLNpcScale::FLaneDef& lane : layout.Lanes)
+        {
+            outSlotWeights.Add(FMath::Max(lane.Weight, 0.0));
+        }
+        return;
+    }
+    const FSOLLaneNetworkSchedule& network = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>()->GetNetwork();
+    const TConstArrayView<FSOLLanePair> slots = network.GetSlots();
+    const TConstArrayView<FSOLLaneNode> nodes = mNodeTable.Nodes;
+    const int32 slotCount = FMath::Min(slots.Num(), mGroups.LaneSlotCapacity());
+    mGroups.ExtraSlotCount = FMath::Max(slotCount - mGroups.LaneCount, 0);
+    const int32 columnEnd = mGroups.LaneColumnEnd();
+    while (mGroups.LaneBodyA.Num() < columnEnd)
+    {
+        mGroups.LaneBodyA.Add(INDEX_NONE);
+        mGroups.LaneBodyB.Add(INDEX_NONE);
+        mGroups.LaneRadiusM.Add(0.0);
+    }
+
+    // A node's end point index: its registry body, else registry count + node (LaneEndpointPositions appends them)
+    const int32 registryCount = BodyRegistry->GetRegistry().Num();
+    const auto endpointOf = [&nodes, registryCount](const int32 node)
+    {
+        return nodes[node].BodyIndex != INDEX_NONE ? nodes[node].BodyIndex : registryCount + node;
+    };
+    const int64 epoch = network.GetCurrentEpoch();
+    outSlotWeights.SetNumZeroed(slotCount);
+    for (int32 slot = 0; slot < slotCount; ++slot)
+    {
+        const FSOLLanePair& lane = slots[slot];
+        if (!nodes.IsValidIndex(lane.NodeA) || !nodes.IsValidIndex(lane.NodeB))
+        {
+            continue;
+        }
+
+        // A partner lane or island link: its nodes' end points and the larger region radius (O5); base lanes keep the
+        // layout's bodies and radii (Earth-Moon its hand row)
+        if (slot >= mGroups.LaneCount)
+        {
+            const int32 column = mGroups.LaneSlotColumn(slot);
+            mGroups.LaneBodyA[column] = endpointOf(lane.NodeA);
+            mGroups.LaneBodyB[column] = endpointOf(lane.NodeB);
+            mGroups.LaneRadiusM[column] = FMath::Max(nodes[lane.NodeA].RegionRadiusM,
+                nodes[lane.NodeB].RegionRadiusM);
+            mHasNodeEndpoints |= mGroups.LaneBodyA[column] >= registryCount
+                || mGroups.LaneBodyB[column] >= registryCount;
+        }
+        outSlotWeights[slot] = network.IsInSet(epoch, lane)
+            ? SOLLaneNetwork::LaneWeight(nodes[lane.NodeA].PopulationTier, nodes[lane.NodeB].PopulationTier) : 0.0;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns this frame's node positions for end points past the registry: only the asteroid nodes are evaluated (the
+// registry nodes' end points read the registry), nothing is copied
+TConstArrayView<FVector3d> USOLNpcSubsystem::LaneEndpointPositions()
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(USOLNpcSubsystem::LaneEndpointPositions);
+    if (!mHasNodeEndpoints)
+    {
+        return TConstArrayView<FVector3d>();
+    }
+    if (mNodePositionsM.Num() != mNodeTable.Nodes.Num())
+    {
+        // The registry nodes' entries are never read (their end points are registry indices), so NaN once
+        mNodePositionsM.Init(FVector3d(std::numeric_limits<double>::quiet_NaN()), mNodeTable.Nodes.Num());
+    }
+    SOLLaneNodeTable::AsteroidPositionsAt(mNodeTable, SimClock->GetClock().GetSecondsSinceJ2000(), mNodePositionsM);
+    return mNodePositionsM;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes each lane column's slot window in rail time (the tier rule) and each slot's row 6 inputs (window, active)
+void USOLNpcSubsystem::UpdateLaneWindows(const double railTimeS, const FVector3d& viewpointM)
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(USOLNpcSubsystem::UpdateLaneWindows);
+    const USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>();
+    if (laneTraffic == nullptr || !laneTraffic->GetNetwork().IsBuilt())
+    {
+        mGroupOpenStartRailS.Reset();
+        mGroupCloseRailS.Reset();
+        mLaneSlotWindows.Reset();
+        return;
+    }
+    const FSOLLaneNetworkSchedule& network = laneTraffic->GetNetwork();
+    const int32 columnEnd = mGroups.LaneColumnEnd();
+    const int32 slotCount = FMath::Min(network.GetSlots().Num(), mGroups.LaneSlotCapacity());
+
+    // CPU-tier ships per column (a lane with one stays active, Q22)
+    mColumnCpuShips.SetNumZeroed(columnEnd, EAllowShrinking::No);
+    FMemory::Memzero(mColumnCpuShips.GetData(), sizeof(int32) * columnEnd);
+    for (const FSOLNpcCpuShip& ship : mCpuShips)
+    {
+        const int32 group = mRails.IsValidIndex(ship.NpcIndex) ? mRails[ship.NpcIndex].Group : INDEX_NONE;
+        if (mColumnCpuShips.IsValidIndex(group))
+        {
+            ++mColumnCpuShips[group];
+        }
+    }
+
+    // The view's 1080p-reference focal and the QualityPreset's threshold scale (P5); the reference preset (Epic)
+    // without settings
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+    const double focalRefPx = SOLThruster::FocalRefPx(fovDeg, viewportPx.X / viewportPx.Y);
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
+    const double thresholdScale = SOLLaneNetwork::LaneTunnelQualityScale(settings != nullptr
+        ? settings->GetSavedValues().QualityPreset : SOL::NPC_TUNNEL_QUALITY_REFERENCE_PRESET);
+    const double nanS = std::numeric_limits<double>::quiet_NaN();
+    mGroupOpenStartRailS.Init(nanS, columnEnd);
+    mGroupCloseRailS.Init(nanS, columnEnd);
+    mLaneSlotWindows.SetNum(slotCount, EAllowShrinking::No);
+    for (int32 slot = 0; slot < slotCount; ++slot)
+    {
+        FSOLNpcLaneSlotWindow& window = mLaneSlotWindows[slot];
+        window.bHasWindow = network.GetSlotWindow(slot, window.OpenStartS, window.CloseS);
+        const int32 column = mGroups.LaneSlotColumn(slot);
+        window.bActive = false;
+        if (!mGroupOpenStartRailS.IsValidIndex(column))
+        {
+            continue;
+        }
+        if (window.bHasWindow)
+        {
+            SOLNpcRail::SetSlotWindowRailS(mGroups, slot, window.OpenStartS, window.CloseS, mEpochSecondsSinceJ2000,
+                mGroupOpenStartRailS, mGroupCloseRailS);
+        }
+        const double radiusPx = SOLLaneNetwork::LaneTrafficRadiusPx(viewpointM, mRailFrame.GroupPointAM[column],
+            mRailFrame.GroupPointBM[column], mGroups.LaneRadiusM[column], focalRefPx);
+        window.bActive = SOLLaneNetwork::LaneTrafficActive(radiusPx, mColumnCpuShips[column], thresholdScale);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Spawns a population of count ships around the current viewpoint
 void USOLNpcSubsystem::Spawn(const int32 count)
 {
@@ -651,86 +840,106 @@ void USOLNpcSubsystem::Spawn(const int32 count)
         clusterGMs.Add(body != INDEX_NONE ? registry.GetGM(body) : 0.0);
     }
 
-    // Lane profiles (SDD 50 section 4.7): (1) the parallel counting pass, in-wall and halo ships per lane; (2) each
-    // lane's frozen profile from its in-wall count (D13), nominal (maximum) length (D16) and end body radii
+    // The lane network first (SDD 53 4.2-4.5, 53c2a): built at the spawn epoch so the lane ships go into ship blocks
+    // shared over that epoch's slotted lane set before any rail exists. Without a network (node table incomplete)
+    // the base lanes are the slots, shared by the layout's weights
     const uint32 seed = mOptions.Seed;
-    const int32 laneCount = mGroups.LaneCount;
-    const int32 blockCount = FMath::DivideAndRoundUp(count, NPC_SPAWN_BLOCK);
+    const bool bNetwork = ConfigureLaneNetwork(layout);
+    TArray<double> slotWeights;
+    BuildSlotColumns(layout, bNetwork, slotWeights);
+    const int32 slotCount = slotWeights.Num();
+    const int32 columnEnd = mGroups.LaneColumnEnd();
+    const int32 blockSize = SOL::NPC_LANE_SHIP_BLOCK_SIZE;
+    SOLLaneNetwork::AssignShipBlocks(SOLLaneNetwork::ShipBlockCount(counts.Lane, blockSize), slotWeights, mBlockSlot);
+    UE_LOG(LogSOL, Log, TEXT("NpcLaneBlocks network=%d slots=%d extraColumns=%d blocks=%d parked=%d"),
+        bNetwork ? 1 : 0, slotCount, mGroups.ExtraSlotCount, mBlockSlot.Num(),
+        static_cast<int32>(Algo::Count(mBlockSlot, INDEX_NONE)));
+
+    // Lane profiles per slot column (SDD 50 4.7, SDD 53 4.5): the in-wall and halo ships of each slot's blocks (D13),
+    // the nominal (maximum) length (D16) and the end radii; a base lane keeps its registry form, a network lane uses
+    // its nodes' aphelia and clearance radii
     TArray<int32> blockInWall;
     TArray<int32> blockHalo;
-    blockInWall.SetNumZeroed(blockCount * laneCount);
-    blockHalo.SetNumZeroed(blockCount * laneCount);
-    ParallelFor(blockCount, [&](int32 block)
-    {
-        SOLNpcScale::AccumulateLaneSpawns(seed, counts, layout, block * NPC_SPAWN_BLOCK,
-            FMath::Min((block + 1) * NPC_SPAWN_BLOCK, count), MakeArrayView(blockInWall).Slice(block * laneCount,
-            laneCount), MakeArrayView(blockHalo).Slice(block * laneCount, laneCount));
-    });
+    SOLNpcScale::CountBlockSpawns(seed, counts, blockSize, blockInWall, blockHalo);
+    TArray<int32> slotInWall;
+    TArray<int32> slotHalo;
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, blockInWall, slotCount, slotInWall);
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, blockHalo, slotCount, slotHalo);
     TArray<int32> laneInWall;
     TArray<int32> laneHalo;
     TArray<double> laneNominalM;
     TArray<double> laneRadiusAM;
     TArray<double> laneRadiusBM;
-    laneInWall.SetNumZeroed(laneCount);
-    laneHalo.SetNumZeroed(laneCount);
-    laneNominalM.SetNumZeroed(laneCount);
-    laneRadiusAM.SetNumZeroed(laneCount);
-    laneRadiusBM.SetNumZeroed(laneCount);
+    laneInWall.SetNumZeroed(columnEnd);
+    laneHalo.SetNumZeroed(columnEnd);
+    laneNominalM.SetNumZeroed(columnEnd);
+    laneRadiusAM.SetNumZeroed(columnEnd);
+    laneRadiusBM.SetNumZeroed(columnEnd);
+    TArray<int32> slotByColumn;
+    slotByColumn.Init(INDEX_NONE, columnEnd);
     const double epochCenturies = mEpochSecondsSinceJ2000 / SOL::SECONDS_PER_JULIAN_CENTURY;
-    for (int32 lane = 0; lane < laneCount; ++lane)
+    const TConstArrayView<FSOLLanePair> slots = bNetwork ? GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>()
+        ->GetNetwork().GetSlots() : TConstArrayView<FSOLLanePair>();
+    for (int32 slot = 0; slot < slotCount; ++slot)
     {
-        for (int32 block = 0; block < blockCount; ++block)
+        const int32 column = mGroups.LaneSlotColumn(slot);
+        if (!slotByColumn.IsValidIndex(column))
         {
-            laneInWall[lane] += blockInWall[block * laneCount + lane];
-            laneHalo[lane] += blockHalo[block * laneCount + lane];
+            continue;
         }
-        const int32 bodyA = mGroups.LaneBodyA[lane];
-        const int32 bodyB = mGroups.LaneBodyB[lane];
-        if (bodyA != INDEX_NONE && bodyB != INDEX_NONE)
+        slotByColumn[column] = slot;
+        laneInWall[column] = slotInWall[slot];
+        laneHalo[column] = slotHalo[slot];
+        const int32 bodyA = mGroups.LaneBodyA[column];
+        const int32 bodyB = mGroups.LaneBodyB[column];
+        if (slot < mGroups.LaneCount && bodyA >= 0 && bodyA < registry.Num() && bodyB >= 0 && bodyB < registry.Num())
         {
-            laneNominalM[lane] = NpcLaneNominalLengthM(registry, bodyA, bodyB, epochCenturies);
-            laneRadiusAM[lane] = registry.GetRadiusM(bodyA);
-            laneRadiusBM[lane] = registry.GetRadiusM(bodyB);
+            laneNominalM[column] = NpcLaneNominalLengthM(registry, bodyA, bodyB, epochCenturies);
+            laneRadiusAM[column] = registry.GetRadiusM(bodyA);
+            laneRadiusBM[column] = registry.GetRadiusM(bodyB);
+        }
+        else if (slot >= mGroups.LaneCount && slots.IsValidIndex(slot) && slots[slot].NodeA != INDEX_NONE)
+        {
+            const TConstArrayView<FSOLLaneNode> nodes = mNodeTable.Nodes;
+            laneNominalM[column] = SOLLaneNetwork::LaneNominalLengthM(nodes, slots[slot].NodeA, slots[slot].NodeB);
+            laneRadiusAM[column] = nodes[slots[slot].NodeA].ClearanceRadiusM;
+            laneRadiusBM[column] = nodes[slots[slot].NodeB].ClearanceRadiusM;
         }
     }
     SOLNpcRail::BuildLaneProfiles(mGroups, laneInWall, laneHalo, laneNominalM, laneRadiusAM, laneRadiusBM);
     if (USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>())
     {
-        // The lane table for the HUD's merge readout (SDD 50 section 4.10), frozen with the profiles
+        // The lane table for the HUD's merge readout and the AUTO lane rules (SDD 50 section 4.10), per column, with
+        // each column's slot so its open flag follows the slot's window (Q30). A lane ending on a node without a
+        // registry body (an asteroid) has no merge view yet
         laneTraffic->SetLanes(mGroups.LaneBodyA, mGroups.LaneBodyB, mGroups.LaneProfile);
+        if (bNetwork)
+        {
+            laneTraffic->SetLaneSlots(slotByColumn);
 
-        // The lane network (SDD 53 4.2-4.3): the 24-node table at the spawn epoch and its positions from the registry
-        // and the belt catalogue; the schedule is built on the first Update
-        SOLLaneNodeTable::FTable nodeTable = SOLLaneNodeTable::Build(registry, SOLAsteroidBelt::RealAsteroids(),
-            layout.Lanes, mEpochSecondsSinceJ2000);
-        if (nodeTable.bValid)
-        {
-            FSOLLaneNetworkConfig config;
-            config.Nodes = nodeTable.Nodes;
-            config.NodeMaxSpeedMps = nodeTable.MaxSpeedMps;
-            config.BaseLanes = nodeTable.BaseLanes;
-            config.RootNode = SOLLaneNodeTable::EARTH_NODE;
-            config.SlotCapacity = mGroups.LaneSlotCapacity();   // Slot columns: FSOLNpcGroupTable::LaneSlotColumn
-            const FSOLBodyRegistry* registryPtr = &registry;
-            laneTraffic->ConfigureNetwork(config, [registryPtr, table = MoveTemp(nodeTable)](
-                const double secondsSinceJ2000, TArrayView<FVector3d> outPositionsM)
+            // Interim until 53c2b (no block moves): every slot that owns blocks keeps its column
+            TArray<int32> slotStart;
+            TArray<int32> slotBlocks;
+            SOLLaneNetwork::SlotBlockLists(mBlockSlot, slotCount, slotStart, slotBlocks);
+            for (int32 slot = 0; slot < slotCount; ++slot)
             {
-                SOLLaneNodeTable::PositionsAt(table, *registryPtr, secondsSinceJ2000, outPositionsM);
-            });
-        }
-        else
-        {
-            UE_LOG(LogSOL, Warning, TEXT("Lane network: node table incomplete, no lane network"));
-            laneTraffic->ClearNetwork();
+                if (slotStart[slot + 1] > slotStart[slot])
+                {
+                    laneTraffic->SetNetworkSlotHeld(slot, true);
+                }
+            }
         }
     }
 
-    // (3) Rails for every NPC index, in parallel blocks (stateless per-index hash), and each block's largest lane peak
+    // Rails for every NPC index, in parallel blocks (stateless per-index hash), and each block's largest lane peak. A
+    // lane ship's group is its block's slot column (LaneRailGroup), never the slot number; a ship of a free block is
+    // parked (none at spawn: every block is assigned)
+    const int32 blockCount = FMath::DivideAndRoundUp(count, NPC_SPAWN_BLOCK);
     const int32 clusterBase = mGroups.LaneCount;
     const int32 battleBase = mGroups.LaneCount + mGroups.ClusterCount;
     const FSOLLaneProfile noLaneProfile;
     TArray<double> blockMaxPeakMps;
-    blockMaxPeakMps.SetNumZeroed(blockCount * laneCount);
+    blockMaxPeakMps.SetNumZeroed(blockCount * columnEnd);
     mRails.SetNumUninitialized(count);
     ParallelFor(blockCount, [&](int32 block)
     {
@@ -738,13 +947,13 @@ void USOLNpcSubsystem::Spawn(const int32 count)
         const int32 end = FMath::Min((block + 1) * NPC_SPAWN_BLOCK, count);
         for (int32 index = begin; index < end; ++index)
         {
-            const SOLNpcScale::FSpawn spawn = SOLNpcScale::MakeSpawn(seed, index, counts, layout, battle);
+            const SOLNpcScale::FSpawn spawn = SOLNpcScale::MakeSpawn(seed, index, counts, layout, battle, mBlockSlot,
+                blockSize);
             const int32 local = FMath::Max(spawn.GroupIndex, 0);
             switch (spawn.Kind)
             {
             case SOLNpcScale::EPlacementKind::Lane:
-                mRails[index] = SOLNpcRail::FromSpawn(spawn, 0, mGroups.LaneProfile.IsValidIndex(local)
-                    ? mGroups.LaneProfile[local] : noLaneProfile, 0.0);
+                mRails[index] = SOLNpcRail::LaneRailFromSpawn(spawn, mGroups);
                 break;
             case SOLNpcScale::EPlacementKind::Cluster:
                 mRails[index] = SOLNpcRail::FromSpawn(spawn, clusterBase, noLaneProfile,
@@ -757,22 +966,23 @@ void USOLNpcSubsystem::Spawn(const int32 count)
             }
         }
         SOLNpcRail::AccumulateLaneMaxPeak(MakeArrayView(mRails).Slice(begin, end - begin),
-            MakeArrayView(blockMaxPeakMps).Slice(block * laneCount, laneCount));
+            MakeArrayView(blockMaxPeakMps).Slice(block * columnEnd, columnEnd));
     });
-    for (int32 lane = 0; lane < laneCount; ++lane)
+    for (int32 lane = 0; lane < columnEnd; ++lane)
     {
         for (int32 block = 0; block < blockCount; ++block)
         {
             mGroups.LaneMaxPeakMps[lane] = FMath::Max(mGroups.LaneMaxPeakMps[lane],
-                blockMaxPeakMps[block * laneCount + lane]);
+                blockMaxPeakMps[block * columnEnd + lane]);
         }
     }
     const double railsS = FPlatformTime::Seconds();
 
-    // Bucket the NPC indices by (group, class) (counting sort), so each bucket is one batch with its shared fragments
+    // Bucket the NPC indices by (group, class) (counting sort), so each bucket is one batch with its shared fragments;
+    // parked lane ships (NPC_RAIL_PARKED_GROUP) get a trailing group of their own, never a candidate
     const int32 groupCount = mGroups.Num();
     const int32 classCount = SOLNpcAi::ClassCount();
-    const int32 bucketCount = groupCount * classCount;
+    const int32 bucketCount = (groupCount + 1) * classCount;
     TArray<int32> bucketStarts;
     bucketStarts.SetNumZeroed(bucketCount + 1);
     TArray<int32> bucketOfIndex;
@@ -786,7 +996,7 @@ void USOLNpcSubsystem::Spawn(const int32 count)
         {
             const int32 shipClass = SOLNpcAi::PickClass(SOLNpcScale::HashUnit(seed, static_cast<uint32>(index),
                 SOL::NPC_CLASS_HASH_STREAM));
-            bucketOfIndex[index] = FMath::Min<int32>(mRails[index].Group, groupCount - 1) * classCount + shipClass;
+            bucketOfIndex[index] = FMath::Min<int32>(mRails[index].Group, groupCount) * classCount + shipClass;
         }
     });
     for (int32 index = 0; index < count; ++index)
@@ -971,12 +1181,13 @@ void USOLNpcSubsystem::Update()
     // Rail frame and the group cull against the Mid keep radius
     const double aiKeepScale = 1.0 + FMath::Max(mOptions.AiHysteresis, 0.0);
     const FVector3d viewpointM = Anchor->GetViewpointM();
-    const double railTimeS = SimClock->GetClock().GetSecondsSinceJ2000() - mEpochSecondsSinceJ2000;
+    const double railTimeS = SOLNpcRail::RailTimeS(SimClock->GetClock().GetSecondsSinceJ2000(),
+        mEpochSecondsSinceJ2000);
     if (USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>())
     {
         // The lane network's epoch (SDD 53 5.3): nothing while the epoch holds, a step per new epoch, a rebuild on
-        // a jump (a clock set, even within the catch-up limit, or a move past it); read by no traffic yet (53c2 wires
-        // the ships to it)
+        // a jump (a clock set, even within the catch-up limit, or a move past it). The ships keep their spawn blocks
+        // until 53c2b (no block moves, so no exact re-share at a jump either); the windows feed the tiers and row 6
         if (SimClock->GetTimeSetCount() != mSeenClockTimeSetCount)
         {
             mSeenClockTimeSetCount = SimClock->GetTimeSetCount();
@@ -984,7 +1195,9 @@ void USOLNpcSubsystem::Update()
         }
         laneTraffic->AdvanceNetwork(SimClock->GetClock().GetSecondsSinceJ2000());
     }
-    SOLNpcRail::BuildFrame(mGroups, BodyRegistry->GetRegistry().GetPositionsM(), railTimeS, mRailFrame);
+    SOLNpcRail::BuildFrame(mGroups, BodyRegistry->GetRegistry().GetPositionsM(), railTimeS, mRailFrame,
+        LaneEndpointPositions());
+    UpdateLaneWindows(railTimeS, viewpointM);
     if (mPendingFaceBattle != INDEX_NONE)
     {
         FaceBattle(mPendingFaceBattle);
@@ -1000,13 +1213,20 @@ void USOLNpcSubsystem::Update()
         // Ship speed bound this frame: a lane's (SDD 50 section 4.7) grows with its current leg and its endpoints'
         // relative speed, from the lane's largest peak frozen at spawn
         double shipSpeedBoundMps = mGroupMaxSpeedMps[group];
-        if (group < mGroups.LaneCount)
+        if (mGroups.IsLaneColumn(group))
         {
+            // An end on a node without a registry body (an asteroid) is bounded by its node speed bound
             const int32 bodyA = mGroups.LaneBodyA[group];
             const int32 bodyB = mGroups.LaneBodyB[group];
+            const auto speedBoundOf = [this, &bodyVelocitiesMps](const int32 body)
+            {
+                const int32 node = body - bodyVelocitiesMps.Num();
+                return bodyVelocitiesMps.IsValidIndex(body) ? bodyVelocitiesMps[body].Size()
+                    : (mNodeTable.MaxSpeedMps.IsValidIndex(node) ? mNodeTable.MaxSpeedMps[node] : 0.0);
+            };
             const double endpointSpeedMps = bodyVelocitiesMps.IsValidIndex(bodyA)
                 && bodyVelocitiesMps.IsValidIndex(bodyB) ? (bodyVelocitiesMps[bodyB] - bodyVelocitiesMps[bodyA]).Size()
-                : 0.0;
+                : speedBoundOf(bodyA) + speedBoundOf(bodyB);
             shipSpeedBoundMps = SOL::NPC_WAKE_SPEED_MARGIN * SOLNpcRail::LaneWakeSpeedBoundMps(mGroups, mRailFrame,
                 group, endpointSpeedMps);
         }
@@ -1024,7 +1244,7 @@ void USOLNpcSubsystem::Update()
 
         // A lane's Mid radius grows by its hand-over margin (SDD 50 section 4.6): every ship the far layer's float
         // evaluation puts inside the Mid radius is then already a CPU ship, so the CPU point layer can draw it
-        mGroupMidMarginM[group] = group < mGroups.LaneCount
+        mGroupMidMarginM[group] = mGroups.IsLaneColumn(group)
             ? SOLNpcRail::LaneHandOverMarginM(mGroups, mRailFrame, group, mOptions.MidAiRadiusM) : 0.0;
         const bool bCandidate = SOLNpcRail::GroupDistanceM(mGroups, mRailFrame, group, viewpointM)
             < (mOptions.MidAiRadiusM + mGroupMidMarginM[group]) * aiKeepScale;
@@ -1043,6 +1263,8 @@ void USOLNpcSubsystem::Update()
     inputs.ViewpointM = viewpointM;
     inputs.AiHysteresis = mOptions.AiHysteresis;
     inputs.RenderHysteresis = mOptions.RenderHysteresis;
+    inputs.GroupOpenStartRailS = mGroupOpenStartRailS;
+    inputs.GroupCloseRailS = mGroupCloseRailS;
     TierProcessor->SetOutputs(&mDistancesM, &mCpuShips);
 
     // Runs one tier-processor pass with its own processing context (commands flush when it ends)

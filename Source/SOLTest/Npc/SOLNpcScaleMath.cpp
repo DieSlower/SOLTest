@@ -8,6 +8,8 @@
 #include "Npc/SOLLaneNodeTable.h"
 #include "Traffic/SOLLaneNetworkMath.h"
 
+#include "Async/ParallelFor.h"
+
 namespace
 {
     // Hash streams, one per hashed spawn field (any distinct values; new ones are appended so the battle and cluster
@@ -54,6 +56,9 @@ namespace
 
     // Seed salt that separates battle-centre hashes from per-ship hashes
     constexpr uint32 BATTLE_CENTER_SALT = 0xB4771E5Eu;
+
+    // Ship blocks per CountBlockSpawns task (about 25k halo hashes at 100 ships per block)
+    constexpr int32 NPC_COUNT_BLOCK_RUN = 256;
 
     // Option descriptors, in EDemoOption order (SDD 11 section 3.8, metres and seconds)
     const SOLNpcScale::FOptionDesc OPTION_DESCRIPTORS[] = {
@@ -431,6 +436,23 @@ SOLNpcScale::FPlacementSlot SOLNpcScale::ClassifyIndex(int32 npcIndex, const FCo
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Fills a lane ship's dimensionless fields from its hashes: faction, phase, effort, halo flag, radius in wall radii
+// uniform by area (the disc inside the wall or the annulus out to H) and clock angle in the right half
+static void FillLaneSpawnFields(const uint32 seed, const uint32 index, SOLNpcScale::FSpawn& spawn)
+{
+    spawn.Faction = SOLNpcScale::HashUnit(seed, index, STREAM_FACTION) < 0.5 ? 0 : 1;
+    spawn.LanePhase = SOLNpcScale::HashUnit(seed, index, STREAM_LANE_START);
+    spawn.LaneEffort = FMath::Lerp(SOL::NPC_LANE_EFFORT_MIN, SOL::NPC_LANE_EFFORT_MAX,
+        SOLNpcScale::HashUnit(seed, index, STREAM_LANE_SPEED));
+    spawn.bLaneHalo = NpcLaneHalo(seed, index);
+    const double radiusUnit = SOLNpcScale::HashUnit(seed, index, STREAM_LANE_RADIUS);
+    const double outer = SOL::NPC_LANE_HALO_OUTER_WALL_RADII;
+    spawn.LaneRho = spawn.bLaneHalo ? FMath::Min(FMath::Sqrt(1.0 + (outer * outer - 1.0) * radiusUnit), outer)
+        : FMath::Sqrt(radiusUnit);
+    spawn.LaneClockRad = UE_DOUBLE_PI * SOLNpcScale::HashUnit(seed, index, STREAM_LANE_ANGLE);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Builds one ship's spawn parameters from per-index hashes
 SOLNpcScale::FSpawn SOLNpcScale::MakeSpawn(uint32 seed, int32 npcIndex, const FCounts& counts, const FLayout& layout,
     const FBattleParams& battle)
@@ -473,16 +495,7 @@ SOLNpcScale::FSpawn SOLNpcScale::MakeSpawn(uint32 seed, int32 npcIndex, const FC
             return spawn;
         }
         spawn.GroupIndex = laneIndex;
-        spawn.Faction = HashUnit(seed, index, STREAM_FACTION) < 0.5 ? 0 : 1;
-        spawn.LanePhase = HashUnit(seed, index, STREAM_LANE_START);
-        spawn.LaneEffort = FMath::Lerp(SOL::NPC_LANE_EFFORT_MIN, SOL::NPC_LANE_EFFORT_MAX,
-            HashUnit(seed, index, STREAM_LANE_SPEED));
-        spawn.bLaneHalo = NpcLaneHalo(seed, index);
-        const double radiusUnit = HashUnit(seed, index, STREAM_LANE_RADIUS);
-        const double outer = SOL::NPC_LANE_HALO_OUTER_WALL_RADII;
-        spawn.LaneRho = spawn.bLaneHalo ? FMath::Min(FMath::Sqrt(1.0 + (outer * outer - 1.0) * radiusUnit), outer)
-            : FMath::Sqrt(radiusUnit);
-        spawn.LaneClockRad = UE_DOUBLE_PI * HashUnit(seed, index, STREAM_LANE_ANGLE);
+        FillLaneSpawnFields(seed, index, spawn);
         return spawn;
     }
 
@@ -1150,4 +1163,71 @@ int32 SOLNpcScale::ParseNpcCount(const FString& text)
         return INDEX_NONE;
     }
     return static_cast<int32>(value);
+}
+
+// Part 53c2: lane ships in ship blocks and the docked tier rule (contract cases 20, 21)
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the spawn parameters with lane ships in blocks: a lane ship's group is its block's slot, INDEX_NONE if free
+SOLNpcScale::FSpawn SOLNpcScale::MakeSpawn(const uint32 seed, const int32 npcIndex, const FCounts& counts,
+    const FLayout& layout, const FBattleParams& battle, TConstArrayView<int32> blockSlot, const int32 blockSize)
+{
+    // Battle and cluster ships are the legacy spawn; a lane ship keeps its hashed fields, its group comes from its
+    // block
+    const FPlacementSlot slot = ClassifyIndex(npcIndex, counts);
+    if (slot.Kind != EPlacementKind::Lane || slot.LocalIndex == INDEX_NONE)
+    {
+        return MakeSpawn(seed, npcIndex, counts, layout, battle);
+    }
+    FSpawn spawn;
+    spawn.Kind = EPlacementKind::Lane;
+    FillLaneSpawnFields(seed, static_cast<uint32>(npcIndex), spawn);
+    const int32 block = blockSize > 0 ? slot.LocalIndex / blockSize : INDEX_NONE;
+    spawn.GroupIndex = blockSlot.IsValidIndex(block) ? blockSlot[block] : INDEX_NONE;
+    return spawn;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Counts each ship block's lane ships inside the wall and in the halo (one entry per block, by bLaneHalo)
+void SOLNpcScale::CountBlockSpawns(const uint32 seed, const FCounts& counts, const int32 blockSize,
+    TArray<int32>& outInWall, TArray<int32>& outHalo)
+{
+    // Only the halo hash, the same call MakeSpawn makes; lane ships occupy [Battle, Battle + Lane) (ClassifyIndex)
+    const int32 blockCount = SOLLaneNetwork::ShipBlockCount(counts.Lane, blockSize);
+    outInWall.Reset();
+    outHalo.Reset();
+    outInWall.SetNumZeroed(blockCount);
+    outHalo.SetNumZeroed(blockCount);
+    if (blockCount <= 0)
+    {
+        return;
+    }
+
+    // Parallel over contiguous runs of blocks: each task writes only its own blocks' entries, so the result does not
+    // depend on the scheduling (the last block may be partial)
+    const int32 runCount = FMath::DivideAndRoundUp(blockCount, NPC_COUNT_BLOCK_RUN);
+    ParallelFor(runCount, [&](const int32 run)
+    {
+        const int32 blockEnd = FMath::Min((run + 1) * NPC_COUNT_BLOCK_RUN, blockCount);
+        for (int32 block = run * NPC_COUNT_BLOCK_RUN; block < blockEnd; ++block)
+        {
+            const int32 shipEnd = static_cast<int32>(FMath::Min<int64>(static_cast<int64>(block + 1) * blockSize,
+                counts.Lane));
+            int32 halo = 0;
+            for (int32 laneShip = block * blockSize; laneShip < shipEnd; ++laneShip)
+            {
+                halo += NpcLaneHalo(seed, static_cast<uint32>(counts.Battle + laneShip)) ? 1 : 0;
+            }
+            outHalo[block] = halo;
+            outInWall[block] = shipEnd - block * blockSize - halo;
+        }
+    });
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane ship's AI tier: the selected tier in space, Far when docked (never promoted, demoted at once, P2)
+SOLNpcScale::EAiTier SOLNpcScale::LaneShipAiTier(const EAiTier /*previous*/, const EAiTier selected,
+    const bool bInSpace)
+{
+    return bInSpace ? selected : EAiTier::Far;
 }

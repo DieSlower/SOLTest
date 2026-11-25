@@ -60,6 +60,18 @@ namespace
     {
         return elements.SemiMajorAxisM * (1.0 + elements.Eccentricity);
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns an asteroid node's Sun-relative Kepler position (SOLMinorBodyOrbit's sum without the velocity terms),
+    // NaN when its elements are missing
+    FVector3d LaneNodeAsteroidPositionM(const SOLLaneNodeTable::FTable& table, const int32 node,
+        const double centuries)
+    {
+        const int32 row = node - SOLLaneNodeTable::FIRST_ASTEROID_NODE;
+        return table.AsteroidElements.IsValidIndex(row)
+            ? SOLKepler::ElementsToPositionM(table.AsteroidElements[row].AtCenturies(centuries), table.SunGM, 0.0)
+            : FVector3d(std::numeric_limits<double>::quiet_NaN());
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -178,11 +190,7 @@ void SOLLaneNodeTable::PositionsAt(const FTable& table, const FSOLBodyRegistry& 
         const FSOLLaneNode& node = table.Nodes[index];
         if (node.Kind == ESOLLaneNodeKind::Asteroid)
         {
-            // The belt's Sun-relative Kepler orbit (SOLMinorBodyOrbit's sum without the velocity terms)
-            const int32 row = index - FIRST_ASTEROID_NODE;
-            outPositionsM[index] = table.AsteroidElements.IsValidIndex(row)
-                ? SOLKepler::ElementsToPositionM(table.AsteroidElements[row].AtCenturies(centuries), table.SunGM, 0.0)
-                : FVector3d(nan);
+            outPositionsM[index] = LaneNodeAsteroidPositionM(table, index, centuries);
         }
         else if (node.BodyIndex == INDEX_NONE)
         {
@@ -201,6 +209,22 @@ void SOLLaneNodeTable::PositionsAt(const FTable& table, const FSOLBodyRegistry& 
         else
         {
             outPositionsM[index] = registry.ComputePositionAtM(node.BodyIndex, secondsSinceJ2000);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes only the asteroid nodes' Sun-frame positions at a sim time into a node-indexed array
+void SOLLaneNodeTable::AsteroidPositionsAt(const FTable& table, const double secondsSinceJ2000,
+    TArrayView<FVector3d> outPositionsM)
+{
+    const int32 count = FMath::Min(table.Nodes.Num(), outPositionsM.Num());
+    const double centuries = secondsSinceJ2000 / SOL::SECONDS_PER_JULIAN_CENTURY;
+    for (int32 index = FIRST_ASTEROID_NODE; index < count; ++index)
+    {
+        if (table.Nodes[index].Kind == ESOLLaneNodeKind::Asteroid)
+        {
+            outPositionsM[index] = LaneNodeAsteroidPositionM(table, index, centuries);
         }
     }
 }

@@ -1128,10 +1128,15 @@ FSOLLaneMergeReadout SOLLaneTraffic::MergeReadout(const TConstArrayView<FSOLLane
         return readout;
     }
 
-    // The lane: the smallest rho among the halos holding the player (strictly smaller, so the lower index on a tie)
+    // The lane: the smallest rho among the halos holding the player (strictly smaller, so the lower index on a tie);
+    // a lane closed now is skipped like an invalid one (SDD 53 Q30)
     FSOLLanePoint best;
     for (int32 lane = 0; lane < lanes.Num(); ++lane)
     {
+        if (!lanes[lane].bOpenNow)
+        {
+            continue;
+        }
         const FSOLLanePoint point = LanePointOf(lanes[lane].Profile, lanes[lane].Frame, playerM);
         if (point.bInHalo && (readout.Lane == INDEX_NONE || point.Rho < best.Rho))
         {
@@ -1355,7 +1360,7 @@ FSOLLaneAutoLeg SOLLaneTraffic::FindLaneLeg(const TConstArrayView<FSOLLaneMergeL
     for (int32 index = 0; index < lanes.Num(); ++index)
     {
         const FSOLLaneMergeLane& lane = lanes[index];
-        if (!TrafficLaneUsable(lane))
+        if (!TrafficLaneUsable(lane) || !lane.bOpenNow)
         {
             continue;
         }
@@ -1735,6 +1740,12 @@ ESOLLaneLatchCheck SOLLaneTraffic::CheckLaneLatch(const TConstArrayView<FSOLLane
     }
     const FSOLLaneMergeLane& lane = lanes[leg.Lane];
     if (lane.BodyA != leg.BodyA || lane.BodyB != leg.BodyB || !TrafficLaneUsable(lane))
+    {
+        return ESOLLaneLatchCheck::Stale;
+    }
+
+    // An Approach on a lane closed now is dropped and searched again; a Hold keeps it until 53e (SDD 53 P6)
+    if (mode == ESOLLaneAutoMode::Approach && !lane.bOpenNow)
     {
         return ESOLLaneLatchCheck::Stale;
     }

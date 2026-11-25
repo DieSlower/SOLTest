@@ -1524,4 +1524,326 @@ namespace SOLLaneNetwork
         }
         return (shipM / shipDistance) * edgeRadiusM;
     }
+
+    // Part 53c2: ship blocks, open windows and traffic activation (contract cases 16-24)
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the number of ship blocks, ceil(lane ships / block size); 0 for a non-positive count or size (P3)
+    int32 ShipBlockCount(const int32 laneShipCount, const int32 blockSize)
+    {
+        if (laneShipCount <= 0 || blockSize <= 0)
+        {
+            return 0;
+        }
+        return static_cast<int32>((static_cast<int64>(laneShipCount) + blockSize - 1) / blockSize);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the ship count of one block (the last block partial); 0 out of range
+    int32 ShipBlockSize(const int32 block, const int32 laneShipCount, const int32 blockSize)
+    {
+        if (block < 0 || block >= ShipBlockCount(laneShipCount, blockSize))
+        {
+            return 0;
+        }
+        const int64 first = static_cast<int64>(block) * blockSize;
+        return static_cast<int32>(FMath::Min<int64>(blockSize, laneShipCount - first));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the block of a lane-local ship index, index / size; INDEX_NONE out of range
+    int32 ShipBlockOfLaneShip(const int32 laneShipIndex, const int32 laneShipCount, const int32 blockSize)
+    {
+        if (blockSize <= 0 || laneShipIndex < 0 || laneShipIndex >= laneShipCount)
+        {
+            return INDEX_NONE;
+        }
+        return laneShipIndex / blockSize;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes every block's slot from the slot weights (exact LaneShipShares, ascending slot order; spawn and time jump)
+    void AssignShipBlocks(const int32 blockCount, TConstArrayView<double> slotWeights, TArray<int32>& outBlockSlot)
+    {
+        // Every block starts free; slot s then takes the next target[s] blocks in ascending slot order
+        outBlockSlot.Reset();
+        if (blockCount <= 0)
+        {
+            return;
+        }
+        outBlockSlot.Init(INDEX_NONE, blockCount);
+        TArray<int32> shares;
+        LaneShipShares(blockCount, slotWeights, shares);
+        int32 next = 0;
+        for (int32 slot = 0; slot < shares.Num() && next < blockCount; ++slot)
+        {
+            const int32 end = FMath::Min(blockCount, next + shares[slot]);
+            for (; next < end; ++next)
+            {
+                outBlockSlot[next] = slot;
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Frees every block whose slot is marked for release and returns the number freed
+    int32 ReleaseShipBlocks(TConstArrayView<uint8> slotRelease, TArray<int32>& inOutBlockSlot)
+    {
+        int32 released = 0;
+        for (int32& slot : inOutBlockSlot)
+        {
+            if (slot >= 0 && slot < slotRelease.Num() && slotRelease[slot] == 1)
+            {
+                slot = INDEX_NONE;
+                ++released;
+            }
+        }
+        return released;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Gives each slot in order the lowest free blocks up to its target and returns the total shortfall
+    int32 TakeShipBlocks(TConstArrayView<int32> slotOrder, TConstArrayView<int32> slotTargets,
+        TArray<int32>& inOutBlockSlot, TArray<int32>& outMovedBlocks)
+    {
+        // One cursor over the free blocks: each take is the lowest free block left, so the scan never restarts
+        outMovedBlocks.Reset();
+        int32 shortfall = 0;
+        int32 cursor = 0;
+        for (const int32 slot : slotOrder)
+        {
+            if (slot < 0 || slot >= slotTargets.Num())
+            {
+                continue;
+            }
+            int32 held = 0;
+            for (const int32 blockSlot : inOutBlockSlot)
+            {
+                held += blockSlot == slot ? 1 : 0;
+            }
+            int32 need = slotTargets[slot] - held;
+            while (need > 0)
+            {
+                while (cursor < inOutBlockSlot.Num() && inOutBlockSlot[cursor] != INDEX_NONE)
+                {
+                    ++cursor;
+                }
+                if (cursor >= inOutBlockSlot.Num())
+                {
+                    break;
+                }
+                inOutBlockSlot[cursor] = slot;
+                outMovedBlocks.Add(cursor);
+                --need;
+            }
+            shortfall += FMath::Max(need, 0);
+        }
+        return shortfall;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a slot's blocks may be released: its lane left the set and it has no CPU-tier ship
+    bool CanReleaseSlotBlocks(const bool bLaneInSetNow, const int32 cpuTierShipsOfSlot)
+    {
+        return !bLaneInSetNow && cpuTierShipsOfSlot <= 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a slot's lane episode opens this step (in the set now, and new or back)
+    bool LaneEpisodeOpens(const FSOLLanePair& previousSlotLane, const bool bPreviousInSet,
+        const FSOLLanePair& slotLane, const bool bInSetNow)
+    {
+        const bool bSameLane = previousSlotLane.NodeA == slotLane.NodeA && previousSlotLane.NodeB == slotLane.NodeB;
+        return bInSetNow && (!bSameLane || !bPreviousInSet);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes the slots whose episode opens, ascending (the block take order, P4 b and c)
+    void EpisodeTakeOrder(TConstArrayView<uint8> slotEpisodeOpens, TArray<int32>& outSlotOrder)
+    {
+        outSlotOrder.Reset();
+        for (int32 slot = 0; slot < slotEpisodeOpens.Num(); ++slot)
+        {
+            if (slotEpisodeOpens[slot] != 0)
+            {
+                outSlotOrder.Add(slot);
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes each slot's blocks as a CSR list (slotCount + 1 starts, blocks ascending per slot)
+    void SlotBlockLists(TConstArrayView<int32> blockSlot, const int32 slotCount, TArray<int32>& outSlotStart,
+        TArray<int32>& outBlocks)
+    {
+        // Counting sort: count per slot, prefix sums, then place in ascending block order
+        outSlotStart.Reset();
+        outBlocks.Reset();
+        const int32 slots = FMath::Max(slotCount, 0);
+        outSlotStart.SetNumZeroed(slots + 1);
+        for (const int32 slot : blockSlot)
+        {
+            if (slot >= 0 && slot < slots)
+            {
+                ++outSlotStart[slot + 1];
+            }
+        }
+        for (int32 slot = 0; slot < slots; ++slot)
+        {
+            outSlotStart[slot + 1] += outSlotStart[slot];
+        }
+        outBlocks.SetNumUninitialized(outSlotStart[slots]);
+        TArray<int32, TInlineAllocator<64>> fill;
+        fill.Append(outSlotStart.GetData(), slots);
+        for (int32 block = 0; block < blockSlot.Num(); ++block)
+        {
+            const int32 slot = blockSlot[block];
+            if (slot >= 0 && slot < slots)
+            {
+                outBlocks[fill[slot]++] = block;
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes per slot the sum of a per-block value over its blocks
+    void SumBlockCounts(TConstArrayView<int32> blockSlot, TConstArrayView<int32> perBlock, const int32 slotCount,
+        TArray<int32>& outPerSlot)
+    {
+        outPerSlot.Reset();
+        const int32 slots = FMath::Max(slotCount, 0);
+        outPerSlot.SetNumZeroed(slots);
+        for (int32 block = 0; block < blockSlot.Num() && block < perBlock.Num(); ++block)
+        {
+            const int32 slot = blockSlot[block];
+            if (slot >= 0 && slot < slots)
+            {
+                outPerSlot[slot] += perBlock[block];
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes the sorted, merged lane-local ship ranges of the moved blocks
+    void ShipBlockDirtyRanges(TConstArrayView<int32> movedBlocks, const int32 laneShipCount, const int32 blockSize,
+        TArray<FSOLShipRange>& outRanges)
+    {
+        // Sort a copy of the valid blocks, then merge repeated and adjacent blocks into one range each
+        outRanges.Reset();
+        const int32 blockCount = ShipBlockCount(laneShipCount, blockSize);
+        TArray<int32, TInlineAllocator<64>> blocks;
+        for (const int32 block : movedBlocks)
+        {
+            if (block >= 0 && block < blockCount)
+            {
+                blocks.Add(block);
+            }
+        }
+        blocks.Sort();
+        int32 runFirst = INDEX_NONE;
+        int32 runLast = INDEX_NONE;
+
+        // Appends the current run of blocks as one ship range (nothing before the first run)
+        const auto flush = [&]()
+        {
+            if (runFirst != INDEX_NONE)
+            {
+                const int32 first = runFirst * blockSize;
+                const int32 end = static_cast<int32>(
+                    FMath::Min<int64>(static_cast<int64>(runLast + 1) * blockSize, laneShipCount));
+                outRanges.Add(FSOLShipRange{first, end - first});
+            }
+        };
+        for (const int32 block : blocks)
+        {
+            if (runFirst != INDEX_NONE && block <= runLast + 1)
+            {
+                runLast = FMath::Max(runLast, block);
+                continue;
+            }
+            flush();
+            runFirst = block;
+            runLast = block;
+        }
+        flush();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a lane ship is in space (drawn) at a rail time; a U-turn follows the leg after it (P1)
+    bool LaneShipInSpace(const FSOLLaneCycle& cycle, const double phase, const double railTimeS,
+        const double openStartRailS, const double closeRailS)
+    {
+        if (FMath::IsNaN(openStartRailS) || FMath::IsNaN(closeRailS) || FMath::IsNaN(railTimeS))
+        {
+            return false;
+        }
+
+        // A lane that is not drivable draws its midpoint disc while open
+        const bool bValidCycle = FMath::IsFinite(cycle.LegS) && cycle.LegS > 0.0 && FMath::IsFinite(cycle.CycleS)
+            && cycle.CycleS > 0.0;
+        if (!bValidCycle)
+        {
+            return openStartRailS <= railTimeS && railTimeS < closeRailS;
+        }
+
+        // On a leg: drawn while that leg departed inside the window; in a turn: the leg after the turn decides
+        const FSOLLaneCyclePoint point = SOLLaneTraffic::CycleSegmentAt(cycle, phase, railTimeS);
+        const double segmentStartS = railTimeS - point.SegmentTimeS;
+        if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
+        {
+            return LaneShipLegDrawn(railTimeS, segmentStartS, cycle.LegS, openStartRailS,
+                LaneDepartureStopS(closeRailS, cycle.LegS));
+        }
+        return LegFitsWindow(segmentStartS + cycle.TurnS, cycle.LegS, openStartRailS, closeRailS);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a window bound relative to the GPU epoch, clamped to +-NPC_LANE_WINDOW_FAR_S, rounded once to float
+    float LaneWindowGpuS(const double windowS, const double gpuEpochS)
+    {
+        const double relative = windowS - gpuEpochS;
+        if (FMath::IsNaN(relative))
+        {
+            return static_cast<float>(relative);
+        }
+        return static_cast<float>(FMath::Clamp(relative, -SOL::NPC_LANE_WINDOW_FAR_S, SOL::NPC_LANE_WINDOW_FAR_S));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a slot's group texel row 6: (open, close, active, 0), or the empty window when there is none
+    FVector4f LaneWindowTexel(const bool bHasWindow, const double openStartS, const double closeS,
+        const double gpuEpochS, const bool bActive)
+    {
+        const float active = bActive ? 1.0f : 0.0f;
+        if (bHasWindow && !FMath::IsNaN(openStartS) && !FMath::IsNaN(closeS) && openStartS < closeS)
+        {
+            return FVector4f(LaneWindowGpuS(openStartS, gpuEpochS), LaneWindowGpuS(closeS, gpuEpochS), active, 0.0f);
+        }
+        const float farS = static_cast<float>(SOL::NPC_LANE_WINDOW_FAR_S);
+        return FVector4f(farS, -farS, active, 0.0f);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a lane's largest on-screen radius from the camera's distance to the segment A-B (reference pixels)
+    double LaneTrafficRadiusPx(const FVector3d& cameraM, const FVector3d& aM, const FVector3d& bM,
+        const double laneRadiusM, const double focalRefPx)
+    {
+        // The camera-relative segment's distance to the origin is the camera's distance to the segment
+        return LaneTunnelMaxRadiusPx(SunSegmentDistanceM(aM - cameraM, bM - cameraM), laneRadiusM, focalRefPx);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a lane's traffic is active: radius at or above the scaled threshold, or a CPU-tier ship
+    bool LaneTrafficActive(const double laneRadiusPx, const int32 cpuTierShipsOfLane, const double thresholdScale)
+    {
+        const double scale = (FMath::IsFinite(thresholdScale) && thresholdScale > 0.0) ? thresholdScale : 1.0;
+        return laneRadiusPx >= SOL::NPC_LANE_TRAFFIC_ACTIVE_PX * scale || cpuTierShipsOfLane > 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a lane is open now, openStart <= now < close (false for NaN)
+    bool LaneOpenAt(const double nowS, const double openStartS, const double closeS)
+    {
+        return openStartS <= nowS && nowS < closeS;
+    }
 }

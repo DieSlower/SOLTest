@@ -8,7 +8,8 @@ contract: [`Plans/53-lane-network-contract.md`](../Plans/53-lane-network-contrac
 tiers), SDD 38 (lane lines), SDD 49 (guidance tunnel), SDD 50 (lane traffic, AUTO lane rules) and SDD 52 (tunnel far
 field, D15: the vertex budget and active-tunnel cap were left interim for this ticket).
 **Status: DRAFT, amended 2026-11-24 with the user's answers to Q1-Q30** (section 16) **and 2026-11-25 with the
-user's answers to O1-O10** (section 17). **The population tier values (O6), the partner hysteresis values (O3) and the
+user's answers to O1-O10** (section 17) **and 2026-11-25 with the user's answers to the 53c2 decisions P1-P6**
+(section 18). **The population tier values (O6), the partner hysteresis values (O3) and the
 Sun-safety override UI (O4) were confirmed by the user on 2026-11-25**. The Moon relays island links **through Earth
 only** (user decision A at the 53a/53b review, replacing the earlier "the Moon can be a relay"). The pure math
 and its tests (53a/53b) are implemented and in review; nothing else is built.
@@ -300,8 +301,13 @@ hand row 2e5 m. Island links use the same rule.
   finish), Closed-Sun (in the set but unsafe; no traffic in flight by construction), Gone (no longer chosen; slot
   freed after the fade).
 - **Ship budget (O1, decided):** the 400,000 lane ships are cut into fixed **ship blocks**
-  (4,000 blocks of 100 ships, by hash, so a block is spread along its lane like today's hash pick). Each
-  lane in the set holds blocks in proportion to its weight. A Sun-closed lane keeps its blocks (Q10). A Gone lane's
+  (4,000 blocks of 100 ships). **Membership (P3, section 18):** block `b` holds the lane-local ship indices
+  `[100 b, 100 b + 100)`, contiguous so a block move is one contiguous rail range; a block is still spread along its
+  lane because each ship's phase is hashed. For other populations the block count is ceil(lane ships / 100), the last
+  block partial. Each lane in the set holds blocks in proportion to its weight. **Pool policy (P4):** an opening lane's
+  target is its `LaneShipShares` share over the current set; blocks join a lane only at its episode open (no top-up
+  mid-episode); when the pool is short, slots take in ascending slot order; a time jump re-shares every block exactly,
+  as at spawn. A Sun-closed lane keeps its blocks (Q10). A Gone lane's
   blocks are empty once its trips have finished (the early stop guarantees that at the close) and return to a free
   pool; an opening lane takes its share from the free pool. Ships only change lane while their block is empty, so no
   ship visibly jumps lanes. Cost: the normalisation is exact at spawn and approximate afterwards (blocks move only
@@ -435,7 +441,9 @@ Earth-Moon never comes near.
 - **Pure and mirrored:** each lane's slot carries its current window as two floats relative to the GPU rail epoch,
   `openStart` and `departStop` (= close - `T_leg`), plus the active flag (Q21), in the group texel. A ship is drawn iff
   its current leg's departure time lies in `[openStart, departStop]`. `SOLNpcTraffic.ush` and the CPU point layer read
-  the same texel (R8).
+  the same texel (R8). **U-turns (P1, section 18):** a turning ship follows the leg after the turn: it is drawn iff
+  that leg fits, so a ship arriving where its next leg is not flown vanishes at the end ring on arrival (the future
+  docking-at-station moment).
 - **Latched open start (53a/53b review):** the look-ahead buffer starts at the current epoch `k`, so a lane open at
   `k` has no open start inside the buffer. `LaneOpenWindow` then takes the start the slot held at the previous epoch
   (the latch; -inf allowed, meaning open since before anything known). A lane that was not open at the previous
@@ -450,9 +458,12 @@ Earth-Moon never comes near.
 - **Share (Q10):** a Sun-closed lane keeps its share (its blocks); a Gone lane's empty blocks go back to the pool
   (4.5, O1).
 - **AI tiers (Q26):** lane ships are promoted to the Mid / Full AI tiers as usual. Interplay: only ships flying a leg
-  are in space, so a docked ship is never promoted; a promoted ship whose leg ends while it is promoted docks at its
-  demotion (it disappears then, at the end ring, which the player can see; R12, accepted by the user, O9: no fade).
-- **Merge readout (Q30):** hidden for a closed lane; shown while Draining (traffic still flows).
+  are in space, so a docked ship is never promoted; a promoted ship whose leg ends where the next leg is not flown is
+  **demoted to Far and docked at once** (P2, section 18; it disappears at the end ring, which the player can see; R12,
+  accepted by the user, O9: no fade).
+- **Merge readout (Q30):** hidden for a closed lane; shown while Draining (traffic still flows). The lane search skips
+  closed lanes too; an AUTO **Approach** latched on a lane that closes is **Stale** (dropped and searched again, P6),
+  a **Hold** on a closed lane is unchanged until 53e's finish-if-safe.
 - **Short episodes:** a lane whose open window is shorter than its leg time never gets a departure: 854 of 5,096
   partner episodes in the baseline run (17 %; Mercury-Mars alone has 54 episodes in 20 years, some of 4 days; before
   O3). Its tunnel still draws while it is in the set (an empty lane). The partner hysteresis (O3, 4.3) keeps a pick at
@@ -669,7 +680,10 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
   with the live focal (the same look at 90 degrees, correct at other fields of view). The 4-label cap
   (`NPC_TUNNEL_LABEL_MAX_COUNT`) stays as a screen-clutter limit and is recorded in `TECH_DEBT.md` as a count control.
 - **Traffic active (Q22):** while the lane radius at the camera's nearest point on the segment is at least 2.4 reference
-  px (the restated 400 lane radii, below which the point alpha is 0), or while a CPU-tier ship of the lane exists.
+  px (the restated 400 lane radii, below which the point alpha is 0) times the QualityPreset's
+  `LaneTunnelQualityScale` (P5, section 18: Low 24 px, Medium 11.04 px, High 5.28 px, Epic and Cinematic 2.4 px; the
+  same scale as the tunnel classes, 7.1), or while a CPU-tier ship of the lane exists. **Inactive lanes are hidden
+  always**, with the Lanes overlay on or off (P5); the flag does not depend on the overlay.
 - **Flag (Q21):** a per-lane active flag in the group texel; the point vertex shader skips the rail evaluation of an
   inactive or docked ship (it saves the evaluation and the pixels, not the vertex invocation). Ships keep their
   closed-form rails at every distance (D5).
@@ -795,7 +809,9 @@ The #52 gates (SDD 52 section 8, D18), at 1920x1080, 1M NPCs, plus new CPU gates
 - **Measured (53c1), asserted by `SOLTest.LaneNetworkSubsystem.MeasuredCost`:** full rebuild 1.7-2.1 ms (gate 5 ms),
   epoch step 0.0056-0.0077 ms per frame at 30 d/s and 60 fps (gate 0.01 ms; thin headroom). The rebuild meets its gate
   through the parallel passes (16-core machine); its serial cost was about 8.8 ms. The route query, class pass and block move
-  gates are measured in their own parts. Caveat: the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred).
+  gates are measured in their own parts. **Block move (53c2a), `SOLTest.NpcRail.BlockMoveCost`: 0.024 ms, a partial
+  measurement** (spawn, rail and GPU texels of 100 ships, the dirty range and its texel rects; no release, take, Mass
+  re-bucket or render-thread upload), to be re-measured with the full move in 53c2b. Caveat: the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred).
 - **Points draw:** no gate (SDD 52 D19), recorded against SDD 52's interleaved baseline. The flame CPU gate (#51 debt)
   is re-measured and reported, no fix in #53 (Q27).
 - **1M ramp:** every stage passes as in SDD 52 13.3.
@@ -832,8 +848,9 @@ in SDD 52; 3840x3744 and two-eye not measured.
   the 960 d horizon (a leg departing past it uses the current lanes), but a window closing inside it still blocks.
   Measured on 2026-01-01: routes from Earth are found to 10 of 23 nodes, because Mars-Jupiter closes 0.5 d after the
   start (42.7 d leg) and Venus-Earth and Earth-Mars are Sun-closed; the outer system waits for the next re-plan.
-- **R12 docking pop (accepted, O9):** a promoted ship docks at its demotion; a lane ship that arrives at a node where
-  the next leg is not flown disappears at the end ring, which can be on screen. No fade.
+- **R12 docking pop (accepted, O9; P1, P2):** a lane ship that arrives at a node where the next leg is not flown
+  disappears at the end ring on arrival (its turn is not drawn), and a promoted one is demoted and docked at that
+  moment, which can be on screen. No fade.
 - **R13 look-ahead rebuild hitch** on a time jump (5.3): measured 1.7-2.1 ms, but the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred). Recorded in `Docs/TECH_DEBT.md`.
 - **R13b router plan-open rule near the horizon is untested by a real route:** no route on 2026-01-01 reaches the horizon, and in v1 it is unreachable (12 hops x 42.7 d < 960 d); only the pure-math case covers it.
 - **R14 approximate normalisation** with ship blocks (4.5, O1, accepted).
@@ -884,6 +901,11 @@ in SDD 52; 3840x3744 and two-eye not measured.
   `SIM_CLOCK_MAX_WARP`). Final-rule 250-year figures replace the derived ones (4.3, 4.4, 7.3, R6, R7, R15). The ring
   buffer holds the entries `k .. k + H - 1` (5.3). `FSOLNpcGroupTable::LaneSlotCapacity` and `LaneSlotColumn` keep
   schedule slots clear of the cluster and battle columns (53c2 uses them). No persistence change.
+- 2026-11-25: the user's answers to the 53c2 decisions P1-P6 (section 18): a U-turn follows the leg after it (5.4,
+  design note on station docking), a promoted ship at its leg end is demoted and docked at once (5.4, R12), block
+  membership and pool policy as recommended (4.5), traffic activation hides inactive lanes always and its 2.4 px
+  threshold scales with `LaneTunnelQualityScale` (7.2, changed from the recommendation), an Approach on a closing lane
+  is Stale (5.4). No persistence change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
 
@@ -928,7 +950,7 @@ The draft's recommendation is marked *superseded* where the answer differs.
   count control.
 - **Q21 Traffic activation granularity:** a per-lane active flag in the group texel.
 - **Q22 Traffic pixel metric:** lane radius at the nearest point >= 2.4 reference px, or a CPU-tier ship of the lane
-  exists.
+  exists. *Amended by P5 (section 18):* the 2.4 px scales with the QualityPreset and inactive lanes are hidden always.
 - **Q23 Lane order:** new lanes after the existing 8 (as slots keyed by node pair, 4.5).
 - **Q24 STATUS.md wording:** row 3b5d to read "pixel on/off, Sun clearance"; a 53a task (not edited yet).
 - **Q25 Gates:** the #52 gates plus the new CPU gates (section 13).
@@ -946,7 +968,7 @@ The open items O1-O10 raised by the Q answers, as answered by the user. The tier
 (O3) and the Sun-safety override UI (O4) were all confirmed by the user on 2026-11-25; the Moon-as-relay reversal (O2)
 was itself replaced at the 53a/53b review by "the Moon relays through Earth only" (user decision A).
 
-- **O1 Ship budget: proposal accepted.** Fixed ship blocks (4,000 of 100 ships, by hash) moved only through a free
+- **O1 Ship budget: proposal accepted.** Fixed ship blocks (4,000 of 100 ships; membership by contiguous index, P3, section 18) moved only through a free
   pool (4.5); exact normalisation at spawn, approximate after (R14).
 - **O2 Islands: option (b), extended.** Each island (a connected component without Earth) is linked to its nearest
   node in Earth's connected group, one link per island, processed nearest first; any body already in Earth's group
@@ -979,3 +1001,30 @@ was itself replaced at the 53a/53b review by "the Moon relays through Earth only
 - **O9 Docking pop: accepted** (R12), no fade.
 - **O10 Constants: accepted.** Sun look-back 64 epochs, horizon 960 epochs (above the 897 d longest leg), ship blocks
   of 100, tunnel class thresholds 0.4 px (Reduced -> Off) and 1.0 px (Reduced -> Full).
+
+## 18. Resolved 53c2 decisions (user, 2026-11-25)
+
+The six decisions P1-P6 left open by the 53c2 contract (`Docs/Plans/53-lane-network-contract.md`, "Resolved
+decisions"), as answered by the user. Every assertion of contract cases 16-26 is pinned by them.
+
+- **P1 U-turn window: the leg after the turn decides.** A ship in a U-turn is drawn iff the leg after the turn fits
+  the window (`LegFitsWindow(turn end, T_leg, open, close)`), so a ship that arrives at a node where its next leg is
+  not flown vanishes at the end ring on arrival (5.4, R12). **Design note:** this matches the future goal of ships
+  docking at a station at the lane's end: the arrival at the end ring becomes the docking moment, so no turn is drawn
+  for a ship that will not fly on.
+- **P2 Promoted ship at its leg end: demoted and docked at once.** A Mid / Full lane ship whose leg ends where the
+  next leg is not flown drops to Far and docks the same frame, no fade (O9, R12). It does not keep flying its rail on
+  a closed or Sun-unsafe lane.
+- **P3 Block membership: as recommended.** Block `b` = the lane-local ship indices `[100 b, 100 b + 100)`
+  (contiguous; a block move is one contiguous rail range, the spread along the lane comes from each ship's hashed
+  phase); block count = ceil(lane ships / 100), the last block partial (4.5).
+- **P4 Pool policy: as recommended.** (a) An opening lane's target is its `LaneShipShares` block share over the
+  current set's slotted lanes; (b) when the free pool is short, slots take in ascending slot order; (c) blocks join a
+  lane only at its episode open (no top-up mid-episode, so no ship appears mid-leg); (d) a time jump re-shares every
+  block exactly, as at spawn (one full rail upload per jump).
+- **P5 Traffic activation scope: CHANGED from the recommendation.** Inactive lanes are hidden **always**, with the
+  Lanes overlay on or off, and the 2.4 px threshold **scales with the QualityPreset** by `LaneTunnelQualityScale` (the
+  tunnel classes' scale: Low 24 px, Medium 11.04 px, High 5.28 px, Epic and Cinematic 2.4 px). *Superseded
+  recommendation:* active whenever the overlay is off, no quality scale. The shader reads the flag in 53d (7.2).
+- **P6 AUTO latch on a closing lane: as recommended.** An Approach on a lane that closes is Stale (dropped, searched
+  again on the next search); a Hold on a closed lane is unchanged until 53e's finish-if-safe (5.4).

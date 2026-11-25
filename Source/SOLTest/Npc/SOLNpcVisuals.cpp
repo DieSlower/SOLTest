@@ -20,6 +20,7 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Ship/SOLShipPawn.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 #include "UI/SOLOverlayModel.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
@@ -557,7 +558,7 @@ void ASOLNpcVisuals::FillRailTexels(FVector4f* texels, const int32 texelCount, c
 
     // The lane histogram (SDD 38 D13): each task counts its own slice on the stack and writes its own counts once,
     // merged below
-    const int32 laneCount = outLaneShipCounts != nullptr ? FMath::Max(Npcs->GetGroups().LaneCount, 0) : 0;
+    const int32 laneCount = outLaneShipCounts != nullptr ? FMath::Max(Npcs->GetGroups().LaneColumnEnd(), 0) : 0;
     TArray<int32> taskLaneCounts;
     taskLaneCounts.SetNumZeroed(taskCount * laneCount);
     const TConstArrayView<FSOLLaneProfile> laneProfiles = Npcs->GetGroups().LaneProfile;
@@ -567,6 +568,12 @@ void ASOLNpcVisuals::FillRailTexels(FVector4f* texels, const int32 texelCount, c
         const int32 end = FMath::Min(start + SHIPS_PER_TASK, shipCount);
         for (int32 ship = start; ship < end; ++ship)
         {
+            // A parked lane ship (free-pool block) gets the hidden texels (negative leg time)
+            if (SOLNpcRail::IsParked(rails[ship]))
+            {
+                SOLNpcRail::GpuParkedRailTexels(rails[ship].Faction, texels[ship * 2], texels[ship * 2 + 1]);
+                continue;
+            }
             SOLNpcRail::GpuRailTexels(rails[ship], epochRailTimeS, laneProfiles, texels[ship * 2],
                 texels[ship * 2 + 1]);
         }
@@ -621,6 +628,19 @@ void ASOLNpcVisuals::UpdateFarPoints()
 
     // The lane traffic rows 2-5 (SDD 50 section 4.6): basis, wall radius, U-turn and leg data per lane
     SOLNpcRail::WriteLaneTrafficTexels(frame, texels);
+
+    // The lane window row 6 (SDD 53 5.4, the contract's time bases): each slot's window relative to the GPU epoch the
+    // rail texels use this frame, and its active flag; read by the shader from 53c2b (window) and 53d (active)
+    const TConstArrayView<FSOLNpcLaneSlotWindow> windows = Npcs->GetLaneSlotWindows();
+    const double gpuEpochS = Npcs->GetEpochSecondsSinceJ2000() + mGpuRailEpochS;
+    mLaneWindowTexels.SetNumUninitialized(windows.Num(), EAllowShrinking::No);
+    for (int32 slot = 0; slot < windows.Num(); ++slot)
+    {
+        const FSOLNpcLaneSlotWindow& window = windows[slot];
+        mLaneWindowTexels[slot] = SOLLaneNetwork::LaneWindowTexel(window.bHasWindow, window.OpenStartS, window.CloseS,
+            gpuEpochS, window.bActive);
+    }
+    SOLNpcRail::WriteLaneWindowRow(mLaneWindowTexels, Npcs->GetGroups(), texels);
     mGroupRegions[mUploadRing] = FUpdateTextureRegion2D(0, 0, 0, 0, SOL::NPC_GROUP_TEXTURE_WIDTH,
         SOL::NPC_GROUP_TEXTURE_ROWS);
     GroupTexture->UpdateTextureRegions(0, 1, &mGroupRegions[mUploadRing],
@@ -929,6 +949,12 @@ void ASOLNpcVisuals::UpdateCpuShips()
             }
             const FVector3d cpuRelM = ship.PositionM - viewpointM;
             const FSOLNpcRail* rail = rails.IsValidIndex(ship.NpcIndex) ? &rails[ship.NpcIndex] : nullptr;
+            if (rail != nullptr && SOLNpcRail::IsParked(*rail))
+            {
+                // A parked lane ship (free-pool block) is never drawn
+                mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+                continue;
+            }
             if (bHasGroupRows && rail != nullptr && rail->Kind == laneKind && laneProfiles.IsValidIndex(rail->Group)
                 && rail->Group < SOL::NPC_GROUP_TEXTURE_WIDTH)
             {

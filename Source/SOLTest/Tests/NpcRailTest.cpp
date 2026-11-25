@@ -4,13 +4,16 @@
 */
 
 #include "Npc/SOLNpcAiMath.h"
+#include "Npc/SOLNpcLaneMath.h"
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "Npc/SOLNpcTrafficMirror.h"
 #include "Npc/SOLNpcTunnelMath.h"
 #include "SOLConstants.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 #include "Traffic/SOLLaneTrafficMath.h"
 
+#include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
 
 #include <cmath>
@@ -955,17 +958,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailLaneTrafficTexelsTest, "SOLTest.NpcR
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 50 section 4.6: the group texture has NPC_GROUP_TEXTURE_ROWS (6) rows of NPC_GROUP_TEXTURE_WIDTH texels (row r,
-// column c at r x W + c). WriteLaneTrafficTexels writes rows 2-5 of every column from the frame and leaves rows 0
-// and 1 alone: a drivable lane column gets row 2 (Up, w the wall speed), row 3 (Right, D_U), row 4 (pi / T_U, e_A,
-// l0, Z), row 5 (e_B - end shift, T_U, (l - l0) / (l0 - Z), 1 / Z); a lane with a valid frame that is not drivable
-// gets rows 2 and 3 and zero rows 4 and 5 (l0 = 0 tells the shader to hold the ship at rest); a lane with an invalid
-// frame and every cluster, battle and unused column get zero rows 2-5; a buffer shorter than six rows is left alone;
-// lanes past the texture width are not written
+// SDD 50 section 4.6: the group texture has NPC_GROUP_TEXTURE_ROWS (7 since SDD 53 part 53c2, row 6 the lane window)
+// rows of NPC_GROUP_TEXTURE_WIDTH texels (row r, column c at r x W + c). WriteLaneTrafficTexels writes rows 2-5 of
+// every column from the frame and leaves rows 0, 1 and 6 alone: a drivable lane column gets row 2 (Up, w the wall
+// speed), row 3 (Right, D_U), row 4 (pi / T_U, e_A, l0, Z), row 5 (e_B - end shift, T_U, (l - l0) / (l0 - Z), 1 / Z);
+// a lane with a valid frame that is not drivable gets rows 2 and 3 and zero rows 4 and 5 (l0 = 0 tells the shader to
+// hold the ship at rest); a lane with an invalid frame and every cluster, battle and unused column get zero rows 2-5;
+// a buffer shorter than NPC_GROUP_TEXTURE_ROWS rows is left alone; lanes past the texture width are not written
 bool FSOLNpcRailLaneTrafficTexelsTest::RunTest(const FString& /*parameters*/)
 {
     const int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
-    TestEqual(TEXT("NPC_GROUP_TEXTURE_ROWS"), SOL::NPC_GROUP_TEXTURE_ROWS, 6);
+    TestEqual(TEXT("NPC_GROUP_TEXTURE_ROWS"), SOL::NPC_GROUP_TEXTURE_ROWS, 7);
     TestEqual(TEXT("NPC_GROUP_TEXTURE_WIDTH unchanged"), width, 64);
 
     // Lane 0 drivable, lane 1 not drivable (zero nominal length), lane 2 unresolved, then a cluster and a battle
@@ -1036,14 +1039,14 @@ bool FSOLNpcRailLaneTrafficTexelsTest::RunTest(const FString& /*parameters*/)
     bool bOthersZero = true;
     for (int32 column = 2; column < width; ++column)
     {
-        for (int32 row = 2; row < SOL::NPC_GROUP_TEXTURE_ROWS; ++row)
+        for (int32 row = 2; row <= 5; ++row)
         {
             bOthersZero = bOthersZero && texels[row * width + column] == zero;
         }
     }
     TestTrue(TEXT("invalid lane, cluster, battle and unused columns: zero rows 2-5"), bOthersZero);
 
-    // A buffer shorter than six rows is left alone
+    // A buffer shorter than NPC_GROUP_TEXTURE_ROWS rows is left alone
     TArray<FVector4f> shortTexels;
     shortTexels.Init(sentinel, width * (SOL::NPC_GROUP_TEXTURE_ROWS - 1));
     SOLNpcRail::WriteLaneTrafficTexels(frame, shortTexels);
@@ -2386,6 +2389,388 @@ bool FSOLNpcRailLaneSlotColumnsTest::RunTest(const FString& /*parameters*/)
         TestEqual(TEXT("negative slot: none"), groups.LaneSlotColumn(-1), static_cast<int32>(INDEX_NONE));
         TestFalse(TEXT("every column used exactly once"), used.Contains(0));
     }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailColumnAwareLanesTest, "SOLTest.NpcRail.ColumnAwareLanes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Part 53c2a: lane network slots past the base lanes are lane columns after the clusters and battles. The column-
+// indexed lane arrays, the rail frame, the lane frame, the group texel .w rows and the ship counts treat those columns
+// as lanes and the cluster / battle columns between as non-lanes; a parked rail evaluates to the origin
+bool FSOLNpcRailColumnAwareLanesTest::RunTest(const FString& /*parameters*/)
+{
+    // 2 base lanes, 1 cluster, 1 battle, 2 network slots: columns 0-1 lanes, 2 cluster, 3 battle, 4-5 slot lanes
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 2;
+    groups.ClusterCount = 1;
+    groups.BattleCount = 1;
+    groups.ExtraSlotCount = 2;
+    TestEqual(TEXT("Num spans the slot columns"), groups.Num(), 6);
+    TestEqual(TEXT("LaneColumnEnd"), groups.LaneColumnEnd(), 6);
+    const int32 expectedSlots[] = { 0, 1, INDEX_NONE, INDEX_NONE, 2, 3 };
+    for (int32 column = 0; column < 6; ++column)
+    {
+        TestEqual(FString::Printf(TEXT("column %d slot"), column), groups.ColumnSlot(column), expectedSlots[column]);
+        if (expectedSlots[column] != INDEX_NONE)
+        {
+            TestEqual(FString::Printf(TEXT("column %d round trip"), column),
+                groups.LaneSlotColumn(expectedSlots[column]), column);
+        }
+    }
+    TestEqual(TEXT("out of range column"), groups.ColumnSlot(6), int32(INDEX_NONE));
+    FSOLNpcGroupTable noExtra = groups;
+    noExtra.ExtraSlotCount = 0;
+    TestEqual(TEXT("LaneColumnEnd without slots past the base lanes"), noExtra.LaneColumnEnd(), 2);
+
+    // Bodies 0..3 at known places; the slot lanes use bodies 2-3 and 0-3, the cluster body 1
+    const TArray<FVector3d> positionsM = { FVector3d(0.0, 0.0, 0.0), FVector3d(1.0e9, 0.0, 0.0),
+        FVector3d(0.0, 2.0e9, 0.0), FVector3d(0.0, 0.0, 3.0e9) };
+    groups.LaneBodyA = { 0, 1, INDEX_NONE, INDEX_NONE, 2, 0 };
+    groups.LaneBodyB = { 1, 2, INDEX_NONE, INDEX_NONE, 3, 3 };
+    groups.LaneRadiusM = { 1.0e6, 1.0e6, 0.0, 0.0, 4.0e6, 5.0e6 };
+    groups.ClusterBody = { 1 };
+    groups.ClusterInnerM = { 1.0e7 };
+    groups.ClusterOuterM = { 2.0e7 };
+    groups.BattleBody = 0;
+    groups.BattleRadiusM = 1.0e5;
+    groups.BattleCenterFromBodyM = { FVector3d(5.0e5, 0.0, 0.0) };
+    const TArray<int32> inWall = { 1000, 1000, 999, 999, 2000, 3000 };
+    const TArray<double> nominalM = { 2.0e9, 3.0e9, 1.0, 1.0, 5.0e9, 4.0e9 };
+    const TArray<double> radiiM = { 1.0e6, 1.0e6, 1.0e6, 1.0e6, 1.0e6, 1.0e6 };
+    SOLNpcRail::BuildLaneProfiles(groups, inWall, inWall, nominalM, radiiM, radiiM);
+    TestEqual(TEXT("profiles per column"), groups.LaneProfile.Num(), 6);
+    TestEqual(TEXT("cluster column has no profile"), groups.LaneProfile[2].NominalLengthM, 0.0);
+    TestEqual(TEXT("battle column has no in-wall count"), groups.LaneInWallCount[3], 0);
+    TestTrue(TEXT("slot column 4 profile"), groups.LaneProfile[4].NominalLengthM > 0.0
+        && groups.LaneProfile[4].WallRadiusM > 0.0);
+
+    // The rail frame: lane frames at the lane columns, none at the cluster and battle columns, their points kept
+    FSOLNpcRailFrame frame;
+    SOLNpcRail::BuildFrame(groups, positionsM, 0.0, frame);
+    TestEqual(TEXT("frame lane arrays per column"), frame.LaneFrame.Num(), 6);
+    TestTrue(TEXT("slot column 4 lane frame valid"), frame.LaneFrame[4].bValid);
+    TestFalse(TEXT("cluster column has no lane frame"), frame.LaneFrame[2].bValid);
+    TestEqual(TEXT("cluster point"), frame.GroupPointAM[2], positionsM[1]);
+    TestEqual(TEXT("battle point"), frame.GroupPointAM[3], positionsM[0] + groups.BattleCenterFromBodyM[0]);
+    TestEqual(TEXT("slot column 5 point B"), frame.GroupPointBM[5], positionsM[3]);
+
+    // Distance: the slot column is a lane capsule (the cluster column a shell)
+    const FVector3d midM = 0.5 * (positionsM[2] + positionsM[3]);
+    TestTrue(TEXT("slot lane capsule contains its midpoint"),
+        SOLNpcRail::GroupDistanceM(groups, frame, 4, midM) <= 0.0 + 1.0e-6);
+    TestTrue(TEXT("cluster column stays a shell"), SOLNpcRail::GroupDistanceM(groups, frame, 2, positionsM[1]) > 0.0);
+
+    // A parked rail evaluates to the origin (no group points), a slot-column rail on its lane
+    FSOLNpcRail parked;
+    parked.Kind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane);
+    parked.Group = SOL::NPC_RAIL_PARKED_GROUP;
+    TestEqual(TEXT("parked rail at the origin"), SOLNpcRail::EvaluateM(parked, frame), FVector3d::ZeroVector);
+
+    // Lane counts and the lane frame: column 5's ships counted, cluster / battle columns empty, .w rows zero there
+    TArray<FSOLNpcRail> rails;
+    for (int32 index = 0; index < 5; ++index)
+    {
+        FSOLNpcRail& rail = rails.AddDefaulted_GetRef();
+        rail.Kind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane);
+        rail.Group = 5;
+    }
+    rails.Add(parked);
+    TArray<int32> counts;
+    SOLNpcLane::CountLaneShips(rails, groups.LaneColumnEnd(), counts);
+    TestEqual(TEXT("counts per column"), counts.Num(), 6);
+    TestEqual(TEXT("slot column 5 count"), counts[5], 5);
+    TArray<int32> accumulated;
+    accumulated.SetNumZeroed(6);
+    SOLNpcLane::AccumulateLaneShips(rails, accumulated);
+    TestEqual(TEXT("accumulated slot column 5"), accumulated[5], 5);
+    FSOLNpcLaneFrame laneFrame;
+    SOLNpcLane::BuildLaneFrame(groups, frame, counts, laneFrame);
+    TestEqual(TEXT("lane frame per column"), laneFrame.Lanes.Num(), 6);
+    TestFalse(TEXT("cluster column not a lane"), laneFrame.Lanes[2].bLaneColumn);
+    TestTrue(TEXT("slot column 5 drawn"), laneFrame.Lanes[5].bDrawn);
+    TArray<FVector4f> texels;
+    texels.SetNumZeroed(SOL::NPC_GROUP_TEXTURE_WIDTH * SOL::NPC_GROUP_TEXTURE_ROWS);
+    SOLNpcLane::WriteLaneGroupTexelW(laneFrame, texels);
+    TestEqual(TEXT("cluster column row 1 .w stays 0"), texels[SOL::NPC_GROUP_TEXTURE_WIDTH + 2].W, 0.0f);
+    TestEqual(TEXT("slot column 5 row 0 .w = lane radius"), texels[5].W, 5.0e6f);
+    TestEqual(TEXT("slot column 5 row 1 .w = its weight (drawn, not -1)"), texels[SOL::NPC_GROUP_TEXTURE_WIDTH + 5].W,
+        static_cast<float>(SOLNpcLane::LaneTrafficWeight(5)));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailBlockMoveCostTest, "SOLTest.NpcRail.BlockMoveCost",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 53 13 / contract 19: the CPU cost of one ship block move (100 lane ships of the 1M population re-railed on
+// another slot's column: spawn, rail, the two GPU texels each, the dirty range and its texel rects) is under 0.5 ms.
+// Measured over many moves (the render-thread upload and the Mass re-bucket of 53c2b are not part of this figure)
+bool FSOLNpcRailBlockMoveCostTest::RunTest(const FString& /*parameters*/)
+{
+    const SOLNpcScale::FCounts counts = SOLNpcScale::SplitCounts(SOL::NPC_MAX_COUNT, 0, 0.4);
+    const SOLNpcScale::FLayout layout = SOLNpcScale::DefaultLayout();
+    const SOLNpcScale::FBattleParams battle;
+    const int32 blockSize = SOL::NPC_LANE_SHIP_BLOCK_SIZE;
+    const int32 blockCount = SOLLaneNetwork::ShipBlockCount(counts.Lane, blockSize);
+    TArray<int32> blockSlot;
+    blockSlot.Init(9, blockCount);
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 8;
+    groups.ClusterCount = 10;
+    groups.BattleCount = 16;
+    groups.ExtraSlotCount = 2;
+    TArray<FSOLLaneProfile> profiles;
+    profiles.SetNum(groups.Num());
+    profiles[groups.LaneSlotColumn(9)] = SOLLaneTraffic::MakeLaneProfile(4.0e6, 3.0e11, 6.0e6, 2.5e5);
+    TArray<FVector4f> texels;
+    texels.SetNumUninitialized(blockSize * 2);
+    TArray<int32> moved;
+    TArray<FSOLShipRange> ranges;
+    TArray<FSOLTexelRegion> regions;
+    constexpr int32 MOVES = 400;
+    double checksum = 0.0;
+    const double startS = FPlatformTime::Seconds();
+    for (int32 move = 0; move < MOVES; ++move)
+    {
+        // One block (spread over the lane population) taken by slot 9: its rails, texels, range and rects
+        const int32 block = (move * 37) % blockCount;
+        moved.Reset();
+        moved.Add(block);
+        SOLLaneNetwork::ShipBlockDirtyRanges(moved, counts.Lane, blockSize, ranges);
+        for (const FSOLShipRange& range : ranges)
+        {
+            for (int32 local = 0; local < range.Count; ++local)
+            {
+                const int32 npcIndex = counts.Battle + range.First + local;
+                const SOLNpcScale::FSpawn spawn = SOLNpcScale::MakeSpawn(0x5017u, npcIndex, counts, layout, battle,
+                    blockSlot, blockSize);
+                const uint16 group = SOLNpcRail::LaneRailGroup(groups, spawn.GroupIndex);
+                FSOLNpcRail rail = SOLNpcRail::FromSpawn(spawn, 0, profiles[group], 0.0);
+                rail.Group = group;
+                SOLNpcRail::GpuRailTexels(rail, 1.0e4, profiles, texels[local * 2], texels[local * 2 + 1]);
+            }
+            SOLNpcRail::RailTexelRegions(2 * (counts.Battle + range.First), 2 * range.Count,
+                SOL::NPC_RAIL_TEXTURE_WIDTH, regions);
+            checksum += texels[0].Y + regions.Num();
+        }
+    }
+    const double perMoveMs = (FPlatformTime::Seconds() - startS) * 1000.0 / MOVES;
+    AddInfo(FString::Printf(TEXT("block move CPU cost %.4f ms per move (gate 0.5 ms), checksum %.1f"), perMoveMs,
+        checksum));
+    TestTrue(TEXT("one block move under the 0.5 ms gate"), perMoveMs < 0.5);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailLaneWindowWiringTest, "SOLTest.NpcRail.LaneWindowWiring",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Part 53c2a live wiring, through the calls the subsystem's spawn, UpdateLaneWindows and the tier Select pass make: a
+// lane ship's rail group is its block's slot column (not the slot number), a slot's J2000 window lands at that column
+// in rail time (the spawn epoch taken off exactly once), and the docked tier rule keeps an in-window ship's tier and
+// docks (Far) a ship outside its window. A large epoch makes a dropped or doubled epoch subtraction move the window
+// about 8e8 s away and flip the in-window case to Far
+bool FSOLNpcRailLaneWindowWiringTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcScale::EAiTier;
+
+    // 2 base lanes, 1 cluster, 1 battle, 2 slots past the base lanes: slot 2 is column 4, slot 3 column 5
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 2;
+    groups.ClusterCount = 1;
+    groups.BattleCount = 1;
+    groups.ExtraSlotCount = 2;
+    TestEqual(TEXT("slot 2 is column 4"), groups.LaneSlotColumn(2), 4);
+    TestEqual(TEXT("slot 3 is column 5"), groups.LaneSlotColumn(3), 5);
+    groups.LaneProfile.SetNum(groups.Num());
+    groups.LaneProfile[1] = SOLLaneTraffic::MakeLaneProfile(2.0e6, 1.0e11, 6.0e6, 2.5e5);
+    groups.LaneProfile[4] = SOLLaneTraffic::MakeLaneProfile(4.0e6, 3.0e11, 6.0e6, 2.5e5);
+    groups.LaneProfile[5] = SOLLaneTraffic::MakeLaneProfile(3.0e6, 2.0e11, 6.0e6, 2.5e5);
+
+    // Spawn: blocks owned by slots 2, 3, none (parked) and 1 in turn; every lane ship's rail group is its block's
+    // slot column with that column's profile
+    const SOLNpcScale::FCounts counts = SOLNpcScale::SplitCounts(5000, 300, 0.4);
+    const SOLNpcScale::FLayout layout = SOLNpcScale::DefaultLayout();
+    const SOLNpcScale::FBattleParams battle;
+    const int32 blockSize = SOL::NPC_LANE_SHIP_BLOCK_SIZE;
+    const int32 blockCount = SOLLaneNetwork::ShipBlockCount(counts.Lane, blockSize);
+    const int32 slotCycle[] = { 2, 3, INDEX_NONE, 1 };
+    TArray<int32> blockSlot;
+    for (int32 block = 0; block < blockCount; ++block)
+    {
+        blockSlot.Add(slotCycle[block % 4]);
+    }
+    constexpr uint32 SEED = 0x5017u;
+    int32 wrongGroup = 0;
+    int32 wrongProfile = 0;
+    int32 parked = 0;
+    for (int32 laneShip = 0; laneShip < counts.Lane; ++laneShip)
+    {
+        const SOLNpcScale::FSpawn spawn = SOLNpcScale::MakeSpawn(SEED, counts.Battle + laneShip, counts, layout,
+            battle, blockSlot, blockSize);
+        const FSOLNpcRail rail = SOLNpcRail::LaneRailFromSpawn(spawn, groups);
+        const int32 slot = blockSlot[laneShip / blockSize];
+        const uint16 expected = slot == INDEX_NONE ? SOL::NPC_RAIL_PARKED_GROUP
+            : static_cast<uint16>(groups.LaneSlotColumn(slot));
+        wrongGroup += spawn.Kind != SOLNpcScale::EPlacementKind::Lane || rail.Group != expected ? 1 : 0;
+        parked += SOLNpcRail::IsParked(rail) ? 1 : 0;
+        if (slot != INDEX_NONE)
+        {
+            FSOLNpcRail reference = SOLNpcRail::FromSpawn(spawn, 0, groups.LaneProfile[expected], 0.0);
+            reference.Group = expected;
+            wrongProfile += FMemory::Memcmp(&reference, &rail, sizeof(FSOLNpcRail)) != 0 ? 1 : 0;
+        }
+    }
+    TestEqual(TEXT("every lane ship's group is its block's slot column (parked without a slot)"), wrongGroup, 0);
+    TestEqual(TEXT("every grouped rail uses its column's profile"), wrongProfile, 0);
+    TestTrue(TEXT("the parked blocks' ships are parked"), parked > 0 && parked < counts.Lane);
+
+    // The first ship of block 0 (slot 2, column 4) and its cycle on that column's profile
+    const FSOLNpcRail rail = SOLNpcRail::LaneRailFromSpawn(SOLNpcScale::MakeSpawn(SEED, counts.Battle, counts, layout,
+        battle, blockSlot, blockSize), groups);
+    TestEqual(TEXT("the probe ship is on column 4"), static_cast<int32>(rail.Group), 4);
+    const FSOLLaneProfile& profile = groups.LaneProfile[4];
+    const FSOLLaneCycle cycle = SOLLaneTraffic::MakeCycle(
+        SOLLaneTraffic::LaneShipLegS(profile, SOLNpcRail::LaneShipFromRail(rail)), profile.UTurnDepthM);
+    constexpr double EPOCH_S = 8.0e8;   // Spawn epoch, seconds since J2000 (2025)
+    if (!TestTrue(TEXT("the probe cycle is drivable and short against the epoch"), cycle.CycleS > 0.0
+        && 40.0 * cycle.CycleS < EPOCH_S))
+    {
+        return true;
+    }
+
+    // The rail time of a sim time, and a slot window 4 cycles either side of a rail time written at the slot's column
+    const double railNowS = 7.3 * cycle.CycleS;
+    TestNearlyEqual(TEXT("rail time = sim time - epoch"), SOLNpcRail::RailTimeS(EPOCH_S + railNowS, EPOCH_S),
+        railNowS, 1.0e-4);
+    const double nanS = std::numeric_limits<double>::quiet_NaN();
+    TArray<double> openStartRailS;
+    TArray<double> closeRailS;
+    openStartRailS.Init(nanS, groups.LaneColumnEnd());
+    closeRailS.Init(nanS, groups.LaneColumnEnd());
+    SOLNpcRail::SetSlotWindowRailS(groups, 2, EPOCH_S + railNowS - 4.0 * cycle.CycleS,
+        EPOCH_S + railNowS + 4.0 * cycle.CycleS, EPOCH_S, openStartRailS, closeRailS);
+    TestNearlyEqual(TEXT("slot 2 open start at column 4 in rail time"), openStartRailS[4],
+        railNowS - 4.0 * cycle.CycleS, 1.0e-4);
+    TestNearlyEqual(TEXT("slot 2 close at column 4 in rail time"), closeRailS[4], railNowS + 4.0 * cycle.CycleS,
+        1.0e-4);
+    TestTrue(TEXT("column 2 (the cluster, the slot number) untouched"), FMath::IsNaN(openStartRailS[2])
+        && FMath::IsNaN(closeRailS[2]));
+
+    // Select pass, in the window: the selected tier is kept (Mid stays Mid, a Far ship may be promoted)
+    const bool bInSpace = SOLNpcRail::LaneRailInSpace(rail, profile, railNowS, openStartRailS[4], closeRailS[4]);
+    TestTrue(TEXT("in the window: in space"), bInSpace);
+    TestEqual(TEXT("in the window: Mid kept"), static_cast<int32>(SOLNpcScale::LaneShipAiTier(EAiTier::Far,
+        EAiTier::Mid, bInSpace)), static_cast<int32>(EAiTier::Mid));
+
+    // Docked: a window that closed 8 cycles ago or opens in 8 cycles demotes the ship to Far at once
+    const double windowsJ2000S[][2] = { { -12.0, -8.0 }, { 8.0, 12.0 } };
+    for (const double* window : windowsJ2000S)
+    {
+        SOLNpcRail::SetSlotWindowRailS(groups, 2, EPOCH_S + railNowS + window[0] * cycle.CycleS,
+            EPOCH_S + railNowS + window[1] * cycle.CycleS, EPOCH_S, openStartRailS, closeRailS);
+        const bool bDockedInSpace = SOLNpcRail::LaneRailInSpace(rail, profile, railNowS, openStartRailS[4],
+            closeRailS[4]);
+        TestFalse(FString::Printf(TEXT("window [%+.0f, %+.0f] cycles: docked"), window[0], window[1]),
+            bDockedInSpace);
+        TestEqual(FString::Printf(TEXT("window [%+.0f, %+.0f] cycles: Mid demoted to Far"), window[0], window[1]),
+            static_cast<int32>(SOLNpcScale::LaneShipAiTier(EAiTier::Mid, EAiTier::Mid, bDockedInSpace)),
+            static_cast<int32>(EAiTier::Far));
+    }
+
+    // No window (NaN) docks; a cluster rail is always in space; a slot without a column writes nothing
+    TestFalse(TEXT("no window: docked"), SOLNpcRail::LaneRailInSpace(rail, profile, railNowS, nanS, nanS));
+    FSOLNpcRail cluster = rail;
+    cluster.Kind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Cluster);
+    TestTrue(TEXT("a cluster rail is in space"), SOLNpcRail::LaneRailInSpace(cluster, profile, railNowS, nanS, nanS));
+    TArray<double> before = openStartRailS;
+    SOLNpcRail::SetSlotWindowRailS(groups, groups.LaneSlotCapacity(), 0.0, 1.0, EPOCH_S, openStartRailS, closeRailS);
+    TestTrue(TEXT("a slot past the capacity writes nothing"), FMemory::Memcmp(before.GetData(),
+        openStartRailS.GetData(), sizeof(double) * before.Num()) == 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailNodeEndpointsTest, "SOLTest.NpcRail.NodeEndpoints",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Part 53c2a: an end point index past the registry (registry count + node, an asteroid node) reads BuildFrame's node
+// positions; without them, or past both arrays, the point is the origin and the lane frame invalid
+bool FSOLNpcRailNodeEndpointsTest::RunTest(const FString& /*parameters*/)
+{
+    // One base lane between bodies 0 and 1, one slot lane from body 0 to node 15
+    const TArray<FVector3d> bodiesM = { FVector3d(1.0e9, 0.0, 0.0), FVector3d(0.0, 2.0e9, 0.0) };
+    const int32 registryCount = bodiesM.Num();
+    TArray<FVector3d> nodesM;
+    nodesM.Init(FVector3d(std::numeric_limits<double>::quiet_NaN()), 24);
+    nodesM[15] = FVector3d(0.0, 0.0, 4.0e11);
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 1;
+    groups.ExtraSlotCount = 1;
+    groups.LaneBodyA = { 0, 0 };
+    groups.LaneBodyB = { 1, registryCount + 15 };
+    groups.LaneRadiusM = { 1.0e6, 4.0e6 };
+    groups.LaneProfile = { SOLLaneTraffic::MakeLaneProfile(1.0e6, 2.0e9, 6.0e6, 2.5e5),
+        SOLLaneTraffic::MakeLaneProfile(4.0e6, 4.0e11, 6.0e6, 4.0e5) };
+
+    FSOLNpcRailFrame frame;
+    SOLNpcRail::BuildFrame(groups, bodiesM, 0.0, frame, nodesM);
+    TestEqual(TEXT("base lane point B from the registry"), frame.GroupPointBM[0], bodiesM[1]);
+    TestEqual(TEXT("slot lane point A from the registry"), frame.GroupPointAM[1], bodiesM[0]);
+    TestEqual(TEXT("slot lane point B from the node positions"), frame.GroupPointBM[1], nodesM[15]);
+    TestTrue(TEXT("slot lane frame valid"), frame.LaneFrame[1].bValid);
+
+    // Without node positions (or an index past them) the node end is unresolved
+    SOLNpcRail::BuildFrame(groups, bodiesM, 0.0, frame);
+    TestEqual(TEXT("no node positions: point B at the origin"), frame.GroupPointBM[1], FVector3d::ZeroVector);
+    TestFalse(TEXT("no node positions: lane frame invalid"), frame.LaneFrame[1].bValid);
+    TestTrue(TEXT("no node positions: base lane still valid"), frame.LaneFrame[0].bValid);
+    groups.LaneBodyB[1] = registryCount + 24;
+    SOLNpcRail::BuildFrame(groups, bodiesM, 0.0, frame, nodesM);
+    TestEqual(TEXT("past both arrays: point B at the origin"), frame.GroupPointBM[1], FVector3d::ZeroVector);
+    TestFalse(TEXT("past both arrays: lane frame invalid"), frame.LaneFrame[1].bValid);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailBlockSpawnCountsTest, "SOLTest.NpcRail.BlockSpawnCountsParallel",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Part 53c2a: CountBlockSpawns over the 1M population (parallel over block runs) is deterministic, every block's
+// in-wall + halo is its size (the last block partial) and the totals are the lane ship count
+bool FSOLNpcRailBlockSpawnCountsTest::RunTest(const FString& /*parameters*/)
+{
+    const SOLNpcScale::FCounts counts = SOLNpcScale::SplitCounts(SOL::NPC_MAX_COUNT - 37, 0, 0.4);
+    const int32 blockSize = SOL::NPC_LANE_SHIP_BLOCK_SIZE;
+    const int32 blockCount = SOLLaneNetwork::ShipBlockCount(counts.Lane, blockSize);
+    TArray<int32> inWall;
+    TArray<int32> halo;
+    TArray<int32> inWallAgain;
+    TArray<int32> haloAgain;
+    SOLNpcScale::CountBlockSpawns(0x5017u, counts, blockSize, inWall, halo);
+    SOLNpcScale::CountBlockSpawns(0x5017u, counts, blockSize, inWallAgain, haloAgain);
+    TestEqual(TEXT("one in-wall entry per block"), inWall.Num(), blockCount);
+    TestEqual(TEXT("one halo entry per block"), halo.Num(), blockCount);
+    TestTrue(TEXT("repeat call: identical in-wall counts"), inWall == inWallAgain);
+    TestTrue(TEXT("repeat call: identical halo counts"), halo == haloAgain);
+    int32 wrongSize = 0;
+    int64 total = 0;
+    int64 haloTotal = 0;
+    for (int32 block = 0; block < blockCount; ++block)
+    {
+        const int32 size = FMath::Min(blockSize, counts.Lane - block * blockSize);
+        wrongSize += inWall[block] + halo[block] != size || halo[block] < 0 ? 1 : 0;
+        total += inWall[block] + halo[block];
+        haloTotal += halo[block];
+    }
+    TestEqual(TEXT("every block's in-wall + halo is its size"), wrongSize, 0);
+    TestEqual(TEXT("totals are the lane ship count"), total, static_cast<int64>(counts.Lane));
+    TestTrue(TEXT("some halo ships, most in the wall"), haloTotal > 0 && haloTotal < counts.Lane / 2);
+    TArray<int32> none;
+    SOLNpcScale::CountBlockSpawns(0x5017u, SOLNpcScale::FCounts(), blockSize, none, halo);
+    TestEqual(TEXT("no lane ships: no blocks"), none.Num(), 0);
     return true;
 }
 

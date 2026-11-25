@@ -187,6 +187,7 @@ struct FSOLLaneMergeLane
     int32 BodyB = INDEX_NONE;
     FSOLLaneLeg TrackLeg;                               // The mean-effort leg on the keep-right track, precomputed by
                                                         // MakeMergeLane (invalid: computed where needed)
+    bool bOpenNow = true;                               // The lane is open now (LaneOpenAt over its slot window, Q30)
 };
 
 // The merge readout of one frame (SOLLaneTraffic::MergeReadout)

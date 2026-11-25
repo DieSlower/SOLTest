@@ -9,6 +9,8 @@
 #include "Npc/SOLNpcFragments.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "SOLConstants.h"
+#include "Traffic/SOLLaneNetworkMath.h"
+#include "Traffic/SOLLaneTrafficMath.h"
 #include "Universe/SOLRenderPlacement.h"
 #include "Visuals/SOLThrusterMath.h"
 
@@ -109,6 +111,7 @@ void USOLNpcTierProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>
     mEvaluateQuery.AddConstSharedRequirement<FSOLNpcGroupFragment>();
     mEvaluateQuery.SetChunkFilter(chunkFilter);
 
+    mSelectQuery.AddRequirement<FSOLNpcRailFragment>(EMassFragmentAccess::ReadOnly);   // The lane window test (P2)
     mSelectQuery.AddRequirement<FSOLNpcStateFragment>(EMassFragmentAccess::ReadWrite);
     mSelectQuery.AddRequirement<FSOLNpcDeviationFragment>(EMassFragmentAccess::ReadWrite);
     mSelectQuery.AddRequirement<FSOLNpcCombatFragment>(EMassFragmentAccess::ReadWrite);
@@ -170,6 +173,7 @@ void USOLNpcTierProcessor::AddChunkView(FMassExecutionContext& context, const bo
         view.Rails = context.GetFragmentView<FSOLNpcRailFragment>().GetData();
         return;
     }
+    view.Rails = context.GetFragmentView<FSOLNpcRailFragment>().GetData();
     view.Combats = context.GetMutableFragmentView<FSOLNpcCombatFragment>().GetData();
     view.ClassIndex = context.GetConstSharedFragment<FSOLNpcClassFragment>().ClassIndex;
 }
@@ -354,6 +358,18 @@ void USOLNpcTierProcessor::SelectChunk(const FChunkView& view)
     int32 changes = 0;
     bool bDemotedToFar = false;
 
+    // The lane window test of this chunk's column (SDD 53 4.5): its slot's window in rail time and the frame's profile;
+    // off without a network (empty window arrays). The window arrays span every column up to LaneColumnEnd, cluster
+    // and battle columns included, so those chunks pass here and SOLNpcRail::LaneRailInSpace's kind check skips them
+    const FSOLNpcRailFrame* railFrame = mInputs.RailFrame;
+    const bool bLaneWindows = railFrame != nullptr && railFrame->LaneProfile.IsValidIndex(view.Group)
+        && mInputs.GroupOpenStartRailS.IsValidIndex(view.Group) && mInputs.GroupCloseRailS.IsValidIndex(view.Group);
+    const double openStartRailS = bLaneWindows ? mInputs.GroupOpenStartRailS[view.Group] : 0.0;
+    const double closeRailS = bLaneWindows ? mInputs.GroupCloseRailS[view.Group] : 0.0;
+    const double railTimeS = railFrame != nullptr ? railFrame->RailTimeS : 0.0;
+    const FSOLLaneProfile noLaneProfile;
+    const FSOLLaneProfile& laneProfile = bLaneWindows ? railFrame->LaneProfile[view.Group] : noLaneProfile;
+
     // Moves are staged on the stack and appended in blocks with one atomic reservation each
     constexpr int32 STAGE_SIZE = 64;
     FTierMove staged[STAGE_SIZE];
@@ -391,6 +407,15 @@ void USOLNpcTierProcessor::SelectChunk(const FChunkView& view)
             view.Deviations[entity].DeviationM.Size(), distanceM, mInputs.PixelAngleRad, mInputs.bMidBudgetForced))
         {
             aiTier = NPC_TIER_MID;
+        }
+
+        // A docked lane ship (its leg not flown inside its slot's window) is Far: never promoted, demoted at once
+        // without the snap gate (SDD 53 4.5, P1 / P2)
+        if (aiTier != NPC_TIER_FAR && bLaneWindows)
+        {
+            aiTier = static_cast<uint8>(SOLNpcScale::LaneShipAiTier(static_cast<SOLNpcScale::EAiTier>(state.AiTier),
+                static_cast<SOLNpcScale::EAiTier>(aiTier), SOLNpcRail::LaneRailInSpace(view.Rails[entity].Rail,
+                laneProfile, railTimeS, openStartRailS, closeRailS)));
         }
 
         // Far: drawn by the GPU point layer from the bare rail, so the deviation snaps to zero (beyond the Mid radius)

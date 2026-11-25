@@ -98,6 +98,10 @@ public:
         double PlumeGateM = 0.0;                      // Collect: plume thrust only for hull-drawn ships nearer than
                                                       // this (SOLThruster::PlumeMaxDistanceM of the view, SDD 51 4.2)
         bool bMidBudgetForced = false;                // The Mid budget shrank the Mid radius (demotions are forced)
+        TConstArrayView<double> GroupOpenStartRailS;  // Per lane column: its slot's open window in rail time (SDD 53
+        TConstArrayView<double> GroupCloseRailS;      // 5.4; NaN = none, so its ships are docked); empty = no network,
+                                                      // every lane ship in space. A docked lane ship is never promoted
+                                                      // and a promoted one is demoted at once (LaneShipAiTier, P2)
     };
 
     // Sets the pass and inputs of the next run

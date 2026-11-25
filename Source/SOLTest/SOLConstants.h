@@ -2671,8 +2671,12 @@ namespace SOL
     inline constexpr int32 NPC_RAIL_TEXTURE_WIDTH = 2048;              // Rail texture width (2 texels per ship)
     inline constexpr int32 NPC_CPU_TEXTURE_WIDTH = 1024;               // CPU point texture width (1 texel per ship)
     inline constexpr int32 NPC_GROUP_TEXTURE_WIDTH = 64;               // Group texture width (max groups)
-    inline constexpr int32 NPC_GROUP_TEXTURE_ROWS = 6;                 // Group texture rows: 0-1 group points, 2-5 the
-                                                                       // lane traffic rows (SDD 50 section 4.6)
+    inline constexpr int32 NPC_GROUP_TEXTURE_ROWS = 7;                 // Group texture rows: 0-1 group points, 2-5 the
+                                                                       // lane traffic rows (SDD 50 section 4.6), 6 the
+                                                                       // lane window and active flag (SDD 53 5.4)
+    inline constexpr int32 NPC_GROUP_WINDOW_ROW = 6;                   // Group texture row of the lane window texel
+    static_assert(NPC_GROUP_WINDOW_ROW >= 0 && NPC_GROUP_WINDOW_ROW < NPC_GROUP_TEXTURE_ROWS,
+        "the lane window row fits the group texture");
     inline constexpr double NPC_RENDER_SPACE_BOUNDS_CM = 5.0e11;       // Half-extent of the NPC point layers' and
                                                                        // hulls' fixed bounds (all render space)
     inline constexpr double NPC_GPU_RAIL_EPOCH_S = 1.0e4;              // The GPU rail copy is re-based once the rail
@@ -3322,6 +3326,25 @@ namespace SOL
         "the tunnel class thresholds are ordered");
     static_assert(NPC_TUNNEL_INSTANCE_POOL <= NPC_GROUP_TEXTURE_WIDTH && NPC_LANE_ROUTE_MAX_HOPS >= 8,
         "the pool and route limits are valid");
+
+    // Lane network ship blocks, open windows and traffic activation (SDD 53 4.5, 5.4, 7.2; part 53c2). The activation
+    // threshold is a 1080p-reference pixel size, scaled by the QualityPreset (LaneTunnelQualityScale, P5)
+    inline constexpr int32 NPC_LANE_SHIP_BLOCK_COUNT_DEFAULT =         // Blocks at the default lane ship count (O1)
+        NPC_LANE_SHIP_DEFAULT_COUNT / NPC_LANE_SHIP_BLOCK_SIZE;
+    inline constexpr double NPC_LANE_WINDOW_FAR_S = 1.0e30;            // Finite stand-in for +-inf in the group texel
+                                                                       // (the shader may assume no infinities)
+    inline constexpr double NPC_LANE_TRAFFIC_ACTIVE_PX = 2.4;          // A lane's ships are drawn from this largest
+                                                                       // lane radius (px, Q22), or with a CPU-tier ship
+    inline constexpr double NPC_LANE_SHIP_PARKED_LEG_S = -1.0;         // Rail texel leg time of a parked ship
+    inline constexpr uint16 NPC_RAIL_PARKED_GROUP = 0xFFFF;            // FSOLNpcRail::Group of a parked ship
+    static_assert(NPC_LANE_SHIP_BLOCK_COUNT_DEFAULT == 4000, "4,000 blocks of 100 at the default lane ship count");
+    static_assert(NPC_LANE_TRAFFIC_ACTIVE_PX == NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_LANE_FADE_FAR_RADII,
+        "the activation size is the point fade's far end at the reference focal (960 / 400)");
+    static_assert(NPC_LANE_WINDOW_FAR_S < static_cast<double>(TNumericLimits<float>::Max())
+        && NPC_LANE_WINDOW_FAR_S > 1.0e3 * NPC_LANE_NETWORK_HORIZON_EPOCHS * NPC_LANE_NETWORK_EPOCH_S,
+        "the far window bound is finite in float and far beyond the look-ahead");
+    static_assert(NPC_LANE_SHIP_PARKED_LEG_S < 0.0, "a parked ship's leg time is negative");
+    static_assert(NPC_RAIL_PARKED_GROUP >= NPC_GROUP_TEXTURE_WIDTH, "the parked group is no group column");
 
     // NPC statistics (SDD 11 sections 3.7-3.8): the NpcStats log line and the stats overlay (Part 10e)
     inline constexpr double NPC_STATS_LOG_PERIOD_S = 2.0;              // One NpcStats line per period while NPCs exist
