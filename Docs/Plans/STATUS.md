@@ -65,7 +65,7 @@ Finished rows move to Done, started rows to In progress.
 |---|---|---|---|---|
 | 3b5b2 | #55 | Thruster gas bursts (reverse, lateral and vertical thrust on the player and hull-drawn NPCs; ports, per-instance burst floats, look tuned to SDD 51 Q32): follow-up of #51, not built (SDD 51 section 4.6, plan part 51g) | M | #51 |
 | 3b5c | #54 | Hide NPC ships under 1 px (the 1 px visibility rule; first step of converting the legacy distance and count LODs to pixel rules, see TECH_DEBT) | M | #51 |
-| 3b5d | #53 | Lane network: more lanes, planet to next-closest planet, fastest A-to-Z routing, distance on/off, future stations and asteroids; also revisits the tunnel vertex budget and active-tunnel cap left interim by #52 (D15); needs grill-me | M-L | #50 (related #52) |
+| 3b5d | #53 | Lane network: more lanes, planet to next-closest planet, fastest A-to-Z routing, pixel on/off, Sun clearance (53a-53b pure math done, 53c-53f to do), future stations and asteroids; also revisits the tunnel vertex budget and active-tunnel cap left interim by #52 (D15); needs grill-me | M-L | #50 (related #52) |
 | 3b6 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b7 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m), head-and-tail tracer shape, 5 per-ship bolt colours | M | none |

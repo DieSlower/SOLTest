@@ -3261,6 +3261,56 @@ namespace SOL
         "the U-turn apex stays above the body's surface (D14)");
     static_assert(NPC_LANE_MERGE_MATCH_FRACTION < NPC_LANE_MERGE_AMBER_FRACTION, "the readout bands are ordered");
 
+    // Lane network (SDD 53, contract Docs/Plans/53-lane-network-contract.md): daily lane set, Sun closing, routing,
+    // tunnel pixel classes (all pixel thresholds at the 1080p reference) and the tunnel instance pool
+    inline constexpr double NPC_LANE_SUN_CLEARANCE_RADII = 20.0;       // A lane closes below this many Sun radii...
+    inline constexpr double NPC_LANE_SUN_REOPEN_RADII = 22.0;          // ...and reopens above this many (D5, Q6)
+    inline constexpr double NPC_LANE_NETWORK_EPOCH_S = 86400.0;        // Lane set epoch, sim seconds (Q1, Q5)
+    inline constexpr int32 NPC_LANE_NETWORK_EPOCH_SAMPLES = 5;         // Clearance samples per epoch
+    inline constexpr int32 NPC_LANE_SUN_LOOKBACK_EPOCHS = 64;          // Sun state look-back (O10)
+    inline constexpr int32 NPC_LANE_NETWORK_HORIZON_EPOCHS = 960;      // Look-ahead schedule length (O10)
+    inline constexpr double NPC_LANE_PARTNER_SWITCH_RATIO = 0.8;       // A new partner must be this much nearer (O3)...
+    inline constexpr int32 NPC_LANE_PARTNER_MIN_STAY_EPOCHS = 30;      // ...after at least this many epochs held
+    inline constexpr int32 NPC_LANE_PARTNER_WARMUP_EPOCHS = 64;        // Partner replay after a time jump (O3)
+    inline constexpr int32 NPC_LANE_BASE_COUNT = 8;                    // Base lanes own slots 0-7 (Q23)
+    inline constexpr double NPC_LANE_OPEN_FADE_REAL_S = 3.0;           // Tunnel open / close fade, real seconds (Q9)
+    inline constexpr double NPC_LANE_TRANSFER_PENALTY_S = 3600.0;      // Per-transfer routing penalty (Q12)
+    inline constexpr int32 NPC_LANE_SHIP_BLOCK_SIZE = 100;             // Lane ships are shared out in blocks (O1)
+    inline constexpr int32 NPC_LANE_DEFAULT_PERCENT = 40;              // Default LaneFraction demo option, percent
+    inline constexpr int32 NPC_LANE_SHIP_DEFAULT_COUNT =               // Lane ships at the default NPC count and
+        NPC_MAX_COUNT / 100 * NPC_LANE_DEFAULT_PERCENT;                // lane fraction (400,000)
+    inline constexpr int32 NPC_TUNNEL_QUALITY_REFERENCE_PRESET = 3;    // Epic: the QualityPreset whose tunnel class
+                                                                       // thresholds are the values below (scale 1)
+    inline constexpr double NPC_TUNNEL_ACTIVATE_PX = 0.5;              // Tunnel on at this largest radius (px)...
+    inline constexpr double NPC_TUNNEL_DEACTIVATE_PX = 0.4;            // ...and off below this one (O10)
+    inline constexpr double NPC_TUNNEL_FULL_ON_PX = 1.0;               // Full detail from this radius (px)...
+    inline constexpr double NPC_TUNNEL_FULL_OFF_PX =                   // ...back to reduced below this one, where the
+        NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII;   // dots and chevrons are alpha 0
+    inline constexpr int32 NPC_TUNNEL_INSTANCE_POOL = 24;              // Tunnel instances drawn at once (fixed pool)
+    inline constexpr int32 NPC_LANE_ROUTE_MAX_HOPS = 12;               // Longest route the router returns
+    static_assert(NPC_LANE_SUN_REOPEN_RADII > NPC_LANE_SUN_CLEARANCE_RADII, "the Sun band reopens above the close");
+    static_assert(NPC_LANE_NETWORK_EPOCH_S > 0.0 && NPC_LANE_NETWORK_EPOCH_SAMPLES >= 2
+        && NPC_LANE_SUN_LOOKBACK_EPOCHS >= 1, "the epoch and its samples are valid");
+    static_assert(NPC_LANE_NETWORK_HORIZON_EPOCHS * NPC_LANE_NETWORK_EPOCH_S > 897.0 * 86400.0,
+        "the look-ahead covers the longest possible leg (Eris-Makemake, about 897 days)");
+    static_assert(NPC_LANE_PARTNER_SWITCH_RATIO > 0.0 && NPC_LANE_PARTNER_SWITCH_RATIO < 1.0
+        && NPC_LANE_PARTNER_MIN_STAY_EPOCHS >= 1 && NPC_LANE_PARTNER_WARMUP_EPOCHS > NPC_LANE_PARTNER_MIN_STAY_EPOCHS,
+        "the partner hysteresis is valid");
+    static_assert(NPC_LANE_OPEN_FADE_REAL_S > 0.0 && NPC_LANE_TRANSFER_PENALTY_S >= 0.0,
+        "the fade and penalty are valid");
+    static_assert(NPC_MAX_COUNT % 100 == 0 && NPC_LANE_SHIP_DEFAULT_COUNT % NPC_LANE_SHIP_BLOCK_SIZE == 0,
+        "blocks divide the default lane ship count");
+    static_assert(NPC_TUNNEL_QUALITY_REFERENCE_PRESET >= 0 && NPC_TUNNEL_QUALITY_REFERENCE_PRESET
+        < static_cast<int32>(UE_ARRAY_COUNT(Thruster::RIBBON_VANISH_PX_BY_QUALITY))
+        && Thruster::RIBBON_VANISH_PX_BY_QUALITY[NPC_TUNNEL_QUALITY_REFERENCE_PRESET] > 0.0,
+        "the tunnel quality reference preset has a positive vanish size");
+    static_assert(NPC_TUNNEL_ACTIVATE_PX == NPC_TUNNEL_RADIUS_FADE_GONE_PX, "the tunnel switches on where it is gone");
+    static_assert(NPC_TUNNEL_DEACTIVATE_PX > 0.0 && NPC_TUNNEL_DEACTIVATE_PX < NPC_TUNNEL_ACTIVATE_PX
+        && NPC_TUNNEL_FULL_ON_PX > NPC_TUNNEL_FULL_OFF_PX && NPC_TUNNEL_FULL_OFF_PX > NPC_TUNNEL_ACTIVATE_PX,
+        "the tunnel class thresholds are ordered");
+    static_assert(NPC_TUNNEL_INSTANCE_POOL <= NPC_GROUP_TEXTURE_WIDTH && NPC_LANE_ROUTE_MAX_HOPS >= 8,
+        "the pool and route limits are valid");
+
     // NPC statistics (SDD 11 sections 3.7-3.8): the NpcStats log line and the stats overlay (Part 10e)
     inline constexpr double NPC_STATS_LOG_PERIOD_S = 2.0;              // One NpcStats line per period while NPCs exist
     inline constexpr double NPC_STATS_REFRESH_PERIOD_S = 0.25;         // Stats overlay text refresh (4 Hz)

@@ -74,9 +74,12 @@ struct FSOLLaneEdge
 
 struct FSOLLaneHop { int32 Lane = INDEX_NONE; int32 DirectionSign = 1; };   // +1 = NodeA -> NodeB
 
+enum class ESOLLaneRouteStatus : uint8 { Found, Unreachable, TooManyHops, TooManyEdges, InvalidEndpoint };
+
 struct FSOLLaneRoute
 {
     bool bFound = false;
+    ESOLLaneRouteStatus Status = ESOLLaneRouteStatus::Unreachable;
     double TimeS = 0.0;               // sum of edge times and transfer costs
     int32 HopCount = 0;
     FSOLLaneHop Hops[SOL::NPC_LANE_ROUTE_MAX_HOPS];
@@ -184,9 +187,10 @@ void IslandLinks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d>
 
 `lanes` = every lane of the epoch's set (base and partner, Sun-closed ones included). The root group = the nodes
 connected to `rootNode` through `lanes`. Candidates = nodes of kind Planet, DwarfPlanet or Asteroid with finite
-positions; a node of kind Moon with a finite position is also a candidate **as u only** (a relay inside the root
-group, user 2026-11-25), never as v. Repeat: among all pairs (u in the root group, v outside it, v a candidate, u a
-candidate or Moon), take the smallest centre
+positions. A Moon is **never** an end of an island link, neither u nor v (user 2026-11-25, final: the Moon relays
+through Earth only; a route to an island from the Moon is Moon -> Earth -> island, the island link is Earth's, its
+length from Earth's and the island node's aphelia, and the Moon shows as a stop on Earth). Repeat: among all pairs (u in the root group, v outside it,
+both candidates), take the smallest centre
 distance (ties to the lower sorted pair); add the sorted pair to the links and merge v's whole component (through
 `lanes` and the links so far) into the root group; until no candidate is outside the root group. So each island
 (component) gets exactly one link and any candidate already in the root group, one joined earlier included, can be
@@ -200,10 +204,11 @@ nodes: empty. Positions in units of 1e11 m on the x axis; all nodes Planet unles
 - **Tie:** x {1, 3, -1}, lanes {}, root 0: {(0, 1), (0, 2)} ((0, 1) and (0, 2) tie at 2, the lower pair first; then
   (0, 2) at 2 beats (1, 2) at 4).
 - **Moon:** node 1 Moon at x 1.0001, node 0 at x 1, lanes {}, root 0: empty (a Moon outside the root group is never
-  linked as v). Node 0 at x 1, node 1 Moon at x 5, node 2 at x 5.1, lanes {0-1}, root 0: {(1, 2)} (the Moon in the
-  root group **is** a relay, reversed by the user 2026-11-25: it is closer to node 2 than node 0 is). Same with node
-  2 at x 0.5: {(0, 2)} (the nearer relay wins, the Moon is not preferred). A Moon at x 5 and node 2 at x 5, tie with
-  node 0 at the same distance: the lower sorted pair wins.
+  linked as v). **Moon via Earth:** node 0 (Earth) at x 1, node 1 Moon (parent 0) at x 5, node 2 at x 5.1, lanes
+  {0-1}, root 0: {(0, 2)} (the Moon is nearer to node 2 but never relays; the link is Earth's). Same with node 2 at x
+  0.5: {(0, 2)}. **Moon / relay tie** (corrected in the 53a/53b review): node 0 Moon (parent 1) at x 5, node 1 Earth
+  at x 1 as the root, node 2 at x 3, lanes {0-1}, root 1: node 2 is 2 from both, a Moon relay would win the tie as the
+  lower pair (0, 2), the rule gives {(1, 2)}. Asserted in the test file.
 - **NaN:** x {1, 2, NaN}, lanes {}, root 0: {(0, 1)} (node 2 neither linked nor counted).
 - **Connected:** x {1, 2, 3}, lanes {0-1, 1-2}: empty. Root out of range: empty.
 - Purity: two calls with the same inputs give identical output.
@@ -286,18 +291,25 @@ double EpochClearanceBoundM(TConstArrayView<double> sampleClearancesM, double ma
 
 ```cpp
 bool LaneOpenWindow(TConstArrayView<uint8> openByEpoch, int64 firstEpoch, double epochS, double simTimeS,
-    double& outOpenStartS, double& outCloseS);
+    double latchedOpenStartS, double& outOpenStartS, double& outCloseS);
 bool LegFitsWindow(double departS, double legS, double openStartS, double closeS);
 double LaneDepartureStopS(double closeS, double legS);
 bool LaneShipLegDrawn(double simTimeS, double legDepartS, double legS, double openStartS, double departStopS);
 ```
 
 `LaneOpenWindow` (the look-ahead schedule, index 0 = `firstEpoch`): false (outputs NaN) if `simTimeS`'s epoch is
-outside the buffer or closed. Otherwise `outOpenStartS` = the start of the run of open epochs that holds it (-inf if
-the run reaches the buffer's first entry) and `outCloseS` = the start of the first closed epoch after it, or **the end
-of the buffer if none (fail safe: the horizon counts as a close)**.
-- E = 86400, first 100, flags {1, 1, 0, 0, 1, 1, 1} (epochs 100-106): t = 100.5 E -> true, -inf, 102 E. t = 104.2 E ->
-  true, 104 E, 107 E (horizon). t = 102.5 E -> false. t = 99 E -> false. t = 107 E -> false.
+outside the buffer or closed. Otherwise `outOpenStartS` = the start of the run of open epochs that holds it and
+`outCloseS` = the start of the first closed epoch after it, or **the end of the buffer if none (fail safe: the horizon
+counts as a close)**. When the run reaches the buffer's first entry its start is not in the buffer, so it is
+**latched** (53a/53b review): `latchedOpenStartS` is the open start the caller held for this lane at the previous
+epoch (-inf allowed: open since before anything known); NaN means the lane was not open then (a new lane or a reopen),
+so the run opens at the first entry, `firstEpoch x E` (= k E), and no ship appears mid-leg. A latch later than the
+first entry is clamped to it. A run starting inside the buffer ignores the latch.
+- E = 86400, first 100, flags {1, 1, 0, 0, 1, 1, 1} (epochs 100-106): t = 100.5 E, latch -inf -> true, -inf, 102 E;
+  latch 90 E -> 90 E, 102 E; latch NaN (new lane) at t = 100 E or 101.9 E -> 100 E, 102 E; latch 101 E -> 100 E.
+  t = 104.2 E (any latch) -> true, 104 E, 107 E (horizon). t = 102.5 E -> false. t = 99 E -> false. t = 107 E -> false.
+- New lane: with the window from latch NaN at t = 100.5 E and leg 0.5 E, a leg departed at 99.8 E is not drawn at
+  100.1 E, one departed at 100 E is.
 
 `LegFitsWindow`: `depart >= openStart && depart + leg <= close`; NaN anywhere or `leg < 0`: false.
 - (70, 30, 0, 100): true. (70.1, 30, 0, 100): false. (-5, 30, 0, 100): false. (10, 30, -inf, 40): true. (0, 30, 0,
@@ -363,7 +375,13 @@ State = (node, arriving lane). A transfer is paid at every intermediate node (no
 NodeA, `-DirectionAB` at NodeB) and their end-ring distances there. A hop reached at time `t` (from `startS`, adding
 edge and transfer times) is usable only if `LegFitsWindow(t, TimeS, OpenStartS, CloseS)`; no waiting is modelled.
 Ties: lower time, then fewer hops, then the lexicographically lower lane index sequence. A route longer than
-`NPC_LANE_ROUTE_MAX_HOPS`: not found.
+`NPC_LANE_ROUTE_MAX_HOPS`: not found. An edge with `TimeS <= 0` or non-finite is never taken. `FSOLLaneRoute::Status`
+(`ESOLLaneRouteStatus`) tells the outcomes apart: `Found`, `Unreachable`, `TooManyHops` (the fastest route is longer
+than the hop limit), `TooManyEdges` (more than 64 edges, the group texture width: the router's fixed state arrays) and
+`InvalidEndpoint`; `bFound` is true only for `Found`. **Pinned limit:** one earliest arrival is kept per (node,
+arriving lane) and no waiting is modelled, so the result is exact when every window is already open at `startS`
+(current windows); with a window that opens later, a slower arrival at the same state that would meet it is not
+explored. Making it exact for future windows would need per-state arrival lists (allocation), so it is not done.
 
 Synthetic graph (windows open forever, `DirectionAB` (1, 0, 0), end-ring distances 0, so a transfer = the penalty),
 5 nodes, edges by index: e0 0-1 10, e1 1-2 10, e2 0-2 25, e3 2-3 5, e4 1-3 30, e5 3-4 1; `startS` 0, w 2e4.
@@ -374,6 +392,15 @@ Synthetic graph (windows open forever, `DirectionAB` (1, 0, 0), end-ring distanc
 - penalty 0, 4 -> 0: 26, hops {(e5, -1), (e3, -1), (e1, -1), (e0, -1)}.
 - e5 closed, 0 -> 4: not found. Source == target: found, time 0, no hops. Node out of range: not found.
 - Tie: edges 0-1 5, 1-2 5, 0-2 10, penalty 0, 0 -> 2: hops {(e2, +1)} (fewer hops).
+- **Lexicographic tie** (equal time and hops, decided where both paths reach the same state): edges e0 0-1 5, e1 0-2
+  5, e2 1-3 5, e3 2-3 5, e4 3-4 1, 0 -> 4: 11, {(e0, +1), (e2, +1), (e4, +1)}. With e2 2-3 and e3 1-3 instead: 11,
+  {(e0, +1), (e3, +1), (e4, +1)} (the first differing position decides). Unequal legs e0 0-1 6, e1 0-2 4, e2 1-3 4,
+  e3 2-3 6, e4 3-4 1: 11 via {(e0, +1), (e2, +1), (e4, +1)} (the higher sequence settles node 3 first and is
+  replaced on e4).
+- **Edge times:** e0 0-1 0 and e1 0-1 7, 0 -> 1: 7 via e1 (also with e0 at -3 or NaN); e1 at +inf too: not found,
+  `Unreachable`.
+- **Status:** 65 parallel edges 0-1: `TooManyEdges`; 64: found. e5 closed, 0 -> 4: `Unreachable`. Target 5:
+  `InvalidEndpoint`. The 14-node chain 0 -> 13: `TooManyHops`.
 - **Time windows:** penalty 0, e3 `CloseS` 24, 0 -> 3: 40 via {(e0, +1), (e4, +1)} (e3 would run 20-25 or 25-30).
   e3 `CloseS` 25: 25 via e0, e1, e3 (fits exactly). e3 `OpenStartS` 21: 30 via {(e2, +1), (e3, +1)} (arriving at 20
   on e1 is too early, arriving at 25 on e2 fits).
@@ -389,12 +416,28 @@ Synthetic graph (windows open forever, `DirectionAB` (1, 0, 0), end-ring distanc
 
 ```cpp
 double LaneTunnelMaxRadiusPx(double segmentDistanceM, double tunnelRadiusM, double focalRefPx);
-ESOLTunnelClass StepTunnelClass(ESOLTunnelClass previous, double maxRadiusPx);
+double LaneTunnelQualityScale(int32 qualityPreset);
+ESOLTunnelClass StepTunnelClass(ESOLTunnelClass previous, double maxRadiusPx, double thresholdScale);
 ```
+
+**Quality scale (user decision B, 53a/53b review):** every class threshold is multiplied by `thresholdScale` =
+`LaneTunnelQualityScale(QualityPreset)` = `RIBBON_VANISH_PX_BY_QUALITY[preset] / RIBBON_VANISH_PX_BY_QUALITY[Epic]`
+(the flame vanish size V table, no second table; `NPC_TUNNEL_QUALITY_REFERENCE_PRESET` = 3, Epic; preset clamped to
+Low .. Cinematic): Low 10, Medium 4.6, High 2.2, Epic and Cinematic 1. A NaN, infinite or non-positive scale reads as
+1. The pool ranking (`SelectTunnelPool`) takes no scale: a uniform factor keeps the order. **Open item (53c/53d):** the
+invisible switches below hold only at scale 1; at Low the tunnel switches on at 5 px, where the shader's ring radius
+fade (`NPC_TUNNEL_RADIUS_FADE_*_PX`) is nearly solid, so the shader fades must take the same scale for the switch to
+stay invisible. Not changed in 53a/53b.
+- `LaneTunnelQualityScale`: presets 0-4 -> 10, 4.6, 2.2, 1, 1; -1 -> 10; 7 -> 1.
+- Scaled rows (off-boundary): Low (Off, 4.99) Off, (Off, 5.0) Reduced, (Off, 10) Full, (Reduced, 3.99) Off, (Full,
+  8.34) Full, (Full, 8.32) Reduced, (Off, 0.5) Off; Medium (Off, 2.29) Off, (Off, 2.31) Reduced, (Off, 4.59) Reduced,
+  (Off, 4.61) Full, (Reduced, 1.85) Reduced, (Reduced, 1.83) Off, (Full, 3.84) Full, (Full, 3.82) Reduced; High (Off,
+  1.09) Off, (Off, 1.11) Reduced, (Reduced, 2.21) Full, (Reduced, 0.87) Off, (Full, 1.84) Full, (Full, 1.82) Reduced.
+- Bad scale: NaN, +inf, 0 -> as 1 ((Off, 0.5) Reduced); -2 ((Off, 0.49) Off).
 
 - `LaneTunnelMaxRadiusPx` = f Rt / d: (1.92e10, 1e7, 960) -> 0.5; (9.6e9, 1e7, 960) -> 1.0; d <= 0 -> +inf; NaN,
   Rt <= 0 or f <= 0 -> 0.
-- `StepTunnelClass` (thresholds 0.5 / 0.4 / 1.0 / 10/12, all pinned, O10):
+- `StepTunnelClass` at scale 1 (thresholds 0.5 / 0.4 / 1.0 / 10/12, all pinned, O10):
   (Off, 0.49) -> Off; (Off, 0.5) -> Reduced; (Off, 1.0) -> Full; (Reduced, 0.45) -> Reduced; (Reduced, 0.39) -> Off;
   (Reduced, 0.99) -> Reduced; (Reduced, 1.0) -> Full; (Full, 0.84) -> Full; (Full, 0.83) -> Reduced; (Full, 0.39) ->
   Off; any previous with NaN -> Off.

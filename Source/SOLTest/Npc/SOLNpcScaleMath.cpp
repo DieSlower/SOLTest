@@ -56,7 +56,7 @@ namespace
     const SOLNpcScale::FOptionDesc OPTION_DESCRIPTORS[] = {
         // Id, Min, Max, Step, Default, bInteger, bBool
         { SOLNpcScale::EDemoOption::NpcCount, 0.0, 1000000.0, 0.0, 1000000.0, true, false },
-        { SOLNpcScale::EDemoOption::LaneFraction, 0.0, 1.0, 0.05, 0.4, false, false },
+        { SOLNpcScale::EDemoOption::LaneFraction, 0.0, 1.0, 0.05, SOL::NPC_LANE_DEFAULT_PERCENT / 100.0, false, false },
         { SOLNpcScale::EDemoOption::BattleShipCount, 0.0, 20000.0, 500.0, 2000.0, true, false },
         { SOLNpcScale::EDemoOption::BattleCount, 1.0, 16.0, 1.0, 4.0, true, false },
         { SOLNpcScale::EDemoOption::BattleRadiusM, 500.0, 20000.0, 500.0, 3000.0, false, false },

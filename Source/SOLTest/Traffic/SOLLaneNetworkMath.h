@@ -1,0 +1,221 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "SOLConstants.h"
+#include "Traffic/SOLLaneTrafficMath.h"
+
+#include <limits>
+
+// The lane network's pure math (SDD 53, contract Docs/Plans/53-lane-network-contract.md): the daily lane set (base
+// lanes, hysteretic nearest partners, island links), Sun clearance and closing, open windows, edge and transfer times,
+// the fastest route, the tunnel pixel classes and pool, and the traffic weights. Universe ecliptic metres, sim seconds,
+// double; inputs are plain arrays (nothing reads the registry or the belt catalogue)
+
+// A lane node's kind: planets, dwarf planets and asteroids take part in the partner picks; moons, stations and cities
+// do not
+enum class ESOLLaneNodeKind : uint8
+{
+    Planet,
+    DwarfPlanet,
+    Moon,
+    Asteroid,
+    Station,
+    City
+};
+
+// One node of the lane graph (SDD 53 section 4.1)
+struct FSOLLaneNode
+{
+    ESOLLaneNodeKind Kind = ESOLLaneNodeKind::Planet;
+    int32 BodyIndex = INDEX_NONE;       // Registry body index (planets, dwarf planets, moons)
+    int32 SourceIndex = INDEX_NONE;     // Index in the node's source catalogue (asteroids)
+    int32 ParentNode = INDEX_NONE;      // The parent node (a moon's planet); INDEX_NONE for Sun-orbiting nodes
+    double ClearanceRadiusM = 0.0;      // Body radius used for the end ring
+    double AphelionM = 0.0;             // Aphelion about the parent body (the Sun, or the parent planet for a moon)
+    double RegionRadiusM = 0.0;         // Region radius (SDD 53 O5)
+    double PopulationTier = 0.0;        // Traffic tier (SDD 53 O6)
+};
+
+// A lane's identity: the sorted node pair (NodeA < NodeB)
+struct FSOLLanePair
+{
+    int32 NodeA = INDEX_NONE;
+    int32 NodeB = INDEX_NONE;
+};
+
+// One edge of the routing graph
+struct FSOLLaneEdge
+{
+    int32 NodeA = INDEX_NONE;
+    int32 NodeB = INDEX_NONE;
+    double TimeS = 0.0;                                                 // T_edge, same both ways
+    double OpenStartS = -std::numeric_limits<double>::infinity();      // The lane's current open window (SDD 53 5.4)
+    double CloseS = std::numeric_limits<double>::infinity();
+    FVector3d DirectionAB = FVector3d::ZeroVector;                      // Unit, NodeA -> NodeB
+    double EndRingDistanceAM = 0.0;                                     // End-ring distance from each node's centre
+    double EndRingDistanceBM = 0.0;
+};
+
+// One hop of a route: the lane (edge index) and its direction (+1 = NodeA -> NodeB)
+struct FSOLLaneHop
+{
+    int32 Lane = INDEX_NONE;
+    int32 DirectionSign = 1;
+};
+
+// Why a route search ended (SDD 53 6.3): found, or the reason it was not
+enum class ESOLLaneRouteStatus : uint8
+{
+    Found,
+    Unreachable,        // No route inside the open windows
+    TooManyHops,        // The fastest route has more than NPC_LANE_ROUTE_MAX_HOPS hops
+    TooManyEdges,       // More edges than the router's fixed state arrays hold (the group texture width, 64)
+    InvalidEndpoint     // Source or target is not a node index
+};
+
+// The fastest route between two nodes
+struct FSOLLaneRoute
+{
+    bool bFound = false;
+    ESOLLaneRouteStatus Status = ESOLLaneRouteStatus::Unreachable;
+    double TimeS = 0.0;                                 // Sum of edge times and transfer costs
+    int32 HopCount = 0;
+    FSOLLaneHop Hops[SOL::NPC_LANE_ROUTE_MAX_HOPS];
+};
+
+// A lane's Sun state (SDD 53 section 5.1)
+enum class ESOLLaneSunState : uint8
+{
+    Open,
+    Closed
+};
+
+// A lane tunnel's pixel class (SDD 53 section 7.1)
+enum class ESOLTunnelClass : uint8
+{
+    Off,
+    Reduced,
+    Full
+};
+
+// One node's partner-pick hysteresis state (SDD 53 O3)
+struct FSOLPartnerPick
+{
+    int32 Partner = INDEX_NONE;
+    int32 StayEpochs = 0;
+};
+
+namespace SOLLaneNetwork
+{
+    // Writes the sorted, de-duplicated pairs of each taking-part node's nearest non-base-linked partner (no hysteresis)
+    SOLTEST_API void NextClosestPairs(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+        TConstArrayView<FSOLLanePair> baseLanes, TArray<FSOLLanePair>& outNew);
+
+    // Writes each node's nearest taking-part partner not linked to it by a base lane (INDEX_NONE if none)
+    SOLTEST_API void NearestPartners(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+        TConstArrayView<FSOLLanePair> baseLanes, TArray<int32>& outNearest);
+
+    // Writes the sorted, de-duplicated pairs (node, partner) of every node with a partner
+    SOLTEST_API void PairsFromPicks(TConstArrayView<int32> partnerByNode, TArray<FSOLLanePair>& outPairs);
+
+    // Returns one node's next partner pick from its previous pick, its current nearest and the two distances (O3)
+    SOLTEST_API FSOLPartnerPick StepPartnerPick(const FSOLPartnerPick& previous, int32 nearest, double nearestDistanceM,
+        double heldDistanceM, int32 minStayEpochs, double switchRatio);
+
+    // Writes the partner picks after stepping every node through epochCount epochs of positions (the warm-up)
+    SOLTEST_API void ReplayPartnerPicks(TConstArrayView<FSOLLaneNode> nodes,
+        TConstArrayView<FVector3d> positionsOldestFirstM, int32 epochCount, TConstArrayView<FSOLLanePair> baseLanes,
+        int32 minStayEpochs, double switchRatio, TArray<FSOLPartnerPick>& outPicks);
+
+    // Writes the sorted island links that join every candidate component to the root group (O2; never from a Moon)
+    SOLTEST_API void IslandLinks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+        TConstArrayView<FSOLLanePair> lanes, int32 rootNode, TArray<FSOLLanePair>& outLinks);
+
+    // Returns the epoch index floor(t / epoch); 0 for a non-positive epoch or a NaN input
+    SOLTEST_API int64 LaneNetworkEpochIndex(double simTimeS, double epochS);
+
+    // Returns an epoch's sample time, index x epoch
+    SOLTEST_API double LaneEpochSampleTimeS(int64 epochIndex, double epochS);
+
+    // Writes the lane slots for the epoch's partner set and returns the number of partner lanes that found no slot
+    SOLTEST_API int32 AssignLaneSlots(TConstArrayView<FSOLLanePair> previousSlots, TConstArrayView<uint8> slotHeld,
+        TConstArrayView<FSOLLanePair> partnerSet, int32 baseCount, int32 slotCapacity, TArray<FSOLLanePair>& outSlots);
+
+    // Returns the distance from the Sun (the origin) to the segment A-B; NaN for a non-finite input
+    SOLTEST_API double SunSegmentDistanceM(const FVector3d& aM, const FVector3d& bM);
+
+    // Returns the lane's next Sun state from its clearance (close below 20, reopen above 22 Sun radii; NaN closes)
+    SOLTEST_API ESOLLaneSunState StepSunState(ESOLLaneSunState previous, double clearanceM, double sunRadiusM);
+
+    // Returns the Sun state from the newest-first epoch clearance bounds (the pure look-back form, SDD 53 5.3)
+    SOLTEST_API ESOLLaneSunState SunStateFromLookBack(TConstArrayView<double> boundsNewestFirstM, double sunRadiusM);
+
+    // Returns an epoch's clearance lower bound, min(samples) - speed x spacing / 2; -inf for a bad input
+    SOLTEST_API double EpochClearanceBoundM(TConstArrayView<double> sampleClearancesM, double maxEndpointSpeedMps,
+        double sampleSpacingS);
+
+    // Returns whether the lane is open at simTimeS, with its window's start (latched, SDD 53 5.4) and close
+    SOLTEST_API bool LaneOpenWindow(TConstArrayView<uint8> openByEpoch, int64 firstEpoch, double epochS,
+        double simTimeS, double latchedOpenStartS, double& outOpenStartS, double& outCloseS);
+
+    // Returns whether a leg departing at departS fits inside the open window [openStartS, closeS]
+    SOLTEST_API bool LegFitsWindow(double departS, double legS, double openStartS, double closeS);
+
+    // Returns the last departure time that still finishes by the close, close - leg
+    SOLTEST_API double LaneDepartureStopS(double closeS, double legS);
+
+    // Returns whether a lane ship's leg is drawn at simTimeS (departed inside the window, leg in progress)
+    SOLTEST_API bool LaneShipLegDrawn(double simTimeS, double legDepartS, double legS, double openStartS,
+        double departStopS);
+
+    // Returns a lane's edge time T_edge, the mean-effort leg on the AUTO keep-right track; 0 for a non-drivable profile
+    SOLTEST_API double LaneEdgeTimeS(const FSOLLaneProfile& profile);
+
+    // Returns the transfer time between two lanes at a node: penalty + (0.5 (r1 + r2) theta + |r1 - r2|) / w
+    SOLTEST_API double NodeTransferTimeS(double endRingDistance1M, double endRingDistance2M, const FVector3d& outward1,
+        const FVector3d& outward2, double wallSpeedMps, double penaltyS);
+
+    // Returns the fastest route over the edges with transfers and open windows (SDD 53 6.3; exact for current windows)
+    SOLTEST_API FSOLLaneRoute FindFastestRoute(int32 nodeCount, TConstArrayView<FSOLLaneEdge> edges, double penaltyS,
+        double wallSpeedMps, double startS, int32 sourceNode, int32 targetNode);
+
+    // Returns the tunnel's largest on-screen radius f Rt / d in reference pixels
+    SOLTEST_API double LaneTunnelMaxRadiusPx(double segmentDistanceM, double tunnelRadiusM, double focalRefPx);
+
+    // Returns a QualityPreset's tunnel threshold scale, the flame vanish size V over V at Epic (Low 10 .. Epic 1)
+    SOLTEST_API double LaneTunnelQualityScale(int32 qualityPreset);
+
+    // Returns the tunnel's next pixel class from its largest on-screen radius (hysteresis, thresholds x scale)
+    SOLTEST_API ESOLTunnelClass StepTunnelClass(ESOLTunnelClass previous, double maxRadiusPx, double thresholdScale);
+
+    // Writes the drawn lanes that get a tunnel instance, largest first, and returns the overflow count
+    SOLTEST_API int32 SelectTunnelPool(TConstArrayView<double> maxRadiusPx, TConstArrayView<uint8> drawn,
+        int32 poolSize, TArray<int32>& outLanes);
+
+    // Returns whether an overflow count change must be logged and reported now
+    SOLTEST_API bool StepOverflowReport(int32 previousOverflow, int32 overflow);
+
+    // Returns a lane's traffic weight from its end tiers, sqrt(tierA x tierB)
+    SOLTEST_API double LaneWeight(double tierA, double tierB);
+
+    // Writes the lane ship count split over the weights by largest remainder (the counts sum to laneShipCount)
+    SOLTEST_API void LaneShipShares(int32 laneShipCount, TConstArrayView<double> weights, TArray<int32>& outCounts);
+
+    // Returns a lane's nominal length L0 from its end nodes' aphelia; 0 when not drivable
+    SOLTEST_API double LaneNominalLengthM(TConstArrayView<FSOLLaneNode> nodes, int32 nodeA, int32 nodeB);
+
+    // Returns whether the straight path from -> to enters the Sun zone; true for a non-finite input (fail safe)
+    SOLTEST_API bool PathEntersSunZone(const FVector3d& fromM, const FVector3d& toM, double zoneRadiusM);
+
+    // Returns whether the Sun safety applies: always for an NPC, for the player unless overridden
+    SOLTEST_API bool SunSafetyActive(bool bPlayerOverride, bool bNpc);
+
+    // Returns the arrival point: the target, or the zone-edge point facing the ship when the target is inside the zone
+    SOLTEST_API FVector3d SunSafeArrivalM(const FVector3d& shipM, const FVector3d& targetM, double zoneRadiusM,
+        double edgeRadiusM);
+}

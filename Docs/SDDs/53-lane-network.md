@@ -9,8 +9,9 @@ tiers), SDD 38 (lane lines), SDD 49 (guidance tunnel), SDD 50 (lane traffic, AUT
 field, D15: the vertex budget and active-tunnel cap were left interim for this ticket).
 **Status: DRAFT, amended 2026-11-24 with the user's answers to Q1-Q30** (section 16) **and 2026-11-25 with the
 user's answers to O1-O10** (section 17). **The population tier values (O6), the partner hysteresis values (O3) and the
-Sun-safety override UI (O4) were confirmed by the user on 2026-11-25**, as was the reversal that the Moon can be a
-relay for island links. Nothing is built.
+Sun-safety override UI (O4) were confirmed by the user on 2026-11-25**. The Moon relays island links **through Earth
+only** (user decision A at the 53a/53b review, replacing the earlier "the Moon can be a relay"). The pure math
+and its tests (53a/53b) are implemented and in review; nothing else is built.
 **Persistence: no schema change is needed by this design** (section 11). `SOL::Settings::SAVE_VERSION` stays 13 and
 `KEY_BINDING_LAYOUT_VERSION` stays 10. The player's Sun safety override (O4, 6.5) is session-only; saving it across
 launches would be a settings schema change and needs the user's approval first.
@@ -177,15 +178,17 @@ The set of epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day) is built in 
   in flight (their windows are re-derived at the jump, as before).
 - **Island links (O2):** after the partner set, the graph (base + partner lanes, Sun-closed lanes included) may have
   islands not connected to Earth. They are linked one at a time: among every pair (u in Earth's group, v outside),
-  with finite positions (v of kind Planet, DwarfPlanet or Asteroid, u also of kind Moon), take the pair with the
+  with finite positions (u and v both of kind Planet, DwarfPlanet or Asteroid), take the pair with the
   smallest centre distance at `t_k` (ties to the lower sorted pair), add that lane, merge v's whole island into
-  Earth's group, and repeat until no island is left. So **any node already in Earth's group may act as the relay**:
-  a planet, **the Moon (user 2026-11-25: the Moon can be a relay)**, a dwarf planet, a large asteroid, including
-  one joined by an earlier link of the same epoch. Each island gets exactly one link (components
+  Earth's group, and repeat until no island is left. So **any planet, dwarf planet or large asteroid already in
+  Earth's group may act as the relay**, including one joined by an earlier link of the same epoch. **The Moon relays
+  through Earth only** (user decision A, 53a/53b review): it is never an end of an island link; a route from the Moon
+  to an island is Moon -> Earth -> island, the island link is Earth's (its nominal length the sum of Earth's and the island node's aphelia), and the Moon
+  is shown and treated as a stop on Earth. The Moon never gets a lane of its own to a non-parent node. Each island gets exactly one link (components
   minus 1 links in all; the island is a connected component, not a node). Island links are ordinary lanes (slot, ship
   share, Sun test, window, tunnel); they have no hysteresis of their own (their churn follows the hysteresis-smoothed
   picks, R6). The Moon is never an island (it is always joined to Earth by its base lane), is never a partner pick (4.3 rule A),
-  but can be the near end of an island link. **Stations and space cities as relays stay a design hook (4.8); nothing
+  and is never an end of an island link (Earth relays for it). **Stations and space cities as relays stay a design hook (4.8); nothing
   is built for them.**
 - **Measured before O2 and O3** (script over 250 sim years from 2026-01-01 at 1-day steps, Kepler propagation of the
   registry rows and the belt catalogue rows, rule A picks with no hysteresis and no island links; the game starts at
@@ -311,7 +314,8 @@ without a tunnel).
 ### 4.8 Hooks (record only, not built)
 
 Station / city nodes (`ESOLLaneNodeKind::Station`, `City`) with their own position source, later also acting as
-island-link relays (O2: a later design, nothing built); **waypoint re-routing**: a lane split at a station node placed
+island-link relays (O2: a later design, nothing built; the Moon is not one, it relays through Earth only, 4.3);
+**waypoint re-routing**: a lane split at a station node placed
 off the Sun line, each part a straight closed-form lane; other moons joining the next-closest rule; destination traffic
 (SDD 50 4.11) using routes.
 
@@ -384,6 +388,15 @@ Earth-Moon never comes near.
   `openStart` and `departStop` (= close - `T_leg`), plus the active flag (Q21), in the group texel. A ship is drawn iff
   its current leg's departure time lies in `[openStart, departStop]`. `SOLNpcTraffic.ush` and the CPU point layer read
   the same texel (R8).
+- **Latched open start (53a/53b review):** the look-ahead buffer starts at the current epoch `k`, so a lane open at
+  `k` has no open start inside the buffer. `LaneOpenWindow` then takes the start the slot held at the previous epoch
+  (the latch; -inf allowed, meaning open since before anything known). A lane that was not open at the previous
+  epoch (a new lane, or a reopen at `k`) latches `openStart = k E_L`, so no ship is drawn mid-leg on a lane that
+  just appeared; departures from `k E_L` on are drawn as they start. The latch is carried per slot from epoch to
+  epoch (in memory only, nothing saved). **Open item (not decided by the user):** what a time jump (start,
+  `-SOLSimDate`, a clock set) passes as the latch for lanes open at the new `k`: -inf (lanes full at once, today's
+  look) or NaN (every lane opens at `k E_L` and fills over one leg time, up to about 897 days for the longest).
+  Decided before 53c wires the schedule.
 - **Tunnel:** only the tunnel fades, 1 -> 0 over **3 s real time** at the close (tunnel texture row 3 `.z`), 0 -> 1 at a
   reopen (Q9). The traffic is not faded; it drains by finishing.
 - **Share (Q10):** a Sun-closed lane keeps its share (its blocks); a Gone lane's empty blocks go back to the pool
@@ -449,7 +462,18 @@ transfer cost depends on the lane pair (each edge carries its unit direction A -
 ends; the transfer is `NodeTransferTimeS` with the penalty). **Time windows:** each edge carries its open window; a hop
 reached at predicted time `t` is usable only if its window covers `[t, t + T_edge]` (the NPC early-stop rule applied to
 the player, O7, decided); otherwise the edge is skipped (no waiting modelled). Ties: lower time, then fewer hops, then the lower
-lane slot sequence (deterministic). `source == target`: found, no hops. Unreachable: not found.
+lane slot sequence (deterministic). `source == target`: found, no hops. Unreachable: not found. An edge with a
+non-positive or non-finite time is never taken. The result carries a status (`ESOLLaneRouteStatus`: `Found`,
+`Unreachable`, `TooManyHops`, `TooManyEdges` for more than the 64 edges the fixed state arrays hold, and
+`InvalidEndpoint`), so the edge cap is told apart from an unreachable target and can be logged and reported as a
+limit.
+
+**Pinned limit (53a/53b review):** each (node, arriving lane) state keeps only its earliest arrival, and no waiting is
+modelled. The route is therefore exact for **current windows** (every window already open at the start time, which is
+the case for a route planned now: a lane in the set is open now or closed). With a window that opens later, a faster
+arrival can miss it where a slower arrival at the same state would meet it, and that slower path is not explored.
+Exactness there would need a list of arrivals per state (allocation per call), so it is not built; routes are
+re-planned at each epoch change that touches the plan (6.1), which picks up a lane once it opens.
 
 ### 6.4 AUTO integration (Q11, Q13, Q15, Q16)
 
@@ -560,7 +584,17 @@ tuning is a new decision):
 | Reduced | rings and end rings; no dots, chevrons or labels | `r_max_px >= 0.5` from Off (`NPC_TUNNEL_RADIUS_FADE_GONE_PX`: everything is alpha 0 below it, SDD 52 D9, D12, D14) | below 0.4 px to Off |
 | Full | the whole slot mesh | `r_max_px >= 1.0` from Reduced (`NPC_TUNNEL_FULL_ON_PX`) | below 0.833 px to Reduced (`NPC_TUNNEL_FULL_OFF_PX` = `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX` / `NPC_TUNNEL_RING_BASE_SPACING_RADII` = 10 / 12: the ring gap never exceeds `f S0 / d`, so dots and chevrons are alpha 0 below it) |
 
-Both switches happen where the dropped parts are already invisible, so no class change can pop. Labels need a lane
+**Graphics quality (user decision B, 53a/53b review):** the four class thresholds (0.4 / 0.5 / 0.833 / 1.0 px) are
+the Epic values; every one is multiplied by the QualityPreset's scale, the same factor table as the flame vanish size
+V (`SOL::Thruster::RIBBON_VANISH_PX_BY_QUALITY` over its Epic entry, no second table): Low x10, Medium x4.6, High
+x2.2, Epic and Cinematic x1 (`SOLLaneNetwork::LaneTunnelQualityScale`, passed to `StepTunnelClass`). So a lower
+preset turns tunnels off at a larger on-screen size; the rule stays in pixels. The pool ranking (7.3) is unchanged:
+a uniform factor keeps the largest-first order. **Open item (53c/53d):** the invisible-switch argument below holds
+only at scale 1. At Low the tunnel switches on at 5 px, where the shader's ring radius fade (`NPC_TUNNEL_RADIUS_FADE_*`,
+gone at 0.5 px) is nearly solid, so a switch would pop unless the shader's radius and detail-gap fades take the same
+scale; the shader is not changed in 53a/53b.
+
+Both switches happen where the dropped parts are already invisible (at scale 1), so no class change can pop. Labels need a lane
 radius of 9.6 px or more (7.2), so they only ever show in Full. An Off lane builds no tunnel frame and writes no texels,
 so the CPU cost follows the drawn lanes, not the lane count.
 
@@ -613,7 +647,7 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
   flag go into the group texel (5.4, 7.2).
 - Earth hub: Venus-Earth, Earth-Moon and Earth-Mars always, plus the partner lanes that pick Earth that day
   (Mercury-Earth and an Earth-asteroid lane in the snapshot) and any island link that uses Earth as its relay (an
-  island link relayed by the Moon starts at the Moon, not at Earth); labels
+  island link never starts at the Moon: Earth relays for it); labels
   compete for the 4 label slots (R3).
 - 21:9 focal: not addressed (16:9 only supported); stays debt.
 
@@ -655,7 +689,7 @@ subagent from [`Plans/53-lane-network-contract.md`](../Plans/53-lane-network-con
    kinds take part, "either picks the other" persistence.
    - **PartnerHysteresis:** the pick step (margin, minimum stay, invalid partner), the warm-up equal to the step
      chain, consecutive epochs one step apart, determinism.
-   - **IslandLinks:** one link per island, nearest pair, relay through a node joined earlier or through the Moon, ties, NaN nodes
+   - **IslandLinks:** one link per island, nearest pair, relay through a node joined earlier, never through the Moon (Moon via Earth, the Moon / relay tie), ties, NaN nodes
      excluded (the Moon is never an island or a partner pick), a connected graph gives none.
 2. **DailyRecalc:** epoch index and sample time; the set is identical for any time inside one epoch; slots stable for
    lanes that stay; new lanes take the lowest free slot from 8; held slots; overflow counted.
@@ -766,6 +800,12 @@ in SDD 52; 3840x3744 and two-eye not measured.
   hops, docking pop and the O10 constants accepted; float path validated at 151 AU. Lane counts, columns, pool and the
   Earth-Moon share re-derived from the baseline (marked as not measured; re-measured in 53c). No code, no persistence
   change.
+- 53a/53b review: the Moon relays island links through Earth only (decision A, 4.3, 4.8, 17); tunnel class thresholds
+  scale with the QualityPreset by the flame vanish table (decision B, 7.1, open item on the shader fades); latched open
+  start for a new or reopened lane (5.4, open item on time jumps); router rejects non-positive or non-finite edge
+  times, reports a status (edge cap told apart from unreachable) and pins the current-windows limit (6.3). Scratch
+  speed-ups with identical outputs (base-link masks, per-epoch distance matrix, incremental island search). No
+  persistence change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
 
@@ -825,14 +865,16 @@ The draft's recommendation is marked *superseded* where the answer differs.
 ## 17. Resolved open items (user, 2026-11-25)
 
 The open items O1-O10 raised by the Q answers, as answered by the user. The tier values (O6), the hysteresis values
-(O3), the Sun-safety override UI (O4) and the Moon-as-relay reversal (O2) were all confirmed by the user on 2026-11-25.
+(O3) and the Sun-safety override UI (O4) were all confirmed by the user on 2026-11-25; the Moon-as-relay reversal (O2)
+was itself replaced at the 53a/53b review by "the Moon relays through Earth only" (user decision A).
 
 - **O1 Ship budget: proposal accepted.** Fixed ship blocks (4,000 of 100 ships, by hash) moved only through a free
   pool (4.5); exact normalisation at spawn, approximate after (R14).
 - **O2 Islands: option (b), extended.** Each island (a connected component without Earth) is linked to its nearest
   node in Earth's connected group, one link per island, processed nearest first; any body already in Earth's group
-  may act as the relay, the Moon, the large asteroids and dwarf planets included (4.3; the Moon as a relay was
-  reversed from "never" by the user, 2026-11-25). Stations and space cities as relays stay
+  may act as the relay, the large asteroids and dwarf planets included (4.3), **but not the Moon: it relays through
+  Earth only** (user decision A at the 53a/53b review, replacing the 2026-11-25 "the Moon can be a relay"; the island
+  link is Earth's, its length from Earth's and the island node's aphelia, and the Moon shows as a stop on Earth). Stations and space cities as relays stay
   a later design hook, nothing built (4.8). Effect (derived, re-measured in 53c): 0-5 links, about 22-34 lanes (38 at
   most), about 60 of 64 group columns (64 at the bound), pool of 24 not expected to fill (about 13 lanes above 0.5 px
   at most), every node in Earth's graph every day (R11 reduced), longest possible lane 150.38 AU (about 897 d).
