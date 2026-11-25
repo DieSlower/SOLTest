@@ -3,8 +3,8 @@
 # 53a contract: lane network math (test first)
 
 For the 53a test author, from [SDD 53](../SDDs/53-lane-network.md) (D1-D8, the resolved decisions Q1-Q30 of section
-16). Values marked **pending O<n>** wait on the user's answer to that open item of SDD 53 section 17 and must not be
-pinned until it is answered; every other value is pinned. Pure functions only: signatures and expected values, no
+16 and O1-O10 of section 17, amended 2026-11-25). The O3 hysteresis values and the O6 tier values were
+**confirmed by the user on 2026-11-25** and are pinned, like every other value. Pure functions only: signatures and expected values, no
 implementation. Tests in `Source/SOLTest/Tests/LaneNetworkMathTest.cpp`, paths `SOLTest.LaneNetwork.<Case>` (run with
 `Tools\RunTests.bat -Build -Filter SOLTest.LaneNetwork`). Everything lives in `Traffic/SOLLaneNetworkMath.{h,cpp}`
 (`namespace SOLLaneNetwork`, every function `SOLTEST_API`) and `SOLConstants.h` (`namespace SOL`). Universe ecliptic
@@ -18,15 +18,18 @@ metres, sim seconds, double. Inputs are plain arrays; nothing reads the registry
 | `NPC_LANE_SUN_REOPEN_RADII` | double | 22 | pinned (Q6); invariant: > `NPC_LANE_SUN_CLEARANCE_RADII` |
 | `NPC_LANE_NETWORK_EPOCH_S` | double | 86,400 | pinned (Q1, Q5); invariant: > 0 |
 | `NPC_LANE_NETWORK_EPOCH_SAMPLES` | int32 | 5 | implementer; invariant: >= 2 |
-| `NPC_LANE_SUN_LOOKBACK_EPOCHS` | int32 | 64 | **pending O10**; invariant: >= 1 |
-| `NPC_LANE_NETWORK_HORIZON_EPOCHS` | int32 | 960 | **pending O10**; invariant: x `NPC_LANE_NETWORK_EPOCH_S` > 889 days (the longest leg, SDD 53 6.1) |
+| `NPC_LANE_SUN_LOOKBACK_EPOCHS` | int32 | 64 | pinned (O10); invariant: >= 1 |
+| `NPC_LANE_NETWORK_HORIZON_EPOCHS` | int32 | 960 | pinned (O10); invariant: x `NPC_LANE_NETWORK_EPOCH_S` > 897 days (the longest possible leg, Eris-Makemake 150.38 AU, SDD 53 4.3, 6.1) |
+| `NPC_LANE_PARTNER_SWITCH_RATIO` | double | 0.8 | confirmed (user 2026-11-25, O3); invariant: 0 < it < 1 |
+| `NPC_LANE_PARTNER_MIN_STAY_EPOCHS` | int32 | 30 | confirmed (user 2026-11-25, O3); invariant: >= 1 |
+| `NPC_LANE_PARTNER_WARMUP_EPOCHS` | int32 | 64 | confirmed (user 2026-11-25, O3); the warm-up after a time jump; invariant: > `NPC_LANE_PARTNER_MIN_STAY_EPOCHS` |
 | `NPC_LANE_BASE_COUNT` | int32 | 8 | pinned (Q23): base lanes own slots 0-7 |
 | `NPC_LANE_OPEN_FADE_REAL_S` | double | 3.0 | pinned (Q9), real seconds; invariant: > 0 |
 | `NPC_LANE_TRANSFER_PENALTY_S` | double | 3,600 | pinned (Q12); invariant: >= 0 |
-| `NPC_LANE_SHIP_BLOCK_SIZE` | int32 | 100 | **pending O1**; invariant: divides the lane ship count of the default population (400,000) |
+| `NPC_LANE_SHIP_BLOCK_SIZE` | int32 | 100 | pinned (O1, O10); invariant: divides the lane ship count of the default population (400,000) |
 | `NPC_TUNNEL_ACTIVATE_PX` | double | 0.5 | pinned (Q17); invariant: equals `NPC_TUNNEL_RADIUS_FADE_GONE_PX` |
-| `NPC_TUNNEL_DEACTIVATE_PX` | double | 0.4 | **pending O10** (to tune); invariant: 0 < it < `NPC_TUNNEL_ACTIVATE_PX` |
-| `NPC_TUNNEL_FULL_ON_PX` | double | 1.0 | **pending O10** (to tune); invariant: > `NPC_TUNNEL_FULL_OFF_PX` |
+| `NPC_TUNNEL_DEACTIVATE_PX` | double | 0.4 | pinned (O10); invariant: 0 < it < `NPC_TUNNEL_ACTIVATE_PX` |
+| `NPC_TUNNEL_FULL_ON_PX` | double | 1.0 | pinned (O10); invariant: > `NPC_TUNNEL_FULL_OFF_PX` |
 | `NPC_TUNNEL_FULL_OFF_PX` | double | `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII` = 10 / 12 | pinned (Q17, derived: dots and chevrons are alpha 0 below it); invariant: > `NPC_TUNNEL_ACTIVATE_PX` |
 | `NPC_TUNNEL_RING_SLOTS_PER_SIDE` | int32 | 160 | pinned (Q19; was 80); full slot mesh 15,380 vertices |
 | `NPC_TUNNEL_INSTANCE_POOL` | int32 | 24 | pinned (Q18); invariant: <= `NPC_GROUP_TEXTURE_WIDTH` |
@@ -81,6 +84,8 @@ struct FSOLLaneRoute
 
 enum class ESOLLaneSunState : uint8 { Open, Closed };
 enum class ESOLTunnelClass : uint8 { Off, Reduced, Full };
+
+struct FSOLPartnerPick { int32 Partner = INDEX_NONE; int32 StayEpochs = 0; };   // one node's hysteresis state (O3)
 ```
 
 ## Functions and expected values
@@ -97,7 +102,9 @@ picked. Each taking-part node picks the node with the smallest **current** centr
 not linked to it by a base lane; ties to the lower index; skipped if none. A node with a non-finite position neither
 picks nor is picked. Each pair is stored once with `NodeA < NodeB`, and `outNew` is **sorted by (NodeA, NodeB)**, not
 by pick order. `outNew` is reset first. A pair is in the output if **either** end picks the other. Positions in units
-of 1e11 m on the x axis unless stated; all nodes Planet unless stated.
+of 1e11 m on the x axis unless stated; all nodes Planet unless stated. `NextClosestPairs` is the plain rule without
+hysteresis; an epoch's lane set is the base lanes, `PairsFromPicks` of the epoch's partner picks (1b) and
+`IslandLinks` (1c) over those.
 
 - x {1, 2, 3, 4}, base {0-1, 1-2, 2-3}: {(0, 2), (1, 3)} (both picked twice).
 - x {1, 2, 3}, base {0-1, 1-2, 0-2}: empty.
@@ -109,6 +116,97 @@ of 1e11 m on the x axis unless stated; all nodes Planet unless stated.
 - Node 1 position NaN in the first case (x {1, NaN, 3, 4}, same base): node 1 is skipped both ways; node 0 picks 2,
   node 2 picks 0, node 3 picks 0 (its only candidate left): {(0, 2), (0, 3)}.
 - Positions array shorter than nodes: `outNew` empty.
+
+### 1b. `NearestPartners`, `PairsFromPicks`, `StepPartnerPick`, `ReplayPartnerPicks` (case `PartnerHysteresis`, O3)
+
+```cpp
+void NearestPartners(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+    TConstArrayView<FSOLLanePair> baseLanes, TArray<int32>& outNearest);   // per node; INDEX_NONE if none
+void PairsFromPicks(TConstArrayView<int32> partnerByNode, TArray<FSOLLanePair>& outPairs);
+FSOLPartnerPick StepPartnerPick(const FSOLPartnerPick& previous, int32 nearest, double nearestDistanceM,
+    double heldDistanceM, int32 minStayEpochs, double switchRatio);
+void ReplayPartnerPicks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsOldestFirstM,
+    int32 epochCount, TConstArrayView<FSOLLanePair> baseLanes, int32 minStayEpochs, double switchRatio,
+    TArray<FSOLPartnerPick>& outPicks);
+```
+
+- `NearestPartners`: each node's nearest by the rules of case 1 (taking-part kinds, base lanes excluded, ties to the
+  lower index, NaN nodes skipped both ways); `outNearest` has one entry per node, reset first. `PairsFromPicks`: the
+  union of `(n, partner)` over nodes with a partner, sorted pairs, stored once, sorted by (NodeA, NodeB), reset first.
+  **Identity:** for every input of case 1, `NextClosestPairs` equals `PairsFromPicks(NearestPartners(...))`.
+- `StepPartnerPick`, in this order: `nearest` INDEX_NONE -> {INDEX_NONE, 0}; no held partner (`previous.Partner`
+  INDEX_NONE) or `heldDistanceM` not finite (the held partner is no longer a valid candidate) -> {nearest, 1};
+  `nearest == previous.Partner` -> {partner, stay + 1}; `previous.StayEpochs >= minStayEpochs` and `nearestDistanceM
+  < switchRatio x heldDistanceM` -> {nearest, 1}; otherwise {partner, stay + 1}. Values with min stay 30, ratio 0.8
+  (passed as arguments, so the cases do not depend on the pending constants):
+  - ({INDEX_NONE, 0}, 5, 2.0, NaN): {5, 1}.
+  - ({3, 10}, 3, 2.0, 2.0): {3, 11}.
+  - ({3, 10}, 5, 1.0, 2.0): {3, 11} (50 % closer but inside the minimum stay).
+  - ({3, 30}, 5, 1.0, 2.0): {5, 1}.
+  - ({3, 30}, 5, 1.7, 2.0): {3, 31} (only 15 % closer).
+  - ({3, 30}, 5, 1.6, 2.0): {3, 31} (exactly the ratio, not below).
+  - ({3, 30}, 5, 1.59, 2.0): {5, 1}.
+  - ({3, 5}, 5, 1.0, NaN): {5, 1} (held partner invalid: switch at once, whatever the stay).
+  - ({3, 5}, INDEX_NONE, NaN, 2.0): {INDEX_NONE, 0}.
+  - Min stay 0: ({3, 0}, 5, 1.0, 2.0): {5, 1}.
+- `ReplayPartnerPicks` (the warm-up after a time jump, SDD 53 4.3; in normal running each epoch's picks are one
+  `StepPartnerPick` per node from the previous epoch's): `positionsOldestFirstM` holds `epochCount` epochs of all
+  nodes, epoch `e`'s node `n` at index `e x nodes.Num() + n`. Every node starts with {INDEX_NONE, 0} and steps through
+  epochs 0 .. `epochCount - 1` with `StepPartnerPick`, its nearest from `NearestPartners` at that epoch and the held
+  distance = the centre distance to the held partner at that epoch (NaN if either position is not finite or the held
+  partner is not a taking-part node). `outPicks` = the picks after the last epoch, one per node (non-taking-part nodes
+  {INDEX_NONE, 0}), reset first. `epochCount < 1` or positions shorter than `epochCount x nodes.Num()`: `outPicks`
+  empty.
+  - 3 Planet nodes, base {}, min stay 2, ratio 0.8, x positions (1e11 m) per epoch: e0 {0, 1, 3}; e1, e2, e3 {0, 1,
+    0.5}.
+    - `epochCount` 1 (e0): picks {1, 1}, {0, 1}, {1, 1}; pairs {(0, 1), (1, 2)}.
+    - `epochCount` 2 (e0-e1): {1, 2}, {0, 2}, {1, 2}; pairs {(0, 1), (1, 2)} (node 0's nearest is now 2 at 0.5,
+      but its stay is 1 < 2). Node 2's nearest at e1 ties 0 and 1 at 0.5 and goes to 0.
+    - `epochCount` 3 (e0-e2): {2, 1}, {2, 1}, {1, 3}; pairs {(0, 2), (1, 2)} (nodes 0 and 1 switch: 0.5 < 0.8 x 1;
+      node 2 keeps 1: 0.5 is not below 0.8 x 0.5).
+    - `epochCount` 4 (e0-e3): {2, 2}, {2, 2}, {1, 4}; pairs {(0, 2), (1, 2)}.
+  - **Equivalence:** for the series above, the result equals a hand-written chain of `StepPartnerPick` calls from
+    {INDEX_NONE, 0} over the same epochs.
+  - **Consecutive epochs one step apart:** for each n from 1 to 3, the result over e0 .. e(n) equals one
+    `StepPartnerPick` per node (nearest and held distance at e(n)) from the result over e0 .. e(n-1). This is the rule
+    the look-ahead buffer follows from epoch to epoch.
+  - **Start dependence (documented, not a defect):** the same positions replayed from e1 instead (e1-e3, `epochCount`
+    3) give {2, 3}, {2, 3}, {0, 3}: node 2 holds 0, not 1, so a warm-up start changes picks; this is why the warm-up
+    runs only after a time jump and the buffer steps otherwise (SDD 53 4.3).
+  - **Determinism:** two calls with the same inputs give bit-identical output.
+
+### 1c. `IslandLinks` (case `IslandLinks`, O2)
+
+```cpp
+void IslandLinks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+    TConstArrayView<FSOLLanePair> lanes, int32 rootNode, TArray<FSOLLanePair>& outLinks);
+```
+
+`lanes` = every lane of the epoch's set (base and partner, Sun-closed ones included). The root group = the nodes
+connected to `rootNode` through `lanes`. Candidates = nodes of kind Planet, DwarfPlanet or Asteroid with finite
+positions; a node of kind Moon with a finite position is also a candidate **as u only** (a relay inside the root
+group, user 2026-11-25), never as v. Repeat: among all pairs (u in the root group, v outside it, v a candidate, u a
+candidate or Moon), take the smallest centre
+distance (ties to the lower sorted pair); add the sorted pair to the links and merge v's whole component (through
+`lanes` and the links so far) into the root group; until no candidate is outside the root group. So each island
+(component) gets exactly one link and any candidate already in the root group, one joined earlier included, can be
+the relay. `outLinks` is reset first and sorted by (NodeA, NodeB). `rootNode` out of range or positions shorter than
+nodes: empty. Positions in units of 1e11 m on the x axis; all nodes Planet unless stated.
+
+- x {1, 2, 5, 6, 10, 11}, node 3 Asteroid, lanes {0-1, 2-3, 4-5}, root 0: {(1, 2), (3, 4)} (3 components, 2 links;
+  the second link relays through asteroid 3, joined by the first).
+- **Nearest first:** x {0, 10, 4}, lanes {}, root 0: {(0, 2), (1, 2)} (node 2 at 4 joins first, then node 1 links to
+  it at 6 rather than to node 0 at 10).
+- **Tie:** x {1, 3, -1}, lanes {}, root 0: {(0, 1), (0, 2)} ((0, 1) and (0, 2) tie at 2, the lower pair first; then
+  (0, 2) at 2 beats (1, 2) at 4).
+- **Moon:** node 1 Moon at x 1.0001, node 0 at x 1, lanes {}, root 0: empty (a Moon outside the root group is never
+  linked as v). Node 0 at x 1, node 1 Moon at x 5, node 2 at x 5.1, lanes {0-1}, root 0: {(1, 2)} (the Moon in the
+  root group **is** a relay, reversed by the user 2026-11-25: it is closer to node 2 than node 0 is). Same with node
+  2 at x 0.5: {(0, 2)} (the nearer relay wins, the Moon is not preferred). A Moon at x 5 and node 2 at x 5, tie with
+  node 0 at the same distance: the lower sorted pair wins.
+- **NaN:** x {1, 2, NaN}, lanes {}, root 0: {(0, 1)} (node 2 neither linked nor counted).
+- **Connected:** x {1, 2, 3}, lanes {0-1, 1-2}: empty. Root out of range: empty.
+- Purity: two calls with the same inputs give identical output.
 
 ### 2. `LaneNetworkEpochIndex`, `LaneEpochSampleTimeS`, `AssignLaneSlots` (case `DailyRecalc`)
 
@@ -123,8 +221,10 @@ int32 AssignLaneSlots(TConstArrayView<FSOLLanePair> previousSlots, TConstArrayVi
 - Index = floor(t / epoch): (0, 86400) -> 0; (86399.9, 86400) -> 0; (86400, 86400) -> 1; (-1, 86400) -> -1;
   (3.15576e9, 86400) -> 36525; epoch <= 0 or NaN input: 0. Sample time = index x epoch: (36525, 86400) -> 3.15576e9.
 - **Daily stability:** for any two times in the same epoch the index, and so the sample time, is identical; so
-  `NextClosestPairs` fed the positions at the sample time returns the identical set (assert with two times 1 s and
-  86,399 s into one epoch). Purity: two calls with the same inputs return bit-identical results.
+  `NextClosestPairs` and `IslandLinks` fed the positions at the sample time, and `StepPartnerPick` fed the same
+  previous picks, return the identical result (assert with two times 1 s and 86,399 s into one epoch). Purity: two
+  calls with the same inputs return bit-identical results. (The partner picks also depend on the previous epoch's
+  picks, so the set is not a function of sim time alone; SDD 53 4.3.)
 - `AssignLaneSlots`: `outSlots` has `slotCapacity` entries; slots below `baseCount` are copied from `previousSlots`
   untouched; a partner lane present in `previousSlots` and in `partnerSet` keeps its slot; a slot whose lane left the
   set is freed unless `slotHeld` is 1 there (its tunnel is still fading); the remaining new lanes, in `partnerSet`
@@ -294,7 +394,7 @@ ESOLTunnelClass StepTunnelClass(ESOLTunnelClass previous, double maxRadiusPx);
 
 - `LaneTunnelMaxRadiusPx` = f Rt / d: (1.92e10, 1e7, 960) -> 0.5; (9.6e9, 1e7, 960) -> 1.0; d <= 0 -> +inf; NaN,
   Rt <= 0 or f <= 0 -> 0.
-- `StepTunnelClass` (thresholds 0.5 / 0.4 / 1.0 / 10/12; the 0.4 and 1.0 values pending O10, the transitions pinned):
+- `StepTunnelClass` (thresholds 0.5 / 0.4 / 1.0 / 10/12, all pinned, O10):
   (Off, 0.49) -> Off; (Off, 0.5) -> Reduced; (Off, 1.0) -> Full; (Reduced, 0.45) -> Reduced; (Reduced, 0.39) -> Off;
   (Reduced, 0.99) -> Reduced; (Reduced, 1.0) -> Full; (Full, 0.84) -> Full; (Full, 0.83) -> Reduced; (Full, 0.39) ->
   Off; any previous with NaN -> Off.
@@ -325,15 +425,20 @@ double LaneWeight(double tierA, double tierB);
 void LaneShipShares(int32 laneShipCount, TConstArrayView<double> weights, TArray<int32>& outCounts);
 ```
 
-- `LaneWeight` = tierA x tierB: (10, 10) -> 100 (Earth-Moon); (10, 6) -> 60; (4, 3) -> 12 (Ceres-asteroid); (3, 3) ->
-  9; (1, 1) -> 1; negative or NaN tier -> 0. The tier values themselves are layout data, **pending O6**.
+- `LaneWeight` = sqrt(tierA x tierB) (O6, double; relative 1e-12): (10, 10) -> 10 (Earth-Moon); (10, 6) -> sqrt(60) =
+  7.745966692; (4, 3) -> sqrt(12) = 3.464101615 (Ceres-asteroid); (3, 3) -> 3; (2, 1) -> 1.414213562; (1, 1) -> 1;
+  (0, 5) -> 0; negative or NaN tier -> 0. Symmetric. The tier values themselves are layout data, **confirmed
+  by the user 2026-11-25** (O6); the cases below pass weights, not tiers.
 - `LaneShipShares`, largest remainder (the sum equals `laneShipCount` exactly; remainder ties to the lower index):
   400,000 over {2, 1, 1}: {200,000, 100,000, 100,000}; 10 over {1, 1, 1}: {4, 3, 3}; non-positive or NaN weights count
   0; all zero: all 0.
-- **Population weights of the base lanes** (Mercury-Venus 4, Venus-Earth 20, Earth-Moon 100, Earth-Mars 60, Mars-Jupiter
-  12, Jupiter-Saturn 4, Saturn-Uranus 2, Uranus-Neptune 1): 400,000 -> {7,882, 39,409, 197,044, 118,227, 23,645,
-  7,882, 3,941, 1,970}; as blocks, 4,000 -> {79, 394, 1,970, 1,182, 237, 79, 39, 20} (block form **pending O1**).
-- **Budget unchanged by the lane count:** for weight lists of length 8, 22 and 29, the counts sum to exactly 400,000.
+- **Population weights of the base lanes** (`LaneWeight` of the proposed tiers, in this order: Mercury-Venus sqrt(4)
+  = 2, Venus-Earth sqrt(20), Earth-Moon 10, Earth-Mars sqrt(60), Mars-Jupiter sqrt(12), Jupiter-Saturn 2,
+  Saturn-Uranus sqrt(2), Uranus-Neptune 1; total 32.0964178): 400,000 -> {24,925, 55,734, 124,624, 96,534, 43,171,
+  24,925, 17,625, 12,462}; as blocks (O1, blocks of 100), 4,000 -> {249, 558, 1,246, 965, 432, 249, 176, 125}. Pass
+  the weights as `sqrt(a * b)` computed in double, as `LaneWeight` does.
+- **Budget unchanged by the lane count:** for weight lists of length 8, 22, 34 and 38, the counts sum to exactly
+  400,000.
 
 ### 13. Dwarf-planet and asteroid nodes (case `Nodes`)
 
@@ -351,11 +456,39 @@ void LaneShipShares(int32 laneShipCount, TConstArrayView<double> weights, TArray
   + Eris 97.58 AU, as metres -> their sum, relative 1e-12). Any other case (a moon to a node that is not its parent),
   an index out of range, or a non-finite or negative aphelion: 0 (not drivable).
 - **Long lanes:** `LaneEdgeTimeS` of `MakeLaneProfile(1e7, 150 AU in metres, 2.4622e7, 1.163e6)` is finite and
-  positive, and between 880 and 900 days (the coast at the 290,516.78 m/s cap dominates).
+  positive, and between 880 and 900 days (the coast at the 290,516.78 m/s cap dominates). The longest possible pair,
+  Eris + Makemake through an island link, is 97.58 + 52.80 = 150.38 AU (`LaneNominalLengthM` = the sum, as above),
+  about 897 days, under the horizon invariant. (The float path at 151 AU is pinned in `NpcTunnelFarFieldTest`
+  `FloatPathAtMaxLength`, not in this file.)
 
 ### 14. Pool overflow report and column overflow (case `OverflowReport`)
 
-- `AssignLaneSlots` with capacity 64 - 10 clusters - 16 battles = 38 slots (8 base + 30 partner; the caller's
-  computation) and 31 partner lanes: returns 1, and `StepOverflowReport(0, 1)` is true; the next epoch with 30 partner
-  lanes: returns 0 and `StepOverflowReport(1, 0)` is true.
+- `AssignLaneSlots` with capacity 64 - 10 clusters - 16 battles = 38 slots (8 base + 30 partner and island-link
+  lanes; the caller's computation) and 31 such lanes (one above the SDD 53 4.3 hard bound of 23 picks + 7 links,
+  i.e. an overflow from lanes still fading): returns 1, and `StepOverflowReport(0, 1)` is true; the next epoch with
+  30: returns 0 and `StepOverflowReport(1, 0)` is true.
 - `SelectTunnelPool` as in case 11 (24 of 30).
+
+### 15. Sun safety (case `SunSafety`, O4; 53e extends it)
+
+```cpp
+bool PathEntersSunZone(const FVector3d& fromM, const FVector3d& toM, double zoneRadiusM);
+bool SunSafetyActive(bool bPlayerOverride, bool bNpc);
+FVector3d SunSafeArrivalM(const FVector3d& shipM, const FVector3d& targetM, double zoneRadiusM,
+    double edgeRadiusM);
+```
+
+The zone radius is `NPC_LANE_SUN_CLEARANCE_RADII x SUN_RADIUS_M` (1.3914e10 m), the edge (waypoint and arrival)
+radius `NPC_LANE_SUN_REOPEN_RADII x SUN_RADIUS_M` (1.53054e10 m); the tests pass them explicitly as the literals
+1.3914e10 and 1.53054e10.
+- `PathEntersSunZone` = `SunSegmentDistanceM(from, to) < zoneRadius`; NaN anywhere: true (fail safe).
+  (1e11, 5e9, 0) -> (-1e11, 5e9, 0), zone 1.3914e10: true (5e9). (1e11, 2e10, 0) -> (-1e11, 2e10, 0): false (2e10).
+  (1e11, 0, 0) -> (2e11, 0, 0): false. (1e11, 1.3914e10, 0) -> (-1e11, 1.3914e10, 0): false (equal, not below).
+- `SunSafetyActive` = `bNpc || !bPlayerOverride`: (false, false) true; (true, false) false; (false, true) true;
+  (true, true) true (an NPC never overrides).
+- `SunSafeArrivalM`: a target at or outside the zone is returned unchanged; a target inside it moves to
+  `edgeRadius x unit(ship)` (the edge point facing the ship), `edgeRadius x (0, 0, 1)` if the ship is at the origin or
+  not finite. Ship (1e11, 0, 0), target (1e9, 0, 0): (1.53054e10, 0, 0). Ship (0, 1e11, 0), target (0, 0, 0): (0,
+  1.53054e10, 0). Target (2e10, 0, 0): unchanged. Ship (0, 0, 0), target (1e9, 0, 0): (0, 0, 1.53054e10).
+- The detour waypoint (one point on the edge sphere, in the plane of the Sun, the ship and the target, on the side
+  nearer the ship's velocity, SDD 53 6.5) and the plan logic are specified by the 53e test author before that code.

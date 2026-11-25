@@ -7,12 +7,13 @@ created for this draft). Plan: [`Plans/53-lane-network-plan.md`](../Plans/53-lan
 contract: [`Plans/53-lane-network-contract.md`](../Plans/53-lane-network-contract.md). Builds on SDD 11 (NPC rails and
 tiers), SDD 38 (lane lines), SDD 49 (guidance tunnel), SDD 50 (lane traffic, AUTO lane rules) and SDD 52 (tunnel far
 field, D15: the vertex budget and active-tunnel cap were left interim for this ticket).
-**Status: DRAFT, amended 2026-11-24 with the user's answers to Q1-Q30** (section 16, Resolved decisions). The answers
-raise new questions that only the user can settle; they are listed in section 17 (O1-O10) with a proposal each. Values
-marked *proposed* are the draft's, not the user's, and must be confirmed. Nothing is built.
+**Status: DRAFT, amended 2026-11-24 with the user's answers to Q1-Q30** (section 16) **and 2026-11-25 with the
+user's answers to O1-O10** (section 17). **The population tier values (O6), the partner hysteresis values (O3) and the
+Sun-safety override UI (O4) were confirmed by the user on 2026-11-25**, as was the reversal that the Moon can be a
+relay for island links. Nothing is built.
 **Persistence: no schema change is needed by this design** (section 11). `SOL::Settings::SAVE_VERSION` stays 13 and
-`KEY_BINDING_LAYOUT_VERSION` stays 10. If an answer to section 17 asks for a saved setting, that is a schema change and
-needs the user's approval first.
+`KEY_BINDING_LAYOUT_VERSION` stays 10. The player's Sun safety override (O4, 6.5) is session-only; saving it across
+launches would be a settings schema change and needs the user's approval first.
 
 **Pixel rule (project docs, user rule 2026-11-21), repeated for every part:** LOD, fade, visibility and activation
 thresholds are on-screen pixels (1080p reference pixels), never distance or object counts. A fixed pool that cannot
@@ -23,11 +24,14 @@ grow is the only allowed cap, and hitting it is reported to the user as a limita
 Grow the 8 hand-listed lanes into a lane network:
 
 - more lanes and more endpoints: the planets, the Moon, the 5 dwarf planets and the 10 largest belt asteroids, each
-  linked to its next-closest node, the set recalculated once per sim day;
+  linked to its next-closest node (with partner hysteresis), every island linked to Earth's connected group, the set
+  recalculated once per sim day;
 - a node model that later carries other moons, space stations and space cities;
 - lanes switched on and off for drawing and traffic by their size on screen, not by distance or count;
 - lanes closed while their straight line passes too close to the Sun, with every ship in flight finishing its trip;
 - "fastest A to Z" routing over the lane graph, used by AUTO, with the planned route shown on the system map;
+- a Sun danger zone (20 solar radii) that every AUTO flight detours around, which the player (never an NPC) can
+  override for the session;
 - the interim tunnel vertex budget (100,000 for 8 lanes, 12,500 per lane, SDD 52 D15) replaced by three pixel classes
   per lane and one hard pool of 24 instances.
 
@@ -62,13 +66,14 @@ budgets; already recorded, Q29).
 
 ## 3. Decisions (user, grill-me)
 
-Round 1 (D1-D8), as amended by round 2 (section 16):
+Round 1 (D1-D8), as amended by round 2 (section 16) and round 3 (section 17):
 
 - **D1: Endpoints v1.** Every lane of today (the 8 rows of section 2) stays, **plus each node to its next-closest node
   where no lane exists**. Nodes v1: the 8 planets, the Moon (Earth-Moon only), the 5 dwarf planets and the 10 largest
   belt asteroids (Q2, Q3). The next-closest partner is chosen by **current distance** and the lane set is
-  **recalculated once per sim day** (Q1). Later nodes (other moons, space stations, space cities) use the **same node
-  type**.
+  **recalculated once per sim day** (Q1); a node switches partner only when the new one is clearly closer and after a
+  minimum stay (O3). **Every island is linked to its nearest node in Earth's connected group** (O2), so every node is
+  in one graph every day. Later nodes (other moons, space stations, space cities) use the **same node type**.
 - **D2: Activation by pixels.** A lane is drawn and trafficked by the on-screen pixel size of its tunnel and traffic.
   A hard pool is the only cap and is reported if hit. No distance or count LOD.
 - **D3: Routing.** "Fastest A to Z" = shortest **travel time** over the lane graph: Dijkstra over closed-form segment
@@ -77,11 +82,12 @@ Round 1 (D1-D8), as amended by round 2 (section 16):
 - **D5: Long lanes and the Sun.** No special length rule: pixels decide drawing and traffic, traffic stays simulated
   (closed form) when far, and invisible lanes stay in the routing graph. **A straight lane must not pass the Sun
   closer than a safe distance** (20 solar radii, about 0.093 AU): such a lane **closes** until it is safe again, and
-  routing goes another way. **No curved lanes.** **Design hook only:** a later ticket may re-route lanes through
+  routing goes another way. The same sphere is the **Sun danger zone of every AUTO flight** (O4, 6.5). **No curved
+  lanes.** **Design hook only:** a later ticket may re-route lanes through
   stations placed at strategic waypoints (section 4.8).
 - **D6: Planets move.** The lane set and the Sun clearance are re-derived each lane-network epoch (1 sim day, Q5).
-- **D7: Traffic density by population** (Q4): node population tiers, lane weight = product of its two end tiers, with
-  the **same total lane ship budget** (400,000) as today.
+- **D7: Traffic density by population** (Q4, O6): node population tiers, lane weight = **square root of the product
+  of its two end tiers**, with the **same total lane ship budget** (400,000) as today.
 - **D8: Tunnel vertex budget by pixels.** Each lane's budget follows the pixel size of its tunnel (three classes, Q17);
   one hard pool of 24 instances (Q18) is the only cap, reported if hit.
 
@@ -103,15 +109,16 @@ struct FSOLLaneNode
     int32 ParentNode = INDEX_NONE;   // Moon -> its planet node (future: station -> host)
     double ClearanceRadiusM = 0.0;   // Body radius (end rings sit at it + 3 Rt)
     double AphelionM = 0.0;          // Sun-relative aphelion; L0 of a lane = the sum of its two ends' (D16)
-    double RegionRadiusM = 0.0;      // Lane radius of the node's region (4.4, proposed)
-    double PopulationTier = 0.0;     // Traffic tier (Q4, proposed values)
+    double RegionRadiusM = 0.0;      // Lane radius of the node's region (4.4, O5)
+    double PopulationTier = 0.0;     // Traffic tier (Q4, O6: values confirmed by the user 2026-11-25)
 };
 ```
 
 Node positions are not stored: for each epoch sample and each frame the caller passes the node positions (registry
 nodes from the registry; asteroid nodes from their catalogue elements, evaluated by the NPC subsystem with the same
 `FSOLSecularElements` propagation the orbit lines use). Every lane-network function takes node indices, never registry
-indices. Kinds Planet, DwarfPlanet and Asteroid take part in the next-closest rule; the Moon does not (Q2).
+indices. Kinds Planet, DwarfPlanet and Asteroid take part in the next-closest rule and in the island links (4.3); the
+Moon does not (Q2): it is reached through Earth-Moon only.
 
 ### 4.2 Nodes v1 (Q2, Q3)
 
@@ -141,86 +148,132 @@ already sorted descending; Ceres is not in the catalogue, so nothing had to be e
 (The next two, 65 Cybele 237.26 km and 88 Thisbe 232.0 km, are out.) **24 nodes**, 23 of them in the next-closest rule.
 Asteroid nodes are named by their designation ("4 Vesta"), as the belt names them.
 
-### 4.3 Lane set per epoch (D1, Q1, Q5)
+### 4.3 Lane set per epoch (D1, Q1, Q5, O2, O3)
+
+The set of epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day) is built in three steps: base lanes, partner lanes
+(nearest node with hysteresis), island links.
 
 - **Base lanes:** today's 8 rows, always in the set, slots 0-7 (Q23).
-- **Partner lanes:** at lane-network epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day), each node of kind
-  Planet, DwarfPlanet or Asteroid picks the **nearest such node by centre distance at `t_k`** that is not linked to it
-  by a base lane (ties to the lower node index). The partner set is the union of the picks, each lane keyed by its
-  sorted node pair `(NodeA < NodeB)` and stored in key order (not pick order), so the set does not depend on iteration
-  order. **A lane is in the set while either end still picks the other.** The set is a pure function of sim time.
-- **Reading of "next-closest where no lane exists":** the nearest node not linked by a base lane (rule A). The other
-  reading, "the nearest node, added only if no lane exists" (rule B), gives fewer lanes (18-28 in all) and the same
-  connectivity problem; rule A is used unless the user says otherwise.
-- **Measured** (script over 250 sim years from 2026-01-01 at 1-day steps, Kepler propagation of the registry rows and
-  the belt catalogue rows; the game starts at the real date, so these are statistics, not a schedule):
+- **Nearest node (rule A):** each node of kind Planet, DwarfPlanet or Asteroid has as its **nearest** the nearest such
+  node by centre distance at `t_k` that is not linked to it by a base lane (ties to the lower node index). (Rule B,
+  "the nearest node, added only if no lane exists", was not chosen.)
+- **Partner picks with hysteresis (O3):** each taking-part node holds one **pick** (partner, stay in epochs). Per epoch
+  the pick steps: no pick yet, or the held partner no longer valid: take the nearest (stay 1). Otherwise keep the
+  held partner (stay + 1) unless **both** the stay has reached `NPC_LANE_PARTNER_MIN_STAY_EPOCHS` (30
+  days, confirmed by the user 2026-11-25) **and** the nearest is clearly closer: `d(nearest) <
+  NPC_LANE_PARTNER_SWITCH_RATIO x d(held)` (0.8, i.e. at least 20 % closer, confirmed by the user 2026-11-25); then take the nearest (stay 1). The partner set is the union of the picks, each
+  lane keyed by its sorted node pair `(NodeA < NodeB)` and stored in key order; **a lane is in the set while either
+  end picks the other.** The draft named no margin or stay values; the user confirmed the two above on 2026-11-25.
+- **Hysteresis by stepping, with a warm-up after a time jump:** the picks of epoch `k + 1` are always one step from
+  the picks of epoch `k` (the look-ahead buffer of 5.3 computes each new far-end epoch from the one before it), so a
+  pick really lasts its minimum stay and switches only by the margin. A replay that restarts from a fixed number of
+  epochs back every day would not do that (it only delays the plain pick), so it is not used. **After a time jump**
+  (start, `-SOLSimDate`, any clock set) the picks are warmed up: start at epoch `k - W` (`W` =
+  `NPC_LANE_PARTNER_WARMUP_EPOCHS`, 64, confirmed by the user 2026-11-25, which must exceed the minimum stay) with no picks, so the first step
+  takes each node's plain nearest, then step forward to `k` and on to the horizon. Consequence: **the partner set is
+  no longer a pure function of sim time**; it depends on the sim time and on the time of the last jump (deterministic
+  for both, identical for any time inside one epoch, nothing saved). The Sun state keeps its pure look-back. A jump
+  already rebuilds the schedule and every window, so a different set after a jump is not visible as a pop of ships
+  in flight (their windows are re-derived at the jump, as before).
+- **Island links (O2):** after the partner set, the graph (base + partner lanes, Sun-closed lanes included) may have
+  islands not connected to Earth. They are linked one at a time: among every pair (u in Earth's group, v outside),
+  with finite positions (v of kind Planet, DwarfPlanet or Asteroid, u also of kind Moon), take the pair with the
+  smallest centre distance at `t_k` (ties to the lower sorted pair), add that lane, merge v's whole island into
+  Earth's group, and repeat until no island is left. So **any node already in Earth's group may act as the relay**:
+  a planet, **the Moon (user 2026-11-25: the Moon can be a relay)**, a dwarf planet, a large asteroid, including
+  one joined by an earlier link of the same epoch. Each island gets exactly one link (components
+  minus 1 links in all; the island is a connected component, not a node). Island links are ordinary lanes (slot, ship
+  share, Sun test, window, tunnel); they have no hysteresis of their own (their churn follows the hysteresis-smoothed
+  picks, R6). The Moon is never an island (it is always joined to Earth by its base lane), is never a partner pick (4.3 rule A),
+  but can be the near end of an island link. **Stations and space cities as relays stay a design hook (4.8); nothing
+  is built for them.**
+- **Measured before O2 and O3** (script over 250 sim years from 2026-01-01 at 1-day steps, Kepler propagation of the
+  registry rows and the belt catalogue rows, rule A picks with no hysteresis and no island links; the game starts at
+  the real date, so these are statistics, not a schedule). These figures are kept as the baseline; the final rules are
+  re-measured in 53c (plan):
 
-  | Figure | Value |
+  | Figure | Value (before O2, O3) |
   |---|---|
   | Lanes in the set | 22-29 (mean 25.3): 8 base + 14-21 partner lanes |
   | Changes of the set | about 24 per year (one every 2 weeks) |
   | Distinct pairs over 250 years | 205 (8 base + 197 partner): lane indices 8+ are **slots keyed by node pair**, not fixed rows |
   | Partner-lane episodes (one continuous stay in the set) | 5,096, of which **854 are shorter than the lane's own leg time** (no trip can fit, 5.4) |
   | Lanes Sun-unsafe at once | at most 5, mean 0.39 |
-  | Longest nominal length of any lane that occurs | 149.1 AU (an Eris lane), leg about 889 d |
+  | Longest nominal length of any lane that occurs | 149.1 AU (Eris-Haumea), leg about 889 d |
   | Graph connected (all 24 nodes reachable from Earth) | **8 % of days** (1 to 6 components) |
 
-- **Reachability from Earth** (fraction of days, longest stranded run): the 8 planets and the Moon always (base
-  chain). Ceres 0.67 / 739 d, Vesta 0.78 / 424 d, Pallas 0.75 / 1,089 d, Hygiea 0.68 / 1,002 d, Interamnia 0.67 /
-  1,274 d, Europa 0.71 / 1,089 d, Davida 0.69 / 1,017 d, Euphrosyne 0.75 / 1,089 d, Patientia 0.67 / 1,110 d, Sylvia
-  0.73 / 880 d, Juno 0.73 / 1,119 d; **Pluto 0.62, Haumea 0.38, Eris 0.53, each stranded up to 18,977 d (52 years);
-  Makemake 0.76 / 15,887 d**. Belt nodes pick each other and Haumea-Makemake pick each other for decades, forming
-  islands. D1's "so every planet is connected" holds for the 8 planets only (O2).
-- **Snapshot, illustrative (2026-01-01):** 18 partner lanes, 26 in all: Mercury-Earth, Mercury-Mars, Venus-Mars,
-  Earth-511 Davida, Mars-4 Vesta, Jupiter-87 Sylvia, Saturn-Neptune, Saturn-Pluto, Saturn-2 Pallas, Uranus-87 Sylvia,
-  Neptune-Eris, Ceres-52 Europa, Haumea-Makemake, 4 Vesta-2 Pallas, 10 Hygiea-87 Sylvia, 704 Interamnia-31
-  Euphrosyne, 31 Euphrosyne-451 Patientia, 451 Patientia-3 Juno.
+- **Reachability from Earth before O2** (fraction of days, longest stranded run): the 8 planets and the Moon always
+  (base chain). Ceres 0.67 / 739 d, Vesta 0.78 / 424 d, Pallas 0.75 / 1,089 d, Hygiea 0.68 / 1,002 d, Interamnia
+  0.67 / 1,274 d, Europa 0.71 / 1,089 d, Davida 0.69 / 1,017 d, Euphrosyne 0.75 / 1,089 d, Patientia 0.67 / 1,110 d,
+  Sylvia 0.73 / 880 d, Juno 0.73 / 1,119 d; Pluto 0.62, Haumea 0.38, Eris 0.53, each stranded up to 18,977 d (52
+  years); Makemake 0.76 / 15,887 d. **With the island links every node is in Earth's graph on every day** (R11 keeps
+  the remaining cases: a Sun-closed link or a window shorter than the leg).
+- **Effect of O2 and O3 (derived from the baseline, not measured):**
+  - Island links: one per island, so components minus 1: **0-5 links** at the measured 1-6 components. Lanes in the
+    set: **about 22-34** (8 base + 14-21 partner + 0-5 links). Hard bound: 8 base + 23 picks + 7 links (15 non-planet
+    taking-part nodes, an island needs at least 2) = **38 lanes**.
+  - Hysteresis: each node still holds one pick, so partner lanes stay at most 23 and the bounds above hold. It cuts
+    set changes and short episodes (a pick lasts at least 30 days, longer than the leg of the inner-planet partner
+    lanes, about 9-16 d, and of Mars-4 Vesta, 25.6 d; Earth-belt lanes, about 29 d, barely fit and asteroid-asteroid
+    legs of 35-45 d can still miss a short episode). Re-measured in 53c.
+  - Longest lane: an island link can join any two taking-part nodes, so the longest possible nominal length is now
+    the largest sum of two aphelia, **Eris + Makemake = 150.38 AU, leg about 897 d** (under the 960-epoch horizon).
+    The float path is validated at 151 AU (4.7).
+- **Snapshot, illustrative (2026-01-01, rule A picks, before hysteresis):** 18 partner lanes: Mercury-Earth,
+  Mercury-Mars, Venus-Mars, Earth-511 Davida, Mars-4 Vesta, Jupiter-87 Sylvia, Saturn-Neptune, Saturn-Pluto, Saturn-2
+  Pallas, Uranus-87 Sylvia, Neptune-Eris, Ceres-52 Europa, Haumea-Makemake, 4 Vesta-2 Pallas, 10 Hygiea-87 Sylvia,
+  704 Interamnia-31 Euphrosyne, 31 Euphrosyne-451 Patientia, 451 Patientia-3 Juno. It has **3 islands** ({Ceres, 52
+  Europa}, {Haumea, Makemake}, {704 Interamnia, 31 Euphrosyne, 451 Patientia, 3 Juno}), so **3 island links**, 29
+  lanes in all; their endpoints need that day's positions and were not recomputed here.
 - **Group columns (Q28):** 64 shared columns stay the hard pool. Lanes hold a column while they are in the set, and a
-  closing lane's column is freed after its 3 s tunnel fade. With the early stop of 5.4 (departures stop one leg time
-  before the close, so nothing is in flight at the close) the worst case measured is **29 lanes + 10 clusters + 16
-  battles = 55 of 64**. Without the look-ahead (if trips had to finish after the close) the lanes still finishing
-  would add up to 38 lanes, **exactly 64 with clusters and battles**. Under high warp the 3 s real fade spans many
-  epochs (about 90 at 30 d/s), so a few fading lanes can hold columns on top of the 29 (R7). Hitting 64 is logged,
-  counted and reported to the user; a lane that finds no column has no traffic and no tunnel until one frees.
+  closing lane's column is freed after its 3 s tunnel fade. With the early stop of 5.4 (nothing is in flight at the
+  close) the estimate is **34 lanes + 10 clusters + 16 battles = 60 of 64**; the hard bound of 38 lanes gives
+  **exactly 64**. Under high warp the 3 s real fade spans many epochs (about 90 at 30 d/s), so fading lanes can hold
+  columns on top of the set (R7). Hitting 64 is logged, counted and reported to the user; a lane that finds no column
+  has no traffic and no tunnel until one frees.
 
-### 4.4 Lane radius and weight (Q4)
+### 4.4 Lane radius and weight (Q4, O5, O6)
 
-**Population tiers (proposed values, to be confirmed by the user):** Earth 10, Moon 10, Mars 6, Ceres 4, each belt
-asteroid 3, Mercury, Venus, Jupiter and Saturn 2, Uranus, Neptune, Pluto, Haumea, Makemake and Eris 1. **Lane weight =
-product of its two end tiers**, normalised so the lanes in the set share the same 400,000 lane ships as today.
+**Population tiers (confirmed by the user, 2026-11-25):** Earth 10, Moon 10, Mars 6, Ceres 4, each
+belt asteroid 3, Mercury, Venus, Jupiter and Saturn 2, Uranus, Neptune, Pluto, Haumea, Makemake and Eris 1. **Lane
+weight = sqrt(tier A x tier B)** (O6, the user's rule; double precision), normalised so the lanes in the set share the
+same 400,000 lane ships as today (largest remainder, 8.). The square root softens the spread: Earth-Moon 10 against
+Uranus-Neptune 1, where the plain product gave 100 against 1.
 
-| Lane | Weight | Ships today | Ships, 2026-01-01 set (total weight 373) |
-|---|---|---|---|
-| Earth-Moon | 100 | 44,444 | 107,239 |
-| Earth-Mars | 60 | 88,889 | 64,343 |
-| Venus-Earth | 20 | 66,667 | 21,448 |
-| Mars-Jupiter | 12 | 66,667 | 12,869 |
-| Mercury-Venus | 4 | 44,444 | 4,290 |
-| Jupiter-Saturn | 4 | 44,444 | 4,290 |
-| Saturn-Uranus | 2 | 22,222 | 2,145 |
-| Uranus-Neptune | 1 | 22,222 | 1,072 |
-| Earth-asteroid (e.g. Earth-511 Davida) | 30 | - | 32,172 |
-| Mercury-Earth | 20 | - | 21,448 |
-| Mars-asteroid (e.g. Mars-4 Vesta) | 18 | - | 19,303 |
-| Mercury-Mars, Venus-Mars, Ceres-asteroid | 12 | - | 12,869 |
-| asteroid-asteroid | 9 | - | 9,651 |
-| Jupiter- or Saturn-asteroid | 6 | - | 6,434 |
-| Uranus-asteroid | 3 | - | 3,217 |
-| Saturn-Neptune, Saturn-Pluto | 2 | - | 2,145 |
-| Neptune-Eris, Haumea-Makemake | 1 | - | 1,072 |
+Planet chain and Earth-Moon (the 8 base lanes):
 
-Over the 250-year run the daily normalisation moves Earth-Moon between 92,166 and 130,719 ships and Earth-Mars between
-55,300 and 78,431. **Earth-Moon takes 23-33 % of all lane ships**, in a 4e8 m lane (O6).
+| Lane | Weight | Ships today | Ships, base lanes only (total weight 32.096) | Ships, 2026-01-01 set (total weight 83.140) |
+|---|---|---|---|---|
+| Earth-Moon | 10 | 44,444 | 124,624 | 48,112 |
+| Earth-Mars | 7.746 | 88,889 | 96,534 | 37,267 |
+| Venus-Earth | 4.472 | 66,667 | 55,734 | 21,516 |
+| Mars-Jupiter | 3.464 | 66,667 | 43,171 | 16,666 |
+| Mercury-Venus | 2 | 44,444 | 24,925 | 9,622 |
+| Jupiter-Saturn | 2 | 44,444 | 24,925 | 9,622 |
+| Saturn-Uranus | 1.414 | 22,222 | 17,625 | 6,804 |
+| Uranus-Neptune | 1 | 22,222 | 12,462 | 4,811 |
 
-**Lane radius of a partner lane (proposed rule, to be confirmed):** the larger of its two ends' region radii (table
-4.2). It reproduces all 7 planet base rows (Mars-Jupiter = max(3e6, 5e6) = 5e6, and so on); the belt value 4e6 m is new
-(proposed); Earth-Moon keeps its hand row 2e5 m.
+Partner lanes of the 2026-01-01 set (the 18 rule-A lanes of 4.3, partner weight 51.044): Earth-511 Davida 5.477
+(26,352 ships); Mercury-Earth 4.472 (21,516); Mars-4 Vesta 4.243 (20,412); Mercury-Mars, Venus-Mars and Ceres-52 Europa
+3.464 (16,666 each); the 5 asteroid-asteroid lanes 3 (14,433 each); Jupiter- and Saturn-asteroid 2.449 (11,785);
+Uranus-87 Sylvia 1.732 (8,333); Saturn-Neptune and Saturn-Pluto 1.414 (6,804); Neptune-Eris and Haumea-Makemake 1
+(4,811). The snapshot's 3 island links (endpoints not recomputed, weights about 1 to 3.5 each, about 7-9 in all) are
+**not** in the last column; with them every figure there drops by about 8-10 % (Earth-Moon about 44,000, 11 %).
+
+**Earth-Moon share:** 31.2 % with the base lanes only, **12.0 %** of all lane ships in the 2026-01-01 set (about 11 %
+with its island links). Over the daily sets it is **estimated at about 9-14 %** (about 38,000-56,000 ships), from the
+snapshot's mean partner weight (2.84) and the 14-26 partner and link lanes of 4.3; it was 23-33 % with the plain
+product. Not re-measured: the 53c script reports the real range.
+
+**Lane radius of a partner lane (O5, decided):** the larger of its two ends' region radii (table 4.2). It reproduces
+all 7 planet base rows (Mars-Jupiter = max(3e6, 5e6) = 5e6, and so on); the belt value is 4e6 m; Earth-Moon keeps its
+hand row 2e5 m. Island links use the same rule.
 
 ### 4.5 Lane identity, slots and lifecycle (consequences of Q1)
 
 - **Identity:** the sorted node pair. A lane that leaves the set and comes back later is the same identity in a new
   episode (it may get another slot).
-- **Slot:** base lanes own slots 0-7. A partner lane takes the lowest free group column from 8 at its first epoch in
+- **Slot:** base lanes own slots 0-7. A partner lane or island link takes the lowest free group column from 8 at its first epoch in
   the set and keeps it while it stays in the set (also while Sun-closed). The column is freed after the close and the
   3 s tunnel fade, and not before the player's held hop on that lane has ended (R17). The assignment depends on the session's history but is deterministic and only feeds rendering and
   the AUTO lane views; nothing is saved.
@@ -229,8 +282,8 @@ Over the 250-year run the daily normalisation moves Earth-Moon between 92,166 an
 - **States:** Open (departures allowed), Draining (it closes within one leg time: no new departures, ships in flight
   finish), Closed-Sun (in the set but unsafe; no traffic in flight by construction), Gone (no longer chosen; slot
   freed after the fade).
-- **Ship budget (O1, proposed mechanism, the user's call):** the 400,000 lane ships are cut into fixed **ship blocks**
-  (for example 4,000 blocks of 100 ships, by hash, so a block is spread along its lane like today's hash pick). Each
+- **Ship budget (O1, decided):** the 400,000 lane ships are cut into fixed **ship blocks**
+  (4,000 blocks of 100 ships, by hash, so a block is spread along its lane like today's hash pick). Each
   lane in the set holds blocks in proportion to its weight. A Sun-closed lane keeps its blocks (Q10). A Gone lane's
   blocks are empty once its trips have finished (the early stop guarantees that at the close) and return to a free
   pool; an opening lane takes its share from the free pool. Ships only change lane while their block is empty, so no
@@ -249,15 +302,18 @@ direction)`, direction +1 for A -> B.
 ### 4.7 Float path at the new lengths
 
 SDD 52's float-path bounds were validated at the longest lane of today, Uranus-Neptune at 50.4 AU. Dwarf-planet
-lanes reach **149.1 AU** (Eris), so the float rail and tunnel paths must be re-validated at 150 AU (`FloatPathAtMaxLength`
-re-pinned; R10). If they fail, the fix is the user's call (cap the nominal length, split the rail time, or leave the
-Eris lanes without a tunnel).
+lanes reached **149.1 AU** (Eris-Haumea) in the baseline run, and with the island links any two taking-part nodes can
+be joined, up to **150.38 AU** (Eris + Makemake, 4.3). So the float rail and tunnel paths are re-validated in 53c at
+**151 AU** (`FloatPathAtMaxLength` re-pinned; R10), which covers every possible pair (O8, decided). If they fail, 53c
+stops and reports, and the fix is the user's call (cap the nominal length, split the rail time, or leave the Eris lanes
+without a tunnel).
 
 ### 4.8 Hooks (record only, not built)
 
-Station / city nodes (`ESOLLaneNodeKind::Station`, `City`) with their own position source; **waypoint re-routing**: a
-lane split at a station node placed off the Sun line, each part a straight closed-form lane; other moons joining the
-next-closest rule; destination traffic (SDD 50 4.11) using routes.
+Station / city nodes (`ESOLLaneNodeKind::Station`, `City`) with their own position source, later also acting as
+island-link relays (O2: a later design, nothing built); **waypoint re-routing**: a lane split at a station node placed
+off the Sun line, each part a straight closed-form lane; other moons joining the next-closest rule; destination traffic
+(SDD 50 4.11) using routes.
 
 ## 5. Sun clearance and closing
 
@@ -295,22 +351,26 @@ Earth-Moon never comes near.
 ### 5.3 Epoch, look-back and look-ahead (Q5)
 
 - **Epoch:** `E_L` = `NPC_LANE_NETWORK_EPOCH_S` = 86,400 s of sim time, `k = floor(t / E_L)`.
-- **Choice of partners:** from the node positions at `t_k` only (one sample per epoch, no bound needed).
+- **Choice of partners:** from the node positions at `t_k` (one sample per epoch, no bound needed), each epoch's
+  picks one hysteresis step from the previous epoch's (warm-up of 64 epochs after a time jump, 4.3); island links from
+  the positions at `t_k`.
 - **Sun clearance of epoch `k`:** from positions sampled at `N` points across `[t_k, t_k + E_L]` with the conservative
   bound `d_min_bound = min_i d(t_i) - v_max (dt / 2)` (`v_max` the larger endpoint speed; Mercury at 59 km/s with
   `dt` = 6 h gives a 6.4e8 m margin, under 1 solar radius).
 - **Hysteresis as a pure function (look-back):** the Sun state of epoch `k` is found by walking back from `k` to the
   last epoch whose bound was below `k_off R_sun` (Closed) or above `k_on R_sun` (Open), at most
-  `NPC_LANE_SUN_LOOKBACK_EPOCHS` epochs (proposed 64); if every epoch in reach is inside the band, Closed (fail safe).
+  `NPC_LANE_SUN_LOOKBACK_EPOCHS` epochs (64, O10); if every epoch in reach is inside the band, Closed (fail safe).
   So the state needs no history and nothing is saved.
 - **Look-ahead schedule:** the early stop (5.4) needs each lane's close time up to one leg ahead. The lane-network
   state (set, Sun state) of epochs `k .. k + H` is kept in a ring buffer, `H` = `NPC_LANE_NETWORK_HORIZON_EPOCHS`
-  (proposed 960, above the longest leg of about 889 d). Each epoch change computes one new epoch at the far end; a time
-  jump (start, `-SOLSimDate`, any clock set) rebuilds all `H` epochs. A lane still open at the horizon counts as
-  closing at the horizon (fail safe: a leg longer than the horizon never departs).
-- **Cost:** one epoch = 23 x 23 distances at `t_k` plus 5 samples x up to 29 segment distances and the ephemeris of
-  24 nodes; under 0.01 ms. At 30 d/s about 30 epochs per real second (one or two per frame). A full rebuild is about
-  960 epochs, estimated 2-5 ms once per jump (gate in section 13; spread over frames if it misses).
+  (960, O10; above the longest possible leg of about 897 d, 4.3), each entry also holding the epoch's partner picks.
+  Each epoch change computes one new epoch at the far end, stepping the picks from the entry before it; a time jump
+  (start, `-SOLSimDate`, any clock set) warms the picks up over 64 epochs and rebuilds all `H` epochs. A lane still open at the horizon counts as closing at the horizon (fail safe: a leg
+  longer than the horizon never departs).
+- **Cost:** one epoch = 23 x 23 distances at `t_k`, one pick step per node (one distance each), the island links (at most 7 rounds over at most 23 x 23 pairs), 5 samples x up to 34 segment distances (38 at most) and
+  the ephemeris of 24 nodes; estimated under 0.01 ms. At 30 d/s about 30 epochs per real second (one or two per frame).
+  A full rebuild is 64 warm-up epochs plus 960 epochs, estimated 2-5 ms once per jump (gate in section 13; spread
+  over frames if it misses).
 
 ### 5.4 Close, drain and finish (Q8, Q9, Q10, Q14, Q26, Q30)
 
@@ -330,11 +390,12 @@ Earth-Moon never comes near.
   (4.5, O1).
 - **AI tiers (Q26):** lane ships are promoted to the Mid / Full AI tiers as usual. Interplay: only ships flying a leg
   are in space, so a docked ship is never promoted; a promoted ship whose leg ends while it is promoted docks at its
-  demotion (it disappears then, at the end ring, which the player can see; R12).
+  demotion (it disappears then, at the end ring, which the player can see; R12, accepted by the user, O9: no fade).
 - **Merge readout (Q30):** hidden for a closed lane; shown while Draining (traffic still flows).
 - **Short episodes:** a lane whose open window is shorter than its leg time never gets a departure: 854 of 5,096
-  partner episodes in the 250-year run (17 %; Mercury-Mars alone has 54 episodes in 20 years, some of 4 days). Its
-  tunnel still draws while it is in the set (an empty lane). Partner hysteresis would cut this (O3).
+  partner episodes in the baseline run (17 %; Mercury-Mars alone has 54 episodes in 20 years, some of 4 days; before
+  O3). Its tunnel still draws while it is in the set (an empty lane). The partner hysteresis (O3, 4.3) keeps a pick at
+  least 30 days, which removes most short inner-planet episodes (a Sun closure can still cut one); the remaining share is re-measured in 53c.
 
 ## 6. Routing (D3, D4)
 
@@ -368,7 +429,8 @@ Approximate edge times (script re-implementing `MakeLegProfile`: 1.65 G design p
 | Saturn-Neptune (partner) | 40.379 | 240.9 d |
 | Haumea-Makemake (partner) | 104.3 | 621.9 d |
 | Neptune-Eris (partner) | 127.9 | 762.6 d |
-| longest possible (an Eris lane) | 149.1 | about 889 d |
+| longest in the baseline run (Eris-Haumea) | 149.1 | about 889 d |
+| longest possible (Eris-Makemake, through an island link) | 150.38 | about 897 d |
 
 Routes depend on the day's lane set, so no fixed example routes are given.
 
@@ -386,15 +448,16 @@ centre, `theta` the angle between the two lane directions at the node, `w` the w
 transfer cost depends on the lane pair (each edge carries its unit direction A -> B and its end-ring distances at both
 ends; the transfer is `NodeTransferTimeS` with the penalty). **Time windows:** each edge carries its open window; a hop
 reached at predicted time `t` is usable only if its window covers `[t, t + T_edge]` (the NPC early-stop rule applied to
-the player, O7); otherwise the edge is skipped (no waiting modelled). Ties: lower time, then fewer hops, then the lower
+the player, O7, decided); otherwise the edge is skipped (no waiting modelled). Ties: lower time, then fewer hops, then the lower
 lane slot sequence (deterministic). `source == target`: found, no hops. Unreachable: not found.
 
 ### 6.4 AUTO integration (Q11, Q13, Q15, Q16)
 
 - **Router scope (Q11):** lane-only routing when the AUTO target is a node, or a body whose parent planet is a node
   (the last mile flies direct), and the ship is at a node (its anchor body) or holding in a lane. Otherwise, and when
-  no route exists (a stranded node, O2), AUTO behaves as today (D20 straight-path search). War power moves ignore lanes
-  as today (SDD 50 D22).
+  no route exists (a node cut off by a Sun-closed island link or a too-short window, R11), AUTO behaves as today (D20
+  straight-path search). War power moves ignore lanes as today (SDD 50 D22), **but obey the Sun safety of 6.5** like
+  every AUTO flight (O4).
 - **Plan:** a transient fragment field (not a `UPROPERTY`, not saved): hop list (up to `NPC_LANE_ROUTE_MAX_HOPS`),
   current hop, plan serial, and the lane identity (node pair) of each hop, so a hop survives a slot change. Each hop
   latches its lane like today's leg: Approach / Hold / leave through the existing `LaneAutoDecide` pieces. `Left`
@@ -413,8 +476,16 @@ lane slot sequence (deterministic). `source == target`: found, no hops. Unreacha
 
 ### 6.5 Player Sun safety (Q14, O4)
 
-- **Danger zone (proposed):** the sphere of `k_off R_sun` (20 solar radii) about the Sun; AUTO never plans or keeps a
-  path through it.
+- **Danger zone (O4, decided):** the sphere of `k_off R_sun` (20 solar radii, 1.3914e10 m) about the Sun. **It
+  applies to all AUTO flight**: every autopilot order (Move To, Move To (War Power), Follow, Chase Down, the router's
+  hops, first and last mile, leave-and-fly). AUTO never plans or keeps a path through it unless the player has
+  overridden the safety (below). Manual flight is not affected. **NPCs never override**: they have no override flag,
+  and their lane traffic never crosses the zone because the lanes close (5.4). NPC flight outside the lanes (the AI
+  tiers) is not changed by this ticket; it is not verified here whether it can cross the zone (recorded as R20).
+- **Target inside the zone** (confirmed by the user 2026-11-25; only the Sun itself and points near it qualify: Mercury's perihelion,
+  0.307 AU, is outside): with the safety on, the order's arrival point is moved to the `k_on` sphere on the
+  Sun-to-ship line (the edge point facing the ship; +Z if the ship is at the Sun's centre), and the HUD notice says
+  the order stopped at the danger zone. With the override, the order flies as today.
 - **Starting a hop:** only if the lane's window covers the player's estimated hop time (6.3). The estimate uses the
   hold profile at the player's effort; it is the mean-effort `T_edge` unless the player flies slower.
 - **A held lane that will close before the hop ends** (Sun or Gone): the hop is **finished only if safe**: the
@@ -422,9 +493,37 @@ lane slot sequence (deterministic). `source == target`: found, no hops. Unreacha
   estimated arrival (positions from the schedule). A Gone closure is usually safe, so the hop is finished without its
   tunnel. A Sun closure is not: AUTO leaves the lane at once (per-hop `Left`), flies to the hop's end node with the Sun
   detour below, and re-plans there; a HUD notice (`SOLMenuText`) says why.
-- **Sun detour (proposed, new behaviour):** a direct AUTO leg whose straight path passes inside the danger zone gets one
-  waypoint on the `k_on` sphere, in the plane of the Sun, the ship and the target, on the side nearer the ship's
-  velocity. Scope (O4): the router's legs (first and last mile, leave-and-fly) only, or all AUTO legs.
+- **Sun detour (O4, decided, new behaviour):** any AUTO leg whose straight path (ship -> target or waypoint) passes
+  inside the danger zone gets one waypoint on the `k_on` sphere, in the plane of the Sun, the ship and the target, on
+  the side nearer the ship's velocity; the exact waypoint math and its tests are written in 53e (contract case 15).
+  Scope: all AUTO legs, as above.
+- **Player override (O4, decided; UI home chosen from the code):** the interaction menus are the GUI that issues every
+  AUTO order (`Interaction/SOLActionTable`: Move To, Move To (War Power), Follow, Chase Down; shown by the round
+  radial menu `UI/SOLHoloRadial` and the list menu `UI/SOLActionListWidget` from the same table). The override is a
+  **toggle row in that table**:
+  - a new action `ESOLAction::SunSafetyOverride`, appended after `MoveToWarPower` (no ordinal moves; nothing persists
+    `ESOLAction`: no save, settings or key-binding file names it, per `WarPowerMoveTest`);
+  - offered on the Star, Planet, Moon and Dwarf rows (the rows that carry the AUTO orders), placed right after Move To
+    (War Power); not on Asteroid, Ship or DroppedTarget rows;
+  - a fixed label, **"Toggle Sun Safety"** (one `SOLMenuText::INTERACT_ACTION_LABELS` entry: `ActionLabel` takes no
+    context and the table ties one label to each action, so a two-state label would need an API change; not done);
+    blocked only by NoShip;
+  - choosing it flips a **session-only** flag on `USOLShipSubsystem` (default: safety on; never saved; reset at each
+    launch); it takes effect at once, also on an order already flying;
+  - the state is shown on the HUD: while overridden, the AUTOPILOT marker area shows a "SUN SAFETY OFF" line (new
+    `SOLMenuText` token) at all times, AUTO order or not; the Controls / Info screen and `GAME_MECHANICS.md` describe
+    the row (53e, 53f).
+  - Consequences in code: the body rows grow from 10 to 11 entries, so `SOL::Interact::MAX_ACTIONS` goes from 10 to
+    11; the radial sectors scale with the row count, the list menu builds `MAX_ACTIONS` rows, and `ESOLHudLine` gains
+    `RadialItem10` (its `static_assert` ties the radial label lines to `MAX_ACTIONS`). No per-row key exists (the list
+    menu uses Up / Down / Enter only), so no key binding changes. `WarPowerMoveTest` (MoveToWarPower "last before
+    Count", the menus "fill MAX_ACTIONS"), `InteractMenusTest` ("MAX_ACTIONS is 10") and `HoloRadialTest` are
+    re-validated.
+  - **Persistence:** none. No `USOLSettingsSave` field, no key binding, so `SAVE_VERSION` 13 and
+    `KEY_BINDING_LAYOUT_VERSION` 10 stay. Keeping the override across launches would add a settings field and bump
+    `SAVE_VERSION` to 14 with a migration: **that needs the user's approval and is not designed here.**
+  - Rejected alternative: a per-order variant ("Move To (Sun Unsafe)") would need one extra row per AUTO order (Move
+    To, War power, Follow, Chase Down) and the body rows have no room for four.
 - **Cases where finishing and Sun safety can conflict (flagged):**
   1. A leg longer than the lane's open window: the lane never accepts the hop; a target reachable only that way is
      unreachable by lane and AUTO falls back to today's behaviour.
@@ -435,6 +534,9 @@ lane slot sequence (deterministic). `source == target`: found, no hops. Unreacha
   4. A look-ahead horizon shorter than a hop: treated as closing (fail safe), so with too short a horizon long lanes
      become unusable; the horizon is sized above the longest leg.
   5. The detour time is not in the ETA until the detour is planned.
+  6. With the override on, the finish-if-safe check and the detour are skipped for the player: a held hop on a
+     Sun-closing lane is finished, and direct legs fly straight. Starting a hop still needs the lane's window (6.3),
+     since a closed lane has no window.
 
 ## 7. Activation and budget by pixels (D2, D8)
 
@@ -449,7 +551,8 @@ Per lane per frame on the CPU (one point-segment distance):
 lies on the segment, so no ring is larger on screen than `r_max_px`.
 
 **Three classes with hysteresis (Q17).** The 0.5 px and 0.833 px thresholds are fixed by the invisible-switch rule
-below; the 0.4 px and 1.0 px ones are proposed, to tune in game (O10):
+below; the 0.4 px and 1.0 px ones are the draft's values, accepted by the user (O10) and pinned (a later in-game
+tuning is a new decision):
 
 | Class | Draws | Enter | Leave |
 |---|---|---|---|
@@ -483,9 +586,11 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
   Upper bound **24 x 15,380 = 369,120 vertices** (all Full). Replaces `NPC_TUNNEL_VERTEX_BUDGET` / `_LANES` (the
   100,000 / 8 interim).
 - **Real worst case:** every lane of the set at once could need an instance only if all were above 0.5 px together;
-  the set holds at most 29 lanes. Sampled estimate: at most **8** lanes above 0.5 px from one viewpoint (cameras at
-  every node and lane midpoint every 10 days over 250 years, `Rt` at its 3 R maximum, focal 960). So the pool is not
-  expected to fill, but can in principle.
+  the set holds about 34 lanes, 38 at most (4.3). Sampled estimate before O2 and O3: at most **8** lanes above 0.5 px
+  from one viewpoint (cameras at every node and lane midpoint every 10 days over 250 years, `Rt` at its 3 R maximum,
+  focal 960). The island links add at most 5 lanes, each ending at one node in Earth's group and one in the island,
+  so a single viewpoint gains at most a few: estimated **at most about 13**, still well under 24. Re-sampled in 53c.
+  So the pool is not expected to fill, but can in principle.
 - **When the pool is full:** the drawn lanes are ranked by `r_max_px` and the smallest on screen lose their instance; a
   warning is logged once per change of the overflow, a stat counter shows it, and the user is told (the limitation,
   never the LOD rule).
@@ -493,9 +598,10 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
 ## 8. Traffic weights
 
 - **Budget:** lane ships stay `LaneFraction` x population (400,000 of 1M), shared by the lanes in the set by weight
-  (4.4) through the ship blocks (4.5, O1). The outer and the old Mercury-Venus lanes get far fewer ships than today
-  (Uranus-Neptune about 1,000 instead of 22,222), so their tunnels shrink towards the minimum radius `R`; Earth-Moon
-  gets about 2.4 times today's ships.
+  (4.4, sqrt of the tier product, O6) through the ship blocks (4.5, O1). The outer and the old Mercury-Venus lanes get
+  fewer ships than today (2026-01-01 set: Uranus-Neptune about 4,800 instead of 22,222, Mercury-Venus about 9,600
+  instead of 44,444), so their tunnels shrink towards the minimum radius `R`; Earth-Moon gets about 48,000, 1.1 times
+  today's 44,444 (12 % of the lane ships against 11 % today).
 - **Profiles:** frozen per episode (4.5).
 
 ## 9. Tunnel geometry impact
@@ -506,30 +612,39 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
 - Texture: 64 x 4 texels unchanged; row 3 `.z` becomes the open fade x draw flag; the window floats and the active
   flag go into the group texel (5.4, 7.2).
 - Earth hub: Venus-Earth, Earth-Moon and Earth-Mars always, plus the partner lanes that pick Earth that day
-  (Mercury-Earth and an Earth-asteroid lane in the snapshot); labels compete for the 4 label slots (R3).
+  (Mercury-Earth and an Earth-asteroid lane in the snapshot) and any island link that uses Earth as its relay (an
+  island link relayed by the Moon starts at the Moon, not at Earth); labels
+  compete for the 4 label slots (R3).
 - 21:9 focal: not addressed (16:9 only supported); stays debt.
 
 ## 10. Module edges
 
-- `Traffic/SOLLaneNetworkMath.{h,cpp}`: new, pure (next-closest, lane keys and slots, Sun clearance, look-back,
-  windows and the early stop, edge and transfer times, Dijkstra, pixel classes, pool selection, ship shares). Includes
+- `Traffic/SOLLaneNetworkMath.{h,cpp}`: new, pure (next-closest, partner hysteresis step and warm-up, island links,
+  lane keys and slots, Sun clearance, look-back, windows and the early stop, edge and transfer times, Dijkstra, pixel
+  classes, pool selection, ship shares, the Sun danger zone tests). Includes
   `SOLConstants.h` and `SOLLaneTrafficMath.h` only.
 - `Traffic/SOLLaneTrafficSubsystem`: the node table, the per-epoch set and slots, the look-ahead schedule, the graph
   and the route query.
 - `Npc`: `DefaultLayout` (base rows, tiers, region radii), spawn (node table, ship blocks), visuals (windows, open
   fade, active flags), tunnel component (classes, pool). **New edge `Npc -> MinorBodies`** to read the 10 asteroid
   rows (`RealAsteroids()`), evaluated with the existing `SOLKepler` propagation. `Ship`: flight processor (plan,
-  hops, Sun safety). `UI`: VIA line, notice. `Map`: the plan polyline (reads the plan through the existing ship
+  hops, Sun safety for every AUTO order), `USOLShipSubsystem` (the session-only Sun safety override flag).
+  `Interaction`: the `SunSafetyOverride` action row (`SOLActionTable`, `SOLInteractionSubsystem::Execute`). `UI`: VIA
+  line, notices, the "SUN SAFETY OFF" line, `ESOLHudLine::RadialItem10`; the radial and list menus draw the new row
+  with their existing code. `Map`: the plan polyline (reads the plan through the existing ship
   state path; no `Map -> Npc` edge).
 - No new `Traffic -> Universe`, `Traffic -> MinorBodies`, `Ship -> Npc` or `UI -> Npc` edge.
 
 ## 11. Save and persistence impact
 
-**No schema change is needed.** The lane set, the Sun state and the windows are pure functions of sim time (with the
-bounded look-back and the look-ahead rebuilt from the clock); slots, blocks, routes and hops are transient, never
-saved; the NPC population is not saved. `SAVE_VERSION` 13 and `KEY_BINDING_LAYOUT_VERSION` 10 stay. **If the user
-wants a player setting** (for example "prefer lanes" or a route display toggle), that changes the settings schema and
-needs the user's approval and a version bump with migration; this SDD does not decide it.
+**No schema change is needed.** The Sun state is a pure function of sim time (bounded look-back); the partner set is
+a deterministic function of the sim time and the time of the last jump (stepped hysteresis, warm-up after a jump);
+the windows follow from both and the look-ahead is rebuilt from the clock at any jump; slots, blocks, routes and hops
+are transient, never saved; the NPC population is not saved. The player's Sun safety override (6.5) is a
+session-only flag, not saved and bound to no key. `SAVE_VERSION` 13 and `KEY_BINDING_LAYOUT_VERSION` 10 stay. **If the
+user wants a saved player setting** (the Sun safety override across launches, "prefer lanes" or a route display
+toggle), that changes the settings schema and needs the user's approval and a version bump with migration
+(`SAVE_VERSION` 14); this SDD does not decide it.
 
 ## 12. Test plan
 
@@ -538,6 +653,10 @@ subagent from [`Plans/53-lane-network-contract.md`](../Plans/53-lane-network-con
 
 1. **NextClosest:** current distance, base lanes excluded, ties, key order, Moon excluded, DwarfPlanet and Asteroid
    kinds take part, "either picks the other" persistence.
+   - **PartnerHysteresis:** the pick step (margin, minimum stay, invalid partner), the warm-up equal to the step
+     chain, consecutive epochs one step apart, determinism.
+   - **IslandLinks:** one link per island, nearest pair, relay through a node joined earlier or through the Moon, ties, NaN nodes
+     excluded (the Moon is never an island or a partner pick), a connected graph gives none.
 2. **DailyRecalc:** epoch index and sample time; the set is identical for any time inside one epoch; slots stable for
    lanes that stay; new lanes take the lowest free slot from 8; held slots; overflow counted.
 3. **SunClearance:** segment distance.
@@ -550,17 +669,23 @@ subagent from [`Plans/53-lane-network-contract.md`](../Plans/53-lane-network-con
 9. **Dijkstra:** routes with lane-pair transfers and time windows; the base network.
 10. **PixelClasses:** `r_max_px`, the three-class hysteresis, the invisible-switch identities.
 11. **Pool:** ranking, the 24-instance overflow, overflow report once per change.
-12. **TrafficWeights:** lane weight = product of tiers, shares sum exactly to 400,000 for any lane count.
+12. **TrafficWeights:** lane weight = sqrt of the product of the tiers (O6), shares sum exactly to 400,000 for any
+    lane count.
 13. **Nodes:** dwarf planets and asteroids in the rule, nominal length (Earth-Moon and Sun-orbiting pairs), a 150 AU
     lane's edge time.
 14. **OverflowReport:** group-column overflow at 38 lane slots and its report.
+15. **SunSafety** (53e): the danger zone test on a path, the safety active unless the player overrides (NPCs never),
+    the arrival point for a target inside the zone; the detour waypoint cases are added by the 53e test author.
 
 Re-validated: `NpcScaleMathTest` (`DefaultLayout`), `LaneAutoRulesTest` (layout rows by name; per-hop `Left`),
-`NpcTrafficMathTest`, `NpcTunnelFarFieldTest` (`SlotMeshBudget`, `Constants`, `FloatPathAtMaxLength` at 150 AU),
-`NpcTunnelMathTest` (`VisibilityRules`), `NpcLaneMathTest`, `NpcTunnelMirrorTest`, smokes that assume 8 lanes
-(`-SOLSmokeNpcTunnel`, `-SOLSmokeNpcLanes`, `-SOLSmokeAutoLanes`, `-SOLSmokeLaneMerge`, `-SOLSmokeNpcTraffic`). New smoke
-`-SOLSmokeLaneRoute` (a two-hop AUTO trip at warp, a lane closing mid-plan and the re-plan, the VIA line, the map
-route). PIE smoke screenshots at 1280x720, 1920x1080 and 4K.
+`NpcTrafficMathTest`, `NpcTunnelFarFieldTest` (`SlotMeshBudget`, `Constants`, `FloatPathAtMaxLength` at 151 AU),
+`NpcTunnelMathTest` (`VisibilityRules`), `NpcLaneMathTest`, `NpcTunnelMirrorTest`, `WarPowerMoveTest` (the War power
+row is no longer the last action; War power obeys the Sun safety), `InteractMenusTest` and `HoloRadialTest` (11 body
+rows, `MAX_ACTIONS` 11), `AutopilotRegression.NoLaneBitIdentical` (stays bit-identical for paths that keep out of the
+danger zone; zone paths get new tests), smokes that assume 8 lanes (`-SOLSmokeNpcTunnel`, `-SOLSmokeNpcLanes`,
+`-SOLSmokeAutoLanes`, `-SOLSmokeLaneMerge`, `-SOLSmokeNpcTraffic`). New smoke `-SOLSmokeLaneRoute` (a two-hop AUTO trip
+at warp, a lane closing mid-plan and the re-plan, a Sun detour, the override row toggled, the VIA line, the map route).
+PIE smoke screenshots at 1280x720, 1920x1080 and 4K.
 
 ## 13. Performance targets (Q25)
 
@@ -569,9 +694,10 @@ The #52 gates (SDD 52 section 8, D18), at 1920x1080, 1M NPCs, plus new CPU gates
 - **Tunnel draw <= 0.15 ms GPU**, measured with the pool full (24 forced Full) and in the T2 / T5 views.
 - **Tunnel update + labels <= 0.025 ms CPU on vs off** (`sol.NpcTunnel 0`, SDD 49 D20 method). With pixel classes the
   cost follows the drawn lanes; report if missed.
-- **New CPU gates:** lane-network epoch step <= 0.01 ms averaged per frame at 30 d/s warp; full look-ahead rebuild
-  (960 epochs) <= 5 ms once per time jump (spread over frames if missed); a route query <= 0.05 ms; the per-frame class
-  pass (up to 29 point-segment distances) <= 0.003 ms; a ship-block move <= 0.5 ms (partial rail upload); the AUTO
+- **New CPU gates:** lane-network epoch step (pick step and island links included) <= 0.01 ms averaged per frame
+  at 30 d/s warp; full look-ahead rebuild (960 epochs plus 64 epochs of positions) <= 5 ms once per time jump (spread
+  over frames if missed); a route query <= 0.05 ms; the per-frame class pass (about 34 point-segment distances, 38 at
+  most) <= 0.003 ms; a ship-block move <= 0.5 ms (partial rail upload); the AUTO
   lane rules get their own `SCOPE_CYCLE_COUNTER` (closes the SDD 50 debt).
 - **Points draw:** no gate (SDD 52 D19), recorded against SDD 52's interleaved baseline. The flame CPU gate (#51 debt)
   is re-measured and reported, no fix in #53 (Q27).
@@ -583,34 +709,45 @@ The #52 gates (SDD 52 section 8, D18), at 1920x1080, 1M NPCs, plus new CPU gates
 **VR floor:** record only, no VR work before procedural terrain (user rule): 2560x1440 recorded as the one-eye proxy as
 in SDD 52; 3840x3744 and two-eye not measured.
 
-- **R1 thin outer lanes:** population weights leave the outer lanes with about 1,000 ships; their tunnels sit at the
-  minimum radius.
-- **R2 long trips:** lanes up to about 889 d per leg; the ETA must read well at years.
-- **R3 Earth hub clutter:** 3 base lanes plus partner lanes at Earth; labels, end rings and merge readout pick among
-  more lanes.
+- **R1 thin outer lanes:** population weights leave the outer lanes with about 4,800 ships (Uranus-Neptune, Neptune-Eris,
+  Haumea-Makemake in the 2026-01-01 set); their tunnels sit near the minimum radius.
+- **R2 long trips:** lanes up to about 897 d per leg; the ETA must read well at years.
+- **R3 Earth hub clutter:** 3 base lanes plus partner lanes and island links at Earth; labels, end rings and merge
+  readout pick among more lanes.
 - **R4 lanes near third bodies:** a straight lane can pass close to another body; no rule, recorded only.
-- **R5 multi-hop AUTO regressions:** per-hop `Left`, re-planning and the Sun detour touch the 50d review-fixed code;
-  `AutopilotRegression.NoLaneBitIdentical` and the AUTO smokes guard it.
-- **R6 daily churn:** about 24 set changes a year and 17 % of partner episodes too short for a trip; lanes appear empty
-  and flicker (O3).
-- **R7 group columns:** 55 of 64 at the measured worst case with the early stop, 64 without it, plus lanes still in
-  their 3 s fade under warp. Report if hit.
+- **R5 multi-hop AUTO regressions:** per-hop `Left`, re-planning and the Sun detour (now on every AUTO order, War power
+  included) touch the 50d review-fixed code; `AutopilotRegression.NoLaneBitIdentical` and the AUTO smokes guard it.
+- **R6 daily churn:** before O3, about 24 set changes a year and 17 % of partner episodes too short for a trip. The
+  partner hysteresis cuts both; island links have no hysteresis of their own and can still switch relay between two
+  nearly equal candidates from one day to the next (an empty, flickering link). Re-measured in 53c; if link churn is
+  visible, a link hysteresis is a new decision for the user.
+- **R7 group columns:** about 60 of 64 with the island links (34 lanes), exactly 64 at the hard bound of 38 lanes, plus
+  lanes still in their 3 s fade under warp. Report if hit.
 - **R8 shader mirror drift:** windows, open fade and active flag go into `SOLNpcTraffic.ush` and `SOLNpcTunnel.ush` and
   their CPU mirrors in the same change.
 - **R9 re-epoch hitch** (existing debt) is untouched; block moves must use partial uploads, not the full re-epoch.
-- **R10 float path at 149 AU:** SDD 52 validated 50.4 AU only (4.7).
-- **R11 islands:** dwarf planets and asteroids are unreachable from Earth by lane for long spans (Pluto, Haumea, Eris
-  up to 52 years) (O2).
-- **R12 docking pop:** a promoted ship docks at its demotion; a lane ship that arrives at a node where the next leg is
-  not flown disappears at the end ring, which can be on screen.
+- **R10 float path up to 150.38 AU:** SDD 52 validated 50.4 AU only; 53c validates 151 AU and stops if it fails (4.7,
+  O8).
+- **R11 islands (reduced by O2):** the island links put every node in Earth's graph every day, but a node can still be
+  unreachable by route while its link is Sun-closed or its window is shorter than the leg (an Eris link of about 897 d
+  needs a window that long); AUTO then falls back to today's flight.
+- **R12 docking pop (accepted, O9):** a promoted ship docks at its demotion; a lane ship that arrives at a node where
+  the next leg is not flown disappears at the end ring, which can be on screen. No fade.
 - **R13 look-ahead rebuild hitch** on a time jump (5.3).
-- **R14 approximate normalisation** with ship blocks (4.5, O1).
-- **R15 Earth-Moon share:** 23-33 % of all lane ships in one short lane (O6).
+- **R14 approximate normalisation** with ship blocks (4.5, O1, accepted).
+- **R15 Earth-Moon share:** with the sqrt weights about 12 % in the 2026-01-01 set and an estimated 9-14 % over the
+  daily sets (was 23-33 % with the plain product); re-measured in 53c (O6).
 - **R16 draw gate at the new pool:** the 0.15 ms tunnel draw gate was set for 100,000 vertices; it is now measured with
   the pool full at up to 369,120 vertices and may miss (reported, not relaxed).
 - **R17 a player hop on a Gone lane:** a player finishing a hop on a lane that is no longer chosen still needs the
   lane's frame and profile after the lane leaves the set; its slot stays held (`slotHeld`) until the player's held hop
   ends, and the hop keeps the lane identity (6.4).
+- **R18 Sun safety override:** with the override on, the player's AUTO can fly through the danger zone and into the
+  Sun's swept collision; the HUD line "SUN SAFETY OFF" is the only reminder, and the flag lasts the session.
+- **R20 NPC flight off the lanes:** promoted NPCs (Mid / Full AI tiers) are not given the danger zone by this ticket;
+  whether their steering can cross it is not verified (53e checks and reports; a rule for them is a new decision).
+- **R19 radial menu with 11 sectors:** the body menu grows to 11 rows; sector width and label fit at 1280x720 are
+  checked in the 53e smoke screenshots.
 
 ## 15. Change log
 
@@ -620,6 +757,14 @@ in SDD 52; 3840x3744 and two-eye not measured.
   recalculation, 24 nodes (planets, Moon, 5 dwarf planets, 10 asteroids), population weights, finish-trip closing,
   three tunnel classes, pool 24, knee fix, map route drawing, closed-lane ships promoted. Measured lane counts,
   reachability and the column worst case by script. New open items O1-O10 (section 17). No code, no persistence
+  change.
+- 2026-11-25: amended with the user's answers to O1-O10 (section 17). Changed: ship blocks decided (4,000 of 100);
+  island links to Earth's connected group (4.3); partner hysteresis stepped epoch to epoch with a warm-up after a time
+  jump (mechanism and values confirmed by the user 2026-11-25; the partner set is no longer a pure function of sim
+  time); the Sun danger zone on every AUTO order with a session-only player override row in the interaction menus
+  (6.5); lane weight = sqrt of the tier product (4.4, new share table); partner lane radius, window rule for player
+  hops, docking pop and the O10 constants accepted; float path validated at 151 AU. Lane counts, columns, pool and the
+  Earth-Moon share re-derived from the baseline (marked as not measured; re-measured in 53c). No code, no persistence
   change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
@@ -636,8 +781,10 @@ The draft's recommendation is marked *superseded* where the answer differs.
 - **Q4 Importance: CHANGED.** Traffic weights by **population**: node tiers Earth / Moon 10, Mars 6, Ceres 4, belt
   asteroids 3, Venus / Mercury / Jupiter / Saturn 2, Uranus / Neptune / Pluto / Haumea / Makemake / Eris 1; lane
   weight = product of the end tiers, normalised to the same 400,000 lane ships. *Superseded:* hand-written pair
-  weights. The tier values are proposed and still to be confirmed by the user (4.4).
+  weights. *Amended by O6:* the weight is the square root of the product. The tier values are confirmed by the user
+  (2026-11-25, 4.4).
 - **Q5 Epoch:** a fixed 1-day sim epoch with the conservative sampled bound, the state a pure function of sim time.
+  *Amended by O3:* the Sun state stays pure; the partner set also depends on the time of the last jump (4.3).
 - **Q6 Hysteresis:** close below 20 solar radii, reopen above 22.
 - **Q7 Clearance measure:** the minimum distance from the Sun to the straight segment between the body centres.
 - **Q8 Drain: CHANGED.** No new departures one leg time before a lane closes (Sun clearance or no longer chosen), so
@@ -645,7 +792,8 @@ The draft's recommendation is marked *superseded* where the answer differs.
 - **Q9 Switch fade:** only the tunnel fades, 3 s real time.
 - **Q10 Share:** the traffic share stays with the lane.
 - **Q11 Router scope:** lane-only routing when the target is a node (or a body whose parent planet is a node) and the
-  ship is at a node or in a lane; otherwise today's behaviour; War power unchanged.
+  ship is at a node or in a lane; otherwise today's behaviour; War power unchanged (still ignores lanes). *Amended by
+  O4:* War power, like every AUTO order, obeys the Sun safety.
 - **Q12 Transfer cost:** arc at wall speed plus a 1 h penalty.
 - **Q13 First and last mile:** in the HUD ETA only.
 - **Q14 Lane closes during a trip: CHANGED.** Re-plan at the epoch change for hops not yet flown; a held lane that
@@ -654,8 +802,8 @@ The draft's recommendation is marked *superseded* where the answer differs.
 - **Q15 D20 search while a plan runs:** off.
 - **Q16 Route display: CHANGED.** "VIA <node>" on the AUTOPILOT marker **and** the planned route drawn on the system
   map, distinct from the player's waypoint routes and following the moving bodies. *Superseded:* no map drawing.
-- **Q17 Tunnel classes: CHANGED.** Three classes (off, reduced, full) with pixel hysteresis; thresholds proposed in 7.1,
-  to tune. *Superseded:* two classes.
+- **Q17 Tunnel classes: CHANGED.** Three classes (off, reduced, full) with pixel hysteresis; thresholds in 7.1 (the
+  0.4 / 1.0 px values accepted with O10). *Superseded:* two classes.
 - **Q18 Pool: CHANGED.** 24 instances (369,120 vertices at most). *Superseded:* 16.
 - **Q19 Knee:** fixed now: 160 ring slots per side, 15,380 vertices per lane.
 - **Q20 Legacy controls:** restated in reference px (7.2); the 4-label cap kept and recorded in `TECH_DEBT.md` as a
@@ -674,25 +822,40 @@ The draft's recommendation is marked *superseded* where the answer differs.
   (the legacy NPC LOD item), cross-referenced there for the lane ships.
 - **Q30 Merge readout on a closed lane:** hidden.
 
-## 17. Open items raised by the answers (for the user; proposals only, none decided)
+## 17. Resolved open items (user, 2026-11-25)
 
-- **O1 Ship budget with a daily lane set.** Daily normalisation to 400,000, the share staying with a lane and no ship
-  vanishing cannot all hold exactly when lanes come and go. Proposed: fixed ship blocks moved only through a free pool
-  (4.5), exact at spawn and approximate after. Alternatives: daily re-hash (ships jump lanes, full rail upload every
-  epoch) or a fixed per-pair share (total not kept).
-- **O2 Islands.** The graph is connected on 8 % of days; Pluto, Haumea and Eris can be cut off from Earth for up to 52
-  years, the belt nodes for up to about 3 years. Options: (a) accept, AUTO falls back to today's flight; (b) add a rule
-  that links each island to its nearest node in Earth's component; (c) dwarf planets and asteroids pick only from
-  nodes of a bigger tier.
-- **O3 Churn.** About 24 changes a year; 17 % of partner episodes are too short for one trip. Option: partner
-  hysteresis (switch only when the new partner is closer by a margin, or after a minimum stay). Option only.
-- **O4 Sun danger zone and detour.** New behaviour: confirm the zone (20 solar radii proposed) and the scope of the
-  detour (router legs only, or all AUTO legs).
-- **O5 Lane radius of partner lanes.** Proposed: the larger region radius of the two ends; belt 4e6 m.
-- **O6 Tier values and the Earth-Moon share.** Confirm the tiers; Earth-Moon then takes 23-33 % of all lane ships.
-- **O7 Player hops and the window rule.** Proposed: the player's AUTO also starts a hop only if it fits the lane's
-  window (the NPC rule), via the time-window Dijkstra.
-- **O8 Lengths beyond the validated float path** (149 AU against 50.4 AU): the fix if 150 AU fails (4.7).
-- **O9 Docking pop** (R12): accept, or fade a docking ship out over a few seconds.
-- **O10 Constants proposed by the draft:** look-back 64 epochs, horizon 960 epochs, ship blocks of 100, the tunnel
-  class thresholds 0.4 px (Reduced -> Off) and 1.0 px (Reduced -> Full).
+The open items O1-O10 raised by the Q answers, as answered by the user. The tier values (O6), the hysteresis values
+(O3), the Sun-safety override UI (O4) and the Moon-as-relay reversal (O2) were all confirmed by the user on 2026-11-25.
+
+- **O1 Ship budget: proposal accepted.** Fixed ship blocks (4,000 of 100 ships, by hash) moved only through a free
+  pool (4.5); exact normalisation at spawn, approximate after (R14).
+- **O2 Islands: option (b), extended.** Each island (a connected component without Earth) is linked to its nearest
+  node in Earth's connected group, one link per island, processed nearest first; any body already in Earth's group
+  may act as the relay, the Moon, the large asteroids and dwarf planets included (4.3; the Moon as a relay was
+  reversed from "never" by the user, 2026-11-25). Stations and space cities as relays stay
+  a later design hook, nothing built (4.8). Effect (derived, re-measured in 53c): 0-5 links, about 22-34 lanes (38 at
+  most), about 60 of 64 group columns (64 at the bound), pool of 24 not expected to fill (about 13 lanes above 0.5 px
+  at most), every node in Earth's graph every day (R11 reduced), longest possible lane 150.38 AU (about 897 d).
+- **O3 Churn: partner hysteresis.** A node switches partner only when the new nearest is clearly closer (margin) and
+  it has kept its partner for a minimum stay (4.3). Mechanism: each epoch's picks step from the previous epoch's, with a 64-epoch warm-up after a time jump, so the
+  partner set depends on the sim time and the time of the last jump (no longer a pure function of sim time; nothing
+  saved). Values **confirmed by the user, 2026-11-25**: switch ratio 0.8 (the new partner at least 20 % closer),
+  minimum stay 30 epochs (days), warm-up 64 epochs.
+- **O4 Sun danger zone: 20 solar radii on all AUTO flight, with a detour; player override.** Every AUTO order of the
+  player keeps out of the zone with the detour of 6.5 (War power included); NPC lanes close at the zone (5.4). The
+  player can override the safety with a toggle row ("Toggle Sun Safety", state shown by a "SUN SAFETY OFF" HUD line)
+  in the interaction menus (radial and list) of the Star, Planet, Moon and Dwarf rows, next to Move To (War Power);
+  session-only, effective at once, no schema or key-binding change (`MAX_ACTIONS` 10 -> 11); a target inside the
+  zone stops at the zone edge. All confirmed by the user, 2026-11-25. Saving it across launches
+  would need the user's approval (`SAVE_VERSION` 14). NPCs never override.
+- **O5 Partner lane radius: proposal accepted.** The larger region radius of the two ends; belt 4e6 m (4.4).
+- **O6 Weights: CHANGED.** Lane weight = sqrt(tier A x tier B) (4.4). Earth-Moon: 12.0 % of lane ships in the
+  2026-01-01 set (31.2 % with the base lanes only), estimated 9-14 % over the daily sets. The tier values (Earth /
+  Moon 10, Mars 6, Ceres 4, asteroids 3, Venus / Mercury / Jupiter / Saturn 2, Uranus / Neptune and the other dwarf
+  planets 1) are confirmed by the user (2026-11-25).
+- **O7 Player hops: proposal accepted.** The player's AUTO starts a hop only if it fits the lane's window (6.3).
+- **O8 Float path: proposal accepted.** Re-validated in 53c, now at 151 AU since island links can reach 150.38 AU
+  (4.7); if it fails, 53c stops and the fix is the user's call.
+- **O9 Docking pop: accepted** (R12), no fade.
+- **O10 Constants: accepted.** Sun look-back 64 epochs, horizon 960 epochs (above the 897 d longest leg), ship blocks
+  of 100, tunnel class thresholds 0.4 px (Reduced -> Off) and 1.0 px (Reduced -> Full).
