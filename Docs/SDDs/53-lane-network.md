@@ -280,8 +280,8 @@ Uranus-87 Sylvia 1.732 (8,333); Saturn-Neptune and Saturn-Pluto 1.414 (6,804); N
 
 **Earth-Moon share:** 31.2 % with the base lanes only, **12.0 %** of all lane ships in the 2026-01-01 set (about 11 %
 with its island links). Over the daily sets of the 250-year run (4.3) it is **measured at 9.9-13.6 %** (mean 12.0 %); it
-was 23-33 % with the plain product. **53c1 interim:** the lane ships still use these sqrt weights over the 8 base lanes
-only (no partner lane gets ships until 53c2), which makes Earth-Moon about 31 % for now; accepted by the user.
+was 23-33 % with the plain product. *(53c1 interim, lifted in 53c2a/53c2b: the lane ships used these sqrt weights over
+the 8 base lanes only, about 31 % Earth-Moon; they are now shared over the slotted set and follow it per epoch.)*
 
 **Lane radius of a partner lane (O5, decided):** the larger of its two ends' region radii (table 4.2). It reproduces
 all 7 planet base rows (Mars-Jupiter = max(3e6, 5e6) = 5e6, and so on); the belt value is 4e6 m; Earth-Moon keeps its
@@ -443,7 +443,11 @@ Earth-Moon never comes near.
   its current leg's departure time lies in `[openStart, departStop]`. `SOLNpcTraffic.ush` and the CPU point layer read
   the same texel (R8). **U-turns (P1, section 18):** a turning ship follows the leg after the turn: it is drawn iff
   that leg fits, so a ship arriving where its next leg is not flown vanishes at the end ring on arrival (the future
-  docking-at-station moment).
+  docking-at-station moment). **Built (53c2b):** `SOLNTR_LaneShipDrawn` in the traffic shader and its CPU mirror
+  `SOLNpcTrafficMirror::LaneShipWindowDrawn` read group texture row 6 and also hide parked ships (rail `.w` < 0);
+  the CPU point layer draws a Point-tier lane ship only when the mirror says drawn. Measured float band
+  (`SOLTest.NpcRail.GpuLaneWindowMirror`): Earth-Moon 0.064 s, Mars-Jupiter 32 s, a 128 AU lane 512 s; every in-band
+  disagreement lies exactly on a window bound, none outside the band.
 - **Latched open start (53a/53b review):** the look-ahead buffer starts at the current epoch `k`, so a lane open at
   `k` has no open start inside the buffer. `LaneOpenWindow` then takes the start the slot held at the previous epoch
   (the latch; -inf allowed, meaning open since before anything known). A lane that was not open at the previous
@@ -456,7 +460,11 @@ Earth-Moon never comes near.
 - **Tunnel:** only the tunnel fades, 1 -> 0 over **3 s real time** at the close (tunnel texture row 3 `.z`), 0 -> 1 at a
   reopen (Q9). The traffic is not faded; it drains by finishing.
 - **Share (Q10):** a Sun-closed lane keeps its share (its blocks); a Gone lane's empty blocks go back to the pool
-  (4.5, O1).
+  (4.5, O1). **Built (53c2b):** per-epoch block moves (release, take at an episode open, re-bucket, partial rail
+  upload; `Npc/SOLNpcBlockMoves`, `SOLLaneNetwork::StepShipBlocks`) and an exact re-share with one full upload at a
+  time jump (P4). A slot is held while its blocks still own ships. **Open (known hitches, `TECH_DEBT.md`):** in game
+  a move costs 0.58-0.88 ms per block (mean 0.68, over the 0.5 ms gate; headless 0.38-0.40), 34-274 ms per opening
+  in the 53c2b warp run, and a time-jump re-share 1.8-2.1 s, almost all of it the per-entity Mass re-bucket.
 - **AI tiers (Q26):** lane ships are promoted to the Mid / Full AI tiers as usual. Interplay: only ships flying a leg
   are in space, so a docked ship is never promoted; a promoted ship whose leg ends where the next leg is not flown is
   **demoted to Far and docked at once** (P2, section 18; it disappears at the end ring, which the player can see; R12,
@@ -811,7 +819,10 @@ The #52 gates (SDD 52 section 8, D18), at 1920x1080, 1M NPCs, plus new CPU gates
   through the parallel passes (16-core machine); its serial cost was about 8.8 ms. The route query, class pass and block move
   gates are measured in their own parts. **Block move (53c2a), `SOLTest.NpcRail.BlockMoveCost`: 0.024 ms, a partial
   measurement** (spawn, rail and GPU texels of 100 ships, the dirty range and its texel rects; no release, take, Mass
-  re-bucket or render-thread upload), to be re-measured with the full move in 53c2b. Caveat: the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred).
+  re-bucket or render-thread upload), re-measured with the full move in 53c2b: **0.384-0.398 ms per block headless,
+  0.581-0.878 ms (mean 0.684) in game** over 66 moves of a 10 d/s warp run at 1M NPCs, so the 0.5 ms gate is
+  missed in game (reported, not relaxed); a large opening (1,246 blocks) costs 310-338 ms headless, and a time-jump
+  re-share 1.1 s headless, 1.76-2.07 s in game (`TECH_DEBT.md`). Caveat: the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred).
 - **Points draw:** no gate (SDD 52 D19), recorded against SDD 52's interleaved baseline. The flame CPU gate (#51 debt)
   is re-measured and reported, no fix in #53 (Q27).
 - **1M ramp:** every stage passes as in SDD 52 13.3.
@@ -838,7 +849,9 @@ in SDD 52; 3840x3744 and two-eye not measured.
 - **R7 group columns:** 56 of 64 at the worst measured day (30 lanes + 10 clusters + 16 battles, no overflow day), exactly
   64 at the hard bound of 38 lanes, plus lanes still in their 3 s fade under warp. Report if hit.
 - **R8 shader mirror drift:** windows, open fade and active flag go into `SOLNpcTraffic.ush` and `SOLNpcTunnel.ush` and
-  their CPU mirrors in the same change.
+  their CPU mirrors in the same change. The traffic window half is built (53c2b: `SOLNTR_LaneShipDrawn` with
+  `SOLNpcTrafficMirror::LaneShipWindowDrawn`, pinned by `SOLTest.NpcRail.GpuLaneWindowMirror`); the open fade and
+  active flag follow in 53d.
 - **R9 re-epoch hitch** (existing debt) is untouched; block moves must use partial uploads, not the full re-epoch.
 - **R10 float path up to 150.38 AU:** SDD 52 validated 50.4 AU only; 53c validates 151 AU and stops if it fails (4.7,
   O8).
@@ -855,8 +868,8 @@ in SDD 52; 3840x3744 and two-eye not measured.
 - **R13b router plan-open rule near the horizon is untested by a real route:** no route on 2026-01-01 reaches the horizon, and in v1 it is unreachable (12 hops x 42.7 d < 960 d); only the pure-math case covers it.
 - **R14 approximate normalisation** with ship blocks (4.5, O1, accepted).
 - **R15 Earth-Moon share:** with the sqrt weights about 12 % in the 2026-01-01 set and a measured 9.9-13.6 % over the
-  daily sets (was 23-33 % with the plain product, O6). Until 53c2 the lane ships use the 8 base lanes only, so it is
-  about 31 % (accepted by the user).
+  daily sets (was 23-33 % with the plain product, O6). Since 53c2a the lane ships are shared over the whole slotted
+  set (the 53c1 interim of 8 base lanes and about 31 % is gone), and since 53c2b they follow the set as it changes.
 - **R16 draw gate at the new pool:** the 0.15 ms tunnel draw gate was set for 100,000 vertices; it is now measured with
   the pool full at up to 369,120 vertices and may miss (reported, not relaxed).
 - **R17 a player hop on a Gone lane:** a player finishing a hop on a lane that is no longer chosen still needs the
@@ -906,6 +919,11 @@ in SDD 52; 3840x3744 and two-eye not measured.
   membership and pool policy as recommended (4.5), traffic activation hides inactive lanes always and its 2.4 px
   threshold scales with `LaneTunnelQualityScale` (7.2, changed from the recommendation), an Approach on a closing lane
   is Stale (5.4). No persistence change.
+- 2026-11-25: 53c2b built: the traffic shader window and its CPU mirror (5.4, R8), per-epoch block moves and the
+  time-jump re-share (5.4 Share, P4), measured in game (13). The 53c2a interim (held spawn slots, closed lanes still
+  drawing their far points) is gone. Open: the in-game per-block gate miss and the opening and time-jump hitches
+  (`TECH_DEBT.md`). A developer console command `sol.SimDate <date>` sets the clock for time-jump checks. No
+  persistence change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
 

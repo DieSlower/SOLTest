@@ -39,6 +39,11 @@ public:
     void SetLanes(TConstArrayView<int32> bodyA, TConstArrayView<int32> bodyB,
         TConstArrayView<FSOLLaneProfile> profiles);
 
+    // Updates the existing entries' end points and profiles in place (a slot column refreshed at a block move, SDD 53
+    // 4.5), keeping each entry's slot and open flag; entries past the shortest list are left as they are
+    void UpdateLaneEnds(TConstArrayView<int32> bodyA, TConstArrayView<int32> bodyB,
+        TConstArrayView<FSOLLaneProfile> profiles);
+
     // Empties the lane table (no population)
     void ClearLanes();
 

@@ -294,6 +294,13 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
         const int32 bodyA = groups.LaneBodyA.IsValidIndex(lane) ? groups.LaneBodyA[lane] : INDEX_NONE;
         const int32 bodyB = groups.LaneBodyB.IsValidIndex(lane) ? groups.LaneBodyB[lane] : INDEX_NONE;
         const bool bBodies = bodyA >= 0 && bodyA < registry.Num() && bodyB >= 0 && bodyB < registry.Num();
+        if (bodyA != mLabelBodyA[lane] || bodyB != mLabelBodyB[lane])
+        {
+            // A column reused for another lane (53c2b slots) starts without a label side
+            mLabelSigns[lane] = 0;
+            mLabelBodyA[lane] = bodyA;
+            mLabelBodyB[lane] = bodyB;
+        }
         FSOLNpcTunnelLaneData data;
         const bool bTunnel = bBodies && SOLNpcTunnel::BuildTunnelLaneData(lane, entry, viewpointM,
             registry.GetRadiusM(bodyA), registry.GetRadiusM(bodyB), data, mFeet[lane]);

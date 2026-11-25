@@ -1672,6 +1672,114 @@ namespace SOLLaneNetwork
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Runs one block step: releases the blocks of slots that may release them, then lets the slots whose episode opens
+    // take their share in ascending slot order, and lists the blocks to re-rail and the slots still owning blocks
+    void StepShipBlocks(TConstArrayView<FSOLLanePair> previousSlotLanes, TConstArrayView<uint8> previousInSet,
+        TConstArrayView<FSOLLanePair> slotLanes, TConstArrayView<uint8> inSetNow,
+        TConstArrayView<int32> slotCpuShips, TConstArrayView<double> slotWeights, TArray<int32>& inOutBlockSlot,
+        FSOLShipBlockStep& outStep)
+    {
+        const int32 slotCount = slotLanes.Num();
+        const int32 blockCount = inOutBlockSlot.Num();
+        outStep.MovedBlocks.Reset();
+        outStep.Released = 0;
+        outStep.Taken = 0;
+        outStep.Shortfall = 0;
+        outStep.SlotRelease.Init(0, slotCount);
+        outStep.SlotEpisodeOpens.Init(0, slotCount);
+        outStep.SlotOwnsBlocks.Init(0, slotCount);
+
+        // Which slots own blocks before the step
+        for (const int32 slot : inOutBlockSlot)
+        {
+            if (slot >= 0 && slot < slotCount)
+            {
+                outStep.SlotOwnsBlocks[slot] = 1;
+            }
+        }
+
+        // Releases (SDD 4.5): a slot whose lane left the set and that has no CPU-tier ship frees its blocks; each freed
+        // block is re-railed (parked)
+        bool bAnyRelease = false;
+        for (int32 slot = 0; slot < slotCount; ++slot)
+        {
+            const bool bInSet = inSetNow.IsValidIndex(slot) && inSetNow[slot] != 0;
+            const int32 cpuShips = slotCpuShips.IsValidIndex(slot) ? slotCpuShips[slot] : 0;
+            if (outStep.SlotOwnsBlocks[slot] != 0 && CanReleaseSlotBlocks(bInSet, cpuShips))
+            {
+                outStep.SlotRelease[slot] = 1;
+                bAnyRelease = true;
+            }
+        }
+        if (bAnyRelease)
+        {
+            for (int32 block = 0; block < blockCount; ++block)
+            {
+                const int32 slot = inOutBlockSlot[block];
+                if (slot >= 0 && slot < slotCount && outStep.SlotRelease[slot] != 0)
+                {
+                    outStep.MovedBlocks.Add(block);
+                }
+            }
+            outStep.Released = ReleaseShipBlocks(outStep.SlotRelease, inOutBlockSlot);
+        }
+
+        // Episode opens (P4): only these slots take blocks, in ascending order, up to their LaneShipShares target
+        bool bAnyOpen = false;
+        const FSOLLanePair freeSlot;
+        for (int32 slot = 0; slot < slotCount; ++slot)
+        {
+            const FSOLLanePair& previous = previousSlotLanes.IsValidIndex(slot) ? previousSlotLanes[slot] : freeSlot;
+            const bool bPreviousInSet = previousInSet.IsValidIndex(slot) && previousInSet[slot] != 0;
+            const bool bInSet = inSetNow.IsValidIndex(slot) && inSetNow[slot] != 0;
+            outStep.SlotEpisodeOpens[slot] = LaneEpisodeOpens(previous, bPreviousInSet, slotLanes[slot], bInSet) ? 1 : 0;
+            bAnyOpen |= outStep.SlotEpisodeOpens[slot] != 0;
+        }
+        if (bAnyOpen)
+        {
+            TArray<int32> order;
+            TArray<int32> targets;
+            TArray<int32> taken;
+            EpisodeTakeOrder(outStep.SlotEpisodeOpens, order);
+            LaneShipShares(blockCount, slotWeights, targets);
+            outStep.Shortfall = TakeShipBlocks(order, targets, inOutBlockSlot, taken);
+            outStep.Taken = taken.Num();
+
+            // Every block of an opening slot is re-railed: its profile is frozen again at the open (SDD 4.5)
+            for (int32 block = 0; block < blockCount; ++block)
+            {
+                const int32 slot = inOutBlockSlot[block];
+                if (slot >= 0 && slot < slotCount && outStep.SlotEpisodeOpens[slot] != 0)
+                {
+                    outStep.MovedBlocks.Add(block);
+                }
+            }
+        }
+
+        // Ascending and unique (a block released and taken in the same step is listed once)
+        outStep.MovedBlocks.Sort();
+        int32 unique = 0;
+        for (int32 index = 0; index < outStep.MovedBlocks.Num(); ++index)
+        {
+            if (unique == 0 || outStep.MovedBlocks[unique - 1] != outStep.MovedBlocks[index])
+            {
+                outStep.MovedBlocks[unique++] = outStep.MovedBlocks[index];
+            }
+        }
+        outStep.MovedBlocks.SetNum(unique);
+
+        // Owners after the step (the caller holds them)
+        FMemory::Memzero(outStep.SlotOwnsBlocks.GetData(), slotCount);
+        for (const int32 slot : inOutBlockSlot)
+        {
+            if (slot >= 0 && slot < slotCount)
+            {
+                outStep.SlotOwnsBlocks[slot] = 1;
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Writes each slot's blocks as a CSR list (slotCount + 1 starts, blocks ascending per slot)
     void SlotBlockLists(TConstArrayView<int32> blockSlot, const int32 slotCount, TArray<int32>& outSlotStart,
         TArray<int32>& outBlocks)

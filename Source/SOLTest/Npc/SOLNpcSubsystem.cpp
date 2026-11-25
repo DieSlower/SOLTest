@@ -573,6 +573,18 @@ void USOLNpcSubsystem::Despawn()
     mRails.Empty();
     mCpuShips.Reset();
     mBlockSlot.Empty();
+    mBlockInWall.Empty();
+    mBlockHalo.Empty();
+    mBlockShips.Empty();
+    mLaneEntities.Empty();
+    mBlockSlotLanes.Reset();
+    mBlockSlotInSet.Reset();
+    mBlockMoveRanges.Reset();
+    mColumnLaneShips.Reset();
+    mHasLaneNetwork = false;
+    mIsBlockStepPending = false;
+    mIsBlockReshareRequested = false;
+    mHasPendingRelease = false;
     mGroupOpenStartRailS.Reset();
     mGroupCloseRailS.Reset();
     mLaneSlotWindows.Reset();
@@ -691,12 +703,7 @@ void USOLNpcSubsystem::BuildSlotColumns(const SOLNpcScale::FLayout& layout, cons
         mGroups.LaneRadiusM.Add(0.0);
     }
 
-    // A node's end point index: its registry body, else registry count + node (LaneEndpointPositions appends them)
     const int32 registryCount = BodyRegistry->GetRegistry().Num();
-    const auto endpointOf = [&nodes, registryCount](const int32 node)
-    {
-        return nodes[node].BodyIndex != INDEX_NONE ? nodes[node].BodyIndex : registryCount + node;
-    };
     const int64 epoch = network.GetCurrentEpoch();
     outSlotWeights.SetNumZeroed(slotCount);
     for (int32 slot = 0; slot < slotCount; ++slot)
@@ -712,8 +719,8 @@ void USOLNpcSubsystem::BuildSlotColumns(const SOLNpcScale::FLayout& layout, cons
         if (slot >= mGroups.LaneCount)
         {
             const int32 column = mGroups.LaneSlotColumn(slot);
-            mGroups.LaneBodyA[column] = endpointOf(lane.NodeA);
-            mGroups.LaneBodyB[column] = endpointOf(lane.NodeB);
+            mGroups.LaneBodyA[column] = NodeEndpoint(lane.NodeA);
+            mGroups.LaneBodyB[column] = NodeEndpoint(lane.NodeB);
             mGroups.LaneRadiusM[column] = FMath::Max(nodes[lane.NodeA].RegionRadiusM,
                 nodes[lane.NodeB].RegionRadiusM);
             mHasNodeEndpoints |= mGroups.LaneBodyA[column] >= registryCount
@@ -807,6 +814,284 @@ void USOLNpcSubsystem::UpdateLaneWindows(const double railTimeS, const FVector3d
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a lane node's end point index: its registry body, else registry count + node (LaneEndpointPositions)
+int32 USOLNpcSubsystem::NodeEndpoint(const int32 node) const
+{
+    const TConstArrayView<FSOLLaneNode> nodes = mNodeTable.Nodes;
+    if (!nodes.IsValidIndex(node))
+    {
+        return INDEX_NONE;
+    }
+    return nodes[node].BodyIndex != INDEX_NONE ? nodes[node].BodyIndex : BodyRegistry->GetRegistry().Num() + node;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes each slot's lane, in-set flag and weight at the network's current epoch into the scratch arrays
+int32 USOLNpcSubsystem::ReadSlotsNow()
+{
+    const USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>();
+    if (laneTraffic == nullptr || !laneTraffic->GetNetwork().IsBuilt())
+    {
+        mSlotLanesNow.Reset();
+        mSlotInSetNow.Reset();
+        mSlotWeightsNow.Reset();
+        return 0;
+    }
+    const FSOLLaneNetworkSchedule& network = laneTraffic->GetNetwork();
+    const TConstArrayView<FSOLLanePair> slots = network.GetSlots();
+    const TConstArrayView<FSOLLaneNode> nodes = mNodeTable.Nodes;
+    const int32 slotCount = FMath::Min(slots.Num(), mGroups.LaneSlotCapacity());
+    const int64 epoch = network.GetCurrentEpoch();
+    mSlotLanesNow.SetNum(slotCount, EAllowShrinking::No);
+    mSlotInSetNow.SetNum(slotCount, EAllowShrinking::No);
+    mSlotWeightsNow.SetNum(slotCount, EAllowShrinking::No);
+    for (int32 slot = 0; slot < slotCount; ++slot)
+    {
+        // A slot's weight over the current set (P4 a): LaneWeight of its end tiers while in the set, else 0
+        const FSOLLanePair& lane = slots[slot];
+        const bool bInSet = nodes.IsValidIndex(lane.NodeA) && nodes.IsValidIndex(lane.NodeB)
+            && network.IsInSet(epoch, lane);
+        mSlotLanesNow[slot] = lane;
+        mSlotInSetNow[slot] = bInSet ? 1 : 0;
+        mSlotWeightsNow[slot] = bInSet
+            ? SOLLaneNetwork::LaneWeight(nodes[lane.NodeA].PopulationTier, nodes[lane.NodeB].PopulationTier) : 0.0;
+    }
+    return slotCount;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs the block step after the network's advance: releases, episode takes and holds, or a time jump's re-share
+void USOLNpcSubsystem::StepLaneBlocks(const ESOLLaneNetworkAdvance advance)
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(USOLNpcSubsystem::StepLaneBlocks);
+    if (!mHasLaneNetwork || mBlockSlot.IsEmpty() || mSpawnedCount == 0)
+    {
+        return;
+    }
+    mIsBlockReshareRequested |= advance == ESOLLaneNetworkAdvance::Rebuilt;
+    mIsBlockStepPending |= advance == ESOLLaneNetworkAdvance::Stepped;
+
+    // A pending spawn buckets its entities by their spawn-time groups: the moves wait until every entity exists
+    if (mSpawnCreated < mSpawnOrder.Num())
+    {
+        return;
+    }
+    if (!mIsBlockReshareRequested && !mIsBlockStepPending && !mHasPendingRelease)
+    {
+        return;
+    }
+    USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>();
+    const int32 slotCount = ReadSlotsNow();
+    if (laneTraffic == nullptr || slotCount == 0)
+    {
+        return;
+    }
+    const double startS = FPlatformTime::Seconds();
+    const bool bReshare = mIsBlockReshareRequested;
+    mIsBlockReshareRequested = false;
+    mIsBlockStepPending = false;
+    if (bReshare)
+    {
+        // A time jump (P4 d): every block re-shared exactly over the new set, every slot's profile frozen again
+        SOLLaneNetwork::AssignShipBlocks(mBlockSlot.Num(), mSlotWeightsNow, mBlockSlot);
+        mBlockStep.MovedBlocks.SetNumUninitialized(mBlockSlot.Num());
+        for (int32 block = 0; block < mBlockSlot.Num(); ++block)
+        {
+            mBlockStep.MovedBlocks[block] = block;
+        }
+        mBlockStep.SlotEpisodeOpens.Init(1, slotCount);
+        mBlockStep.SlotOwnsBlocks.Init(0, slotCount);
+        for (const int32 slot : mBlockSlot)
+        {
+            if (slot >= 0 && slot < slotCount)
+            {
+                mBlockStep.SlotOwnsBlocks[slot] = 1;
+            }
+        }
+        mBlockStep.Released = 0;
+        mBlockStep.Taken = mBlockSlot.Num();
+        mBlockStep.Shortfall = 0;
+    }
+    else
+    {
+        // A step: CPU-tier ships per slot from the last Collect (a slot keeps its blocks while one flies, SDD 4.5)
+        mSlotCpuShips.Init(0, slotCount);
+        for (const FSOLNpcCpuShip& ship : mCpuShips)
+        {
+            const int32 slot = mRails.IsValidIndex(ship.NpcIndex) ? mGroups.ColumnSlot(mRails[ship.NpcIndex].Group)
+                : INDEX_NONE;
+            if (mSlotCpuShips.IsValidIndex(slot))
+            {
+                ++mSlotCpuShips[slot];
+            }
+        }
+        SOLLaneNetwork::StepShipBlocks(mBlockSlotLanes, mBlockSlotInSet, mSlotLanesNow, mSlotInSetNow, mSlotCpuShips,
+            mSlotWeightsNow, mBlockSlot, mBlockStep);
+    }
+
+    // The next step compares with this one; a slot owning blocks is held (never reused under them), a slot that
+    // owns blocks outside the set is checked again every frame until its CPU-tier ships are gone
+    mBlockSlotLanes = mSlotLanesNow;
+    mBlockSlotInSet = mSlotInSetNow;
+    mHasPendingRelease = false;
+    bool bEndsCleared = false;
+    for (int32 slot = 0; slot < slotCount; ++slot)
+    {
+        const bool bOwns = mBlockStep.SlotOwnsBlocks[slot] != 0;
+        laneTraffic->SetNetworkSlotHeld(slot, bOwns);
+        mHasPendingRelease |= bOwns && mSlotInSetNow[slot] == 0;
+
+        // A released network column outside the set (Gone) has no end points, so its tunnel and lane table entry go;
+        // it gets them again when it opens (RefreshSlotColumn). Base lane columns keep the layout's bodies
+        const int32 column = mGroups.LaneSlotColumn(slot);
+        if (!bOwns && mSlotInSetNow[slot] == 0 && slot >= mGroups.LaneCount
+            && mGroups.LaneBodyA.IsValidIndex(column) && mGroups.LaneBodyB.IsValidIndex(column)
+            && (mGroups.LaneBodyA[column] != INDEX_NONE || mGroups.LaneBodyB[column] != INDEX_NONE))
+        {
+            mGroups.LaneBodyA[column] = INDEX_NONE;
+            mGroups.LaneBodyB[column] = INDEX_NONE;
+            bEndsCleared = true;
+        }
+    }
+    if (bEndsCleared)
+    {
+        laneTraffic->UpdateLaneEnds(mGroups.LaneBodyA, mGroups.LaneBodyB, mGroups.LaneProfile);
+    }
+    if (!mBlockStep.MovedBlocks.IsEmpty())
+    {
+        ApplyBlockMoves(mBlockStep.MovedBlocks, mBlockStep.SlotEpisodeOpens, bReshare, startS);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Refreshes an opening slot's column: end points and radius (network slots) and the profile frozen at the open
+void USOLNpcSubsystem::RefreshSlotColumn(const int32 slot, const FSOLLanePair& lane, const int32 inWall,
+    const int32 halo)
+{
+    const int32 column = mGroups.LaneSlotColumn(slot);
+    if (!mGroups.LaneProfile.IsValidIndex(column) || !mGroups.LaneBodyA.IsValidIndex(column))
+    {
+        return;
+    }
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const TConstArrayView<FSOLLaneNode> nodes = mNodeTable.Nodes;
+    double nominalM = 0.0;
+    double radiusAM = 0.0;
+    double radiusBM = 0.0;
+    if (slot < mGroups.LaneCount)
+    {
+        // A base lane keeps the layout's bodies and radius, its registry form (as at spawn, the spawn epoch's
+        // elements)
+        const int32 bodyA = mGroups.LaneBodyA[column];
+        const int32 bodyB = mGroups.LaneBodyB[column];
+        if (bodyA >= 0 && bodyA < registry.Num() && bodyB >= 0 && bodyB < registry.Num())
+        {
+            nominalM = NpcLaneNominalLengthM(registry, bodyA, bodyB,
+                mEpochSecondsSinceJ2000 / SOL::SECONDS_PER_JULIAN_CENTURY);
+            radiusAM = registry.GetRadiusM(bodyA);
+            radiusBM = registry.GetRadiusM(bodyB);
+        }
+    }
+    else
+    {
+        // A partner lane or island link: its nodes' end points, the larger region radius (O5), aphelia and clearance
+        if (!nodes.IsValidIndex(lane.NodeA) || !nodes.IsValidIndex(lane.NodeB))
+        {
+            return;
+        }
+        mGroups.LaneBodyA[column] = NodeEndpoint(lane.NodeA);
+        mGroups.LaneBodyB[column] = NodeEndpoint(lane.NodeB);
+        mGroups.LaneRadiusM[column] = FMath::Max(nodes[lane.NodeA].RegionRadiusM, nodes[lane.NodeB].RegionRadiusM);
+        nominalM = SOLLaneNetwork::LaneNominalLengthM(nodes, lane.NodeA, lane.NodeB);
+        radiusAM = nodes[lane.NodeA].ClearanceRadiusM;
+        radiusBM = nodes[lane.NodeB].ClearanceRadiusM;
+    }
+    mGroups.LaneProfile[column] = SOLNpcRail::SlotLaneProfile(mGroups.LaneRadiusM[column], inWall, nominalM,
+        radiusAM, radiusBM);
+    mGroups.LaneInWallCount[column] = inWall;
+    mGroups.LaneHaloCount[column] = halo;
+    mGroups.LaneMaxPeakMps[column] = 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Re-rails and re-buckets the moved blocks' ships after refreshing the opening slots' columns, and logs the cost
+void USOLNpcSubsystem::ApplyBlockMoves(TConstArrayView<int32> movedBlocks, TConstArrayView<uint8> slotOpens,
+    const bool bFullReshare, const double startS)
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(USOLNpcSubsystem::ApplyBlockMoves);
+    USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>();
+    const int32 slotCount = mSlotLanesNow.Num();
+
+    // The opening slots' columns, each profile frozen from the in-wall ships of the blocks it holds now
+    TArray<int32> slotInWall;
+    TArray<int32> slotHalo;
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockInWall, slotCount, slotInWall);
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockHalo, slotCount, slotHalo);
+    int32 opened = 0;
+    for (int32 slot = 0; slot < slotCount && slot < slotOpens.Num(); ++slot)
+    {
+        if (slotOpens[slot] != 0)
+        {
+            RefreshSlotColumn(slot, mSlotLanesNow[slot], slotInWall[slot], slotHalo[slot]);
+            ++opened;
+        }
+    }
+    if (opened > 0)
+    {
+        // End points past the registry (asteroid nodes) and the HUD / AUTO lane table follow the columns
+        const int32 registryCount = BodyRegistry->GetRegistry().Num();
+        mHasNodeEndpoints = false;
+        for (int32 column = 0; column < mGroups.LaneColumnEnd(); ++column)
+        {
+            mHasNodeEndpoints |= mGroups.IsLaneColumn(column)
+                && (mGroups.LaneBodyA[column] >= registryCount || mGroups.LaneBodyB[column] >= registryCount);
+        }
+        if (laneTraffic != nullptr)
+        {
+            // In place: each entry keeps its slot and this frame's open flag (AdvanceNetwork already ran)
+            laneTraffic->UpdateLaneEnds(mGroups.LaneBodyA, mGroups.LaneBodyB, mGroups.LaneProfile);
+        }
+    }
+
+    // The moved ships' rails (CPU copy and Mass fragments) and buckets
+    const int32 laneShips = mLaneSpawn.Counts.Lane;
+    SOLLaneNetwork::ShipBlockDirtyRanges(movedBlocks, laneShips, mLaneSpawn.BlockSize, mBlockMoveRanges);
+    SOLNpcBlockMoves::RebuildLaneRails(mLaneSpawn, mBlockSlot, mBlockMoveRanges, mGroups, mRails);
+    const double railsS = FPlatformTime::Seconds();
+    const SOLNpcBlockMoves::FRebucketStats stats = SOLNpcBlockMoves::RebucketLaneShips(*mEntityManager,
+        mCommandBuffer, mLaneEntities, mRails, mLaneSpawn.Counts.Battle, mBlockMoveRanges, mGroups.Num(),
+        mGroupWakeDirty);
+    const double massS = FPlatformTime::Seconds();
+
+    // Lane ships per column (the GPU layer's histogram and ribbon)
+    TArray<int32> slotShips;
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockShips, slotCount, slotShips);
+    for (int32 slot = 0; slot < slotCount; ++slot)
+    {
+        const int32 column = mGroups.LaneSlotColumn(slot);
+        if (mColumnLaneShips.IsValidIndex(column))
+        {
+            mColumnLaneShips[column] = slotShips[slot];
+        }
+    }
+    if (bFullReshare)
+    {
+        ++mRailRevision;
+    }
+    else
+    {
+        ++mBlockMoveRevision;
+    }
+    const double endS = FPlatformTime::Seconds();
+    const double totalMs = (endS - startS) * 1000.0;
+    UE_LOG(LogSOL, Log, TEXT("NpcLaneBlockMove full=%d blocks=%d released=%d taken=%d shortfall=%d opened=%d ")
+        TEXT("rebucketed=%d demoted=%d ms=%.3f perBlockMs=%.4f railsMs=%.3f massMs=%.3f"), bFullReshare ? 1 : 0,
+        movedBlocks.Num(), mBlockStep.Released, mBlockStep.Taken, mBlockStep.Shortfall, opened, stats.Rebucketed,
+        stats.Demoted, totalMs, movedBlocks.Num() > 0 ? totalMs / movedBlocks.Num() : 0.0,
+        (railsS - startS) * 1000.0, (massS - railsS) * 1000.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Spawns a population of count ships around the current viewpoint
 void USOLNpcSubsystem::Spawn(const int32 count)
 {
@@ -858,13 +1143,23 @@ void USOLNpcSubsystem::Spawn(const int32 count)
     // Lane profiles per slot column (SDD 50 4.7, SDD 53 4.5): the in-wall and halo ships of each slot's blocks (D13),
     // the nominal (maximum) length (D16) and the end radii; a base lane keeps its registry form, a network lane uses
     // its nodes' aphelia and clearance radii
-    TArray<int32> blockInWall;
-    TArray<int32> blockHalo;
-    SOLNpcScale::CountBlockSpawns(seed, counts, blockSize, blockInWall, blockHalo);
+    // (the block counts and the spawn inputs are kept for the block moves, 53c2b)
+    SOLNpcScale::CountBlockSpawns(seed, counts, blockSize, mBlockInWall, mBlockHalo);
+    mBlockShips.SetNumUninitialized(mBlockSlot.Num());
+    for (int32 block = 0; block < mBlockSlot.Num(); ++block)
+    {
+        mBlockShips[block] = SOLLaneNetwork::ShipBlockSize(block, counts.Lane, blockSize);
+    }
+    mLaneSpawn.Seed = seed;
+    mLaneSpawn.Counts = counts;
+    mLaneSpawn.Layout = layout;
+    mLaneSpawn.Battle = battle;
+    mLaneSpawn.BlockSize = blockSize;
+    mHasLaneNetwork = bNetwork;
     TArray<int32> slotInWall;
     TArray<int32> slotHalo;
-    SOLLaneNetwork::SumBlockCounts(mBlockSlot, blockInWall, slotCount, slotInWall);
-    SOLLaneNetwork::SumBlockCounts(mBlockSlot, blockHalo, slotCount, slotHalo);
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockInWall, slotCount, slotInWall);
+    SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockHalo, slotCount, slotHalo);
     TArray<int32> laneInWall;
     TArray<int32> laneHalo;
     TArray<double> laneNominalM;
@@ -917,19 +1212,37 @@ void USOLNpcSubsystem::Spawn(const int32 count)
         {
             laneTraffic->SetLaneSlots(slotByColumn);
 
-            // Interim until 53c2b (no block moves): every slot that owns blocks keeps its column
-            TArray<int32> slotStart;
-            TArray<int32> slotBlocks;
-            SOLLaneNetwork::SlotBlockLists(mBlockSlot, slotCount, slotStart, slotBlocks);
-            for (int32 slot = 0; slot < slotCount; ++slot)
+            // The block steps start from the spawn epoch's slots (53c2b): a slot owning blocks is held, so it is never
+            // reused under them, until it releases them (StepLaneBlocks)
+            const int32 slotsNow = ReadSlotsNow();
+            mBlockSlotLanes = mSlotLanesNow;
+            mBlockSlotInSet = mSlotInSetNow;
+            mHasPendingRelease = false;
+            TArray<int32> slotShips;
+            SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockShips, slotsNow, slotShips);
+            for (int32 slot = 0; slot < slotsNow; ++slot)
             {
-                if (slotStart[slot + 1] > slotStart[slot])
-                {
-                    laneTraffic->SetNetworkSlotHeld(slot, true);
-                }
+                laneTraffic->SetNetworkSlotHeld(slot, slotShips[slot] > 0);
             }
         }
     }
+    mIsBlockStepPending = false;
+    mIsBlockReshareRequested = false;
+    mColumnLaneShips.Init(0, columnEnd);
+    {
+        // Lane ships per lane column (the GPU layer's lane histogram after a move)
+        TArray<int32> slotShips;
+        SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockShips, slotCount, slotShips);
+        for (int32 slot = 0; slot < slotCount; ++slot)
+        {
+            const int32 column = mGroups.LaneSlotColumn(slot);
+            if (mColumnLaneShips.IsValidIndex(column))
+            {
+                mColumnLaneShips[column] = slotShips[slot];
+            }
+        }
+    }
+    mLaneEntities.Init(FMassEntityHandle(), counts.Lane);
 
     // Rails for every NPC index, in parallel blocks (stateless per-index hash), and each block's largest lane peak. A
     // lane ship's group is its block's slot column (LaneRailGroup), never the slot number; a ship of a free block is
@@ -1120,6 +1433,11 @@ void USOLNpcSubsystem::ContinueSpawn()
             {
                 // One entity lookup for both fragments; alive at full health
                 const int32 npcIndex = mSpawnOrder[mSpawnCreated + local];
+                const int32 laneLocal = npcIndex - mLaneSpawn.Counts.Battle;
+                if (mLaneEntities.IsValidIndex(laneLocal))
+                {
+                    mLaneEntities[laneLocal] = mEntities[firstEntity + local];
+                }
                 const FMassEntityView view(*mEntityManager, mEntities[firstEntity + local]);
                 view.GetFragmentData<FSOLNpcRailFragment>().Rail = mRails[npcIndex];
                 FSOLNpcCombatFragment& combat = view.GetFragmentData<FSOLNpcCombatFragment>();
@@ -1186,14 +1504,15 @@ void USOLNpcSubsystem::Update()
     if (USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>())
     {
         // The lane network's epoch (SDD 53 5.3): nothing while the epoch holds, a step per new epoch, a rebuild on
-        // a jump (a clock set, even within the catch-up limit, or a move past it). The ships keep their spawn blocks
-        // until 53c2b (no block moves, so no exact re-share at a jump either); the windows feed the tiers and row 6
+        // a jump (a clock set, even within the catch-up limit, or a move past it). Then the ship blocks follow it
+        // (53c2b): releases and episode takes after a step, an exact re-share after a rebuild, before the frame and
+        // the windows are built from the columns
         if (SimClock->GetTimeSetCount() != mSeenClockTimeSetCount)
         {
             mSeenClockTimeSetCount = SimClock->GetTimeSetCount();
             laneTraffic->MarkNetworkTimeJump();
         }
-        laneTraffic->AdvanceNetwork(SimClock->GetClock().GetSecondsSinceJ2000());
+        StepLaneBlocks(laneTraffic->AdvanceNetwork(SimClock->GetClock().GetSecondsSinceJ2000()));
     }
     SOLNpcRail::BuildFrame(mGroups, BodyRegistry->GetRegistry().GetPositionsM(), railTimeS, mRailFrame,
         LaneEndpointPositions());

@@ -6,10 +6,12 @@
 #pragma once
 
 #include "Npc/SOLLaneNodeTable.h"
+#include "Npc/SOLNpcBlockMoves.h"
 #include "Npc/SOLNpcCombat.h"
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "Npc/SOLNpcTierProcessor.h"
+#include "Traffic/SOLLaneNetworkSchedule.h"
 
 #include "CoreMinimal.h"
 #include "Mass/EntityHandle.h"
@@ -163,6 +165,15 @@ public:
 
     // Returns this frame's lane slot windows and active flags, per slot (empty without a lane network)
     TConstArrayView<FSOLNpcLaneSlotWindow> GetLaneSlotWindows() const { return mLaneSlotWindows; }
+
+    // Block moves (SDD 53 4.5, 53c2b). A revision bumped by every per-step move, with that move's lane-local ship
+    // ranges (the partial rail upload); a revision bumped by a time jump's full re-share (one full rail upload); the
+    // NPC index of the first lane ship (lane ships follow the battle ships); the lane ships per lane column
+    uint32 GetBlockMoveRevision() const { return mBlockMoveRevision; }
+    TConstArrayView<FSOLShipRange> GetBlockMoveRanges() const { return mBlockMoveRanges; }
+    uint32 GetRailRevision() const { return mRailRevision; }
+    int32 GetLaneShipFirstIndex() const { return mLaneSpawn.Counts.Battle; }
+    TConstArrayView<int32> GetColumnLaneShips() const { return mColumnLaneShips; }
 
     // Returns the sim time (seconds since J2000) of the population's rail epoch
     double GetEpochSecondsSinceJ2000() const { return mEpochSecondsSinceJ2000; }
@@ -319,8 +330,8 @@ private:
     // (SDD 53 4.3)
     uint32 mSeenClockTimeSetCount = 0;
 
-    // Lane network wiring (SDD 53 4.5, part 53c2a). Lane ships sit in ship blocks, each owned by a slot at the spawn
-    // epoch; block moves stay off until 53c2b, so every slot that owns blocks is held
+    // Lane network wiring (SDD 53 4.5, parts 53c2a, 53c2b). Lane ships sit in ship blocks owned by slots; blocks move
+    // at the network's epoch steps (StepLaneBlocks), and every slot that owns blocks is held
     SOLLaneNodeTable::FTable mNodeTable;                    // The spawn's node table (asteroid node positions)
     bool mHasNodeEndpoints = false;                         // A lane column ends on a node without a registry body
     TArray<FVector3d> mNodePositionsM;                      // Per node, this frame's asteroid positions (scratch)
@@ -329,6 +340,47 @@ private:
     TArray<double> mGroupCloseRailS;                        // = none); empty without a network
     TArray<FSOLNpcLaneSlotWindow> mLaneSlotWindows;         // Per slot: this frame's window and active flag (row 6)
     TArray<int32> mColumnCpuShips;                          // Per column: this frame's CPU-tier ships (scratch)
+
+    // Block moves (53c2b)
+    SOLNpcBlockMoves::FLaneSpawnInputs mLaneSpawn;          // The spawn inputs lane rails are rebuilt from
+    bool mHasLaneNetwork = false;                           // The population's lane ships follow a lane network
+    TArray<int32> mBlockInWall;                             // Per block: in-wall ships (CountBlockSpawns)
+    TArray<int32> mBlockHalo;                               // Per block: halo ships
+    TArray<int32> mBlockShips;                              // Per block: ships (the last block partial)
+    TArray<FMassEntityHandle> mLaneEntities;                // Per lane-local ship index: its entity (ContinueSpawn)
+    TArray<FSOLLanePair> mBlockSlotLanes;                   // Per slot: its lane at the last block step
+    TArray<uint8> mBlockSlotInSet;                          // Per slot: its lane in the set at the last block step
+    TArray<FSOLLanePair> mSlotLanesNow;                     // Per slot: its lane now (scratch)
+    TArray<uint8> mSlotInSetNow;                            // Per slot: in the set now (scratch)
+    TArray<double> mSlotWeightsNow;                         // Per slot: LaneWeight now, 0 outside the set (scratch)
+    TArray<int32> mSlotCpuShips;                            // Per slot: CPU-tier ships (scratch)
+    FSOLShipBlockStep mBlockStep;                           // The last block step
+    TArray<FSOLShipRange> mBlockMoveRanges;                 // The last move's lane-local ship ranges
+    TArray<int32> mColumnLaneShips;                         // Per lane column: lane ships (block sizes summed)
+    uint32 mBlockMoveRevision = 0;
+    uint32 mRailRevision = 0;
+    bool mIsBlockStepPending = false;                       // The network stepped while a spawn was pending
+    bool mIsBlockReshareRequested = false;                  // A time jump's exact re-share is due
+    bool mHasPendingRelease = false;                        // A slot owns blocks while its lane is out of the set
+
+    // Runs the block step after the network's advance (releases, episode opens and takes, holds; a time jump's
+    // exact re-share); deferred while a spawn is pending
+    void StepLaneBlocks(ESOLLaneNetworkAdvance advance);
+
+    // Writes each slot's lane, in-set flag and weight now (the scratch arrays); returns the slot count
+    int32 ReadSlotsNow();
+
+    // Re-rails and re-buckets the moved blocks' ships after the opening slots' columns are refreshed; a full re-share
+    // bumps the rail revision, a step the move revision
+    void ApplyBlockMoves(TConstArrayView<int32> movedBlocks, TConstArrayView<uint8> slotOpens, bool bFullReshare,
+        double startS);
+
+    // Refreshes a slot's column at its episode open: end points and radius (a network slot), and the profile frozen
+    // from its blocks' in-wall count (SlotLaneProfile); the column's largest peak is reset
+    void RefreshSlotColumn(int32 slot, const FSOLLanePair& lane, int32 inWall, int32 halo);
+
+    // Returns a lane node's end point index: its registry body, else registry count + node
+    int32 NodeEndpoint(int32 node) const;
 
     // Configures the lane network for the spawn epoch and advances it there (the slots exist before the rails);
     // false without a network (node table incomplete)

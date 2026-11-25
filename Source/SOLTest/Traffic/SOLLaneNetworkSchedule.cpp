@@ -202,6 +202,12 @@ ESOLLaneNetworkAdvance FSOLLaneNetworkSchedule::Advance(const double simTimeS)
     const int64 epoch = SOLLaneNetwork::LaneNetworkEpochIndex(simTimeS, mConfig.EpochS);
     if (!mIsBuilt || mHasJumpPending || epoch < mFirstEpoch || epoch - mFirstEpoch > mConfig.CatchUpEpochs)
     {
+        // A rebuild drops every hold from before it (SDD 53 4.5): the caller re-shares every block over the new slots,
+        // so a stale hold would only keep a lane of the old set in a column and push a new lane out
+        for (uint8& held : mSlotHeld)
+        {
+            held = 0;
+        }
         Rebuild(epoch);
         UpdateSlots(true);
         mHasJumpPending = false;

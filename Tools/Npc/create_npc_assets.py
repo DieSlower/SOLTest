@@ -23,6 +23,8 @@
 #       SOLNpcRail::EvaluateAtTimeM) from the rail texels (SOLNpcRail::GpuRailTexels) and the group texture's rows 0-5
 #       (the wall speed w is data in row 2 .w, written by SOLNpcRail::WriteLaneTrafficTexels, so retuning
 #       SOL::NPC_LANE_WALL_SPEED_MPS needs no rebuild).
+#       Issue #53 (SDD 53 5.4, part 53c2b): a lane ship outside its slot's window (row 6) or parked (railB.w < 0) is
+#       hidden by SOLNTR_LaneShipDrawn before the position is evaluated (a new call, so the material was rebuilt).
 #   /Game/SOL/Npc/M_SOLNpcHull
 #       Default-lit placeholder hull (vector parameter Tint), usable on ISMs.
 #   /Game/SOL/Npc/M_SOLNpcLanes
@@ -122,9 +124,17 @@ if (P0.w < 0.5)
     {
         // Lane (SDD 50): the closed-form keep-right traffic of SOLNpcTraffic.ush (double-float), from the group rows
         // 0-5 (rows 2-5 from SOLNpcRail::WriteLaneTrafficTexels, the wall speed in row 2 .w)
+        // Issue #53 (SDD 53 5.4): outside its slot's window (row 6) a ship is docked and a parked ship (railB.w < 0)
+        // is never drawn, SOLNTR_LaneShipDrawn (mirrored by SOLNpcTrafficMirror::LaneShipWindowDrawn)
+        const float4 group4 = GroupTex.Load(int3(group, 4, 0));
+        const float4 group5 = GroupTex.Load(int3(group, 5, 0));
+        if (!SOLNTR_LaneShipDrawn(a, b, group4, group5, GroupTex.Load(int3(group, 6, 0)), t))
+        {
+            return hiddenOffset;
+        }
         const float4 groupB = GroupTex.Load(int3(group, 1, 0));
         relM = SOLNTR_LaneShipRelM(a, b, groupA, groupB, GroupTex.Load(int3(group, 2, 0)),
-            GroupTex.Load(int3(group, 3, 0)), GroupTex.Load(int3(group, 4, 0)), GroupTex.Load(int3(group, 5, 0)), t);
+            GroupTex.Load(int3(group, 3, 0)), group4, group5, t);
 
         // Lane crossfade (SDD 38 D9): while the lanes are shown (P4.x) the point fades in where the lane line fades
         // out, 1 - LaneLineFade(d, R) (SOLNpcLane::LaneShipPointAlpha, the lane shader's own SOLNL_LineFade); R = row 0

@@ -150,6 +150,14 @@ private:
     // Fills an upload buffer with the population's re-based rails (two texels per ship) and the lane histogram if asked
     void FillRailTexels(FVector4f* texels, int32 texelCount, double epochRailTimeS, TArray<int32>* outLaneShipCounts);
 
+    // Uploads only the last block move's rails (SDD 53 4.5, 53c2b): its ship ranges' texels at the current GPU epoch,
+    // packed into one source buffer and one region update (PackRailUploadRegions)
+    void UploadMovedRails();
+
+    // Takes the lane ships per column after a block move or re-share; rebuilds the ribbon mesh when a lane's drawn
+    // state flips
+    void ApplyLaneShipCounts();
+
     // Loads the lane material and sets its constant parameters (SDD 38 section 4.8); false if it is missing
     bool SetUpLanes();
 
@@ -260,6 +268,8 @@ private:
 
     FDelegateHandle mNpcsUpdatedHandle;
     uint32 mUploadedRevision = MAX_uint32;            // Population revision of the rail texture
+    uint32 mUploadedMoveRevision = 0;                 // Block move revision the rail texture holds (53c2b)
+    uint32 mUploadedRailRevision = 0;                 // Full re-share revision the rail texture holds (53c2b)
     int32 mFarBlockCount = 0;
     int32 mCpuBlockCount = 0;
     int32 mCpuTextureRows = 0;

@@ -136,6 +136,8 @@ private:
     double mDrawFades[LANE_CAPACITY] = {};              // This update's draw fade per lane (TunnelDrawFade)
     double mDistanceRadii[LANE_CAPACITY] = {};          // This update's distance in lane radii per lane
     int32 mLabelSigns[LANE_CAPACITY] = {};              // Label side of the foot point per lane (0 = none yet)
+    int32 mLabelBodyA[LANE_CAPACITY] = {};              // End points of the label side (a reused column resets it)
+    int32 mLabelBodyB[LANE_CAPACITY] = {};              // As mLabelBodyA, end B
     int32 mSlotMeshVertexCount = 0;
     float mGlowScale = SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL;
     bool mAreTunnelsShown = false;                      // Last update's shown rule

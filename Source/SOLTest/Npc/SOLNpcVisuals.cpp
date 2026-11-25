@@ -344,16 +344,33 @@ void ASOLNpcVisuals::Redraw()
         return;
     }
     mUploadRing = (mUploadRing + 1) % UE_ARRAY_COUNT(mGroupTexels);
+    // Rails: a new population uploads everything; a time jump's re-share (53c2b) or a due re-base re-fills the texture
+    // in place (any pending block move included); otherwise a block move uploads only its ships' texels (a missed move
+    // revision falls back to the full re-fill)
+    const uint32 moveRevision = Npcs->GetBlockMoveRevision();
+    const uint32 railRevision = Npcs->GetRailRevision();
     if (Npcs->GetPopulationRevision() != mUploadedRevision)
     {
         UploadPopulation();
     }
-    else if (RailTexture != nullptr
-        && FMath::Abs(Npcs->GetRailFrame().RailTimeS - mGpuRailEpochS) > SOL::NPC_GPU_RAIL_EPOCH_S
+    else if (RailTexture != nullptr && (railRevision != mUploadedRailRevision
+        || (FMath::Abs(Npcs->GetRailFrame().RailTimeS - mGpuRailEpochS) > SOL::NPC_GPU_RAIL_EPOCH_S
         && FPlatformTime::Seconds() - mGpuRailEpochRealS >= SOL::NPC_GPU_RAIL_EPOCH_MIN_INTERVAL_S)
+        || (moveRevision != mUploadedMoveRevision && moveRevision != mUploadedMoveRevision + 1)))
     {
         ReepochRails();
+        if (railRevision != mUploadedRailRevision || moveRevision != mUploadedMoveRevision)
+        {
+            ApplyLaneShipCounts();
+        }
     }
+    else if (RailTexture != nullptr && moveRevision != mUploadedMoveRevision)
+    {
+        UploadMovedRails();
+        ApplyLaneShipCounts();
+    }
+    mUploadedMoveRevision = moveRevision;
+    mUploadedRailRevision = railRevision;
     const bool bPlumes = CVarSOLNpcPlumes.GetValueOnGameThread() != 0;
     if (bPlumes != mArePlumeMeshes)
     {
@@ -542,6 +559,130 @@ void ASOLNpcVisuals::ReepochRails()
             delete[] reinterpret_cast<FVector4f*>(data);
             delete regions;
         });
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Uploads only the last block move's ship ranges, re-based to the current GPU epoch, in one region update
+void ASOLNpcVisuals::UploadMovedRails()
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UploadMovedRails);
+    const double startS = FPlatformTime::Seconds();
+    const int32 width = RailTexture->GetSizeX();
+    const int32 height = RailTexture->GetSizeY();
+    const TConstArrayView<FSOLShipRange> ranges = Npcs->GetBlockMoveRanges();
+    TArray<FSOLTexelRegion> rects;
+    TArray<int32> sourceRows;
+    const int32 rowCount = SOLNpcRail::PackRailUploadRegions(ranges, Npcs->GetLaneShipFirstIndex(), width, rects,
+        sourceRows);
+    if (rowCount <= 0)
+    {
+        return;
+    }
+
+    // Source placement: the rects side by side on shared source rows (shelves), so the partial first and last rows of
+    // the ranges share rows instead of each taking a full texture-width row; a full-width middle rect fills its shelf
+    TArray<int32> rectSourceX;
+    TArray<int32> rectSourceY;
+    rectSourceX.SetNumUninitialized(rects.Num());
+    rectSourceY.SetNumUninitialized(rects.Num());
+    int32 shelfY = 0;
+    int32 shelfHeight = 0;
+    int32 cursorX = 0;
+    int32 regionCount = 0;
+    for (int32 rect = 0; rect < rects.Num(); ++rect)
+    {
+        const FSOLTexelRegion& region = rects[rect];
+        rectSourceX[rect] = INDEX_NONE;
+        if (region.Y < 0 || region.Y + region.Height > height || region.Width <= 0 || region.Width > width)
+        {
+            continue;
+        }
+        if (cursorX + region.Width > width)
+        {
+            shelfY += shelfHeight;
+            shelfHeight = 0;
+            cursorX = 0;
+        }
+        rectSourceX[rect] = cursorX;
+        rectSourceY[rect] = shelfY;
+        cursorX += region.Width;
+        shelfHeight = FMath::Max(shelfHeight, region.Height);
+        ++regionCount;
+    }
+    const int32 sourceRowCount = shelfY + shelfHeight;
+    if (regionCount == 0 || sourceRowCount <= 0)
+    {
+        return;
+    }
+
+    // The source buffer and the regions are owned by the render command and freed when it ran (as ReepochRails); the
+    // buffer is raw memory, every texel a region reads is written below
+    const TConstArrayView<FSOLNpcRail> rails = Npcs->GetRails();
+    const TConstArrayView<FSOLLaneProfile> laneProfiles = Npcs->GetGroups().LaneProfile;
+    FVector4f* texels = static_cast<FVector4f*>(FMemory::Malloc(
+        static_cast<SIZE_T>(width) * sourceRowCount * sizeof(FVector4f), alignof(FVector4f)));
+    FUpdateTextureRegion2D* regions = new FUpdateTextureRegion2D[regionCount];
+    regionCount = 0;
+    for (int32 rect = 0; rect < rects.Num(); ++rect)
+    {
+        // Two texels per ship (a ship never straddles a row: even first texel, even width)
+        const FSOLTexelRegion& region = rects[rect];
+        const int32 sourceX = rectSourceX[rect];
+        if (sourceX == INDEX_NONE)
+        {
+            continue;
+        }
+        for (int32 row = 0; row < region.Height; ++row)
+        {
+            FVector4f* const sourceRow = texels + static_cast<SIZE_T>(rectSourceY[rect] + row) * width + sourceX;
+            for (int32 i = 0; i < region.Width; i += 2)
+            {
+                const int32 ship = ((region.Y + row) * width + region.X + i) / 2;
+                if (!rails.IsValidIndex(ship))
+                {
+                    sourceRow[i] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+                    sourceRow[i + 1] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+                }
+                else if (SOLNpcRail::IsParked(rails[ship]))
+                {
+                    SOLNpcRail::GpuParkedRailTexels(rails[ship].Faction, sourceRow[i], sourceRow[i + 1]);
+                }
+                else
+                {
+                    SOLNpcRail::GpuRailTexels(rails[ship], mGpuRailEpochS, laneProfiles, sourceRow[i],
+                        sourceRow[i + 1]);
+                }
+            }
+        }
+        regions[regionCount++] = FUpdateTextureRegion2D(region.X, region.Y, sourceX, rectSourceY[rect],
+            region.Width, region.Height);
+    }
+    RailTexture->UpdateTextureRegions(0, regionCount, regions, width * sizeof(FVector4f), sizeof(FVector4f),
+        reinterpret_cast<uint8*>(texels), [](uint8* data, const FUpdateTextureRegion2D* ownedRegions)
+        {
+            FMemory::Free(data);
+            delete[] ownedRegions;
+        });
+    UE_LOG(LogSOL, Log, TEXT("NpcLaneBlockUpload ranges=%d rects=%d rows=%d sourceRows=%d ms=%.3f"), ranges.Num(),
+        regionCount, rowCount, sourceRowCount, (FPlatformTime::Seconds() - startS) * 1000.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Takes the lane ships per column after a move; rebuilds the ribbon mesh when a lane's drawn state flips
+void ASOLNpcVisuals::ApplyLaneShipCounts()
+{
+    const TConstArrayView<int32> counts = Npcs->GetColumnLaneShips();
+    bool bDrawnChanged = counts.Num() != mLaneShipCounts.Num();
+    for (int32 column = 0; column < counts.Num() && !bDrawnChanged; ++column)
+    {
+        bDrawnChanged = SOLNpcLane::IsLaneDrawn(counts[column]) != SOLNpcLane::IsLaneDrawn(mLaneShipCounts[column]);
+    }
+    mLaneShipCounts.Reset();
+    mLaneShipCounts.Append(counts);
+    if (bDrawnChanged)
+    {
+        BuildLaneMesh();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -966,6 +1107,14 @@ void ASOLNpcVisuals::UpdateCpuShips()
                 for (int32 row = 0; row < SOL::NPC_GROUP_TEXTURE_ROWS; ++row)
                 {
                     rows[row] = groupTexels[row * SOL::NPC_GROUP_TEXTURE_WIDTH + rail->Group];
+                }
+
+                // Outside its slot's window (docked, or a closed lane) the shader hides the ship, so the CPU does too
+                // (SDD 53 R8, the same float test on the same texels)
+                if (!SOLNpcTrafficMirror::LaneShipWindowDrawn(texelA, texelB, rows, shaderTimeS))
+                {
+                    mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+                    continue;
                 }
                 const SOLNpcTrafficMirror::FHandOver handOver = SOLNpcTrafficMirror::CpuPointHandOver(
                     SOLNpcTrafficMirror::LaneShipRelM(texelA, texelB, rows, shaderTimeS), cpuRelM, gpuHideRadiusM,

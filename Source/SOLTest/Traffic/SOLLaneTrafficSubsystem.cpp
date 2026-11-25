@@ -23,6 +23,20 @@ void USOLLaneTrafficSubsystem::SetLanes(const TConstArrayView<int32> bodyA, cons
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Updates the existing entries' end points and profiles in place, keeping their slots and open flags
+void USOLLaneTrafficSubsystem::UpdateLaneEnds(const TConstArrayView<int32> bodyA, const TConstArrayView<int32> bodyB,
+    const TConstArrayView<FSOLLaneProfile> profiles)
+{
+    const int32 count = FMath::Min(FMath::Min3(bodyA.Num(), bodyB.Num(), profiles.Num()), mLanes.Num());
+    for (int32 lane = 0; lane < count; ++lane)
+    {
+        mLanes[lane].BodyA = bodyA[lane];
+        mLanes[lane].BodyB = bodyB[lane];
+        mLanes[lane].Profile = profiles[lane];
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Empties the lane table
 void USOLLaneTrafficSubsystem::ClearLanes()
 {

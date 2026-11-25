@@ -112,6 +112,19 @@ struct FSOLShipRange
     int32 Count = 0;
 };
 
+// The outcome of one ship block step (SDD 53 4.5, P4; StepShipBlocks)
+struct FSOLShipBlockStep
+{
+    TArray<uint8> SlotRelease;        // Per slot: its blocks returned to the free pool this step
+    TArray<uint8> SlotEpisodeOpens;   // Per slot: its episode opened this step (profile frozen, blocks taken)
+    TArray<uint8> SlotOwnsBlocks;     // Per slot: it owns blocks after the step (the caller holds the slot)
+    TArray<int32> MovedBlocks;        // Blocks to re-rail, ascending and unique: released, taken, and every block of an
+                                      // opening slot (its profile changes)
+    int32 Released = 0;
+    int32 Taken = 0;
+    int32 Shortfall = 0;              // TakeShipBlocks' shortfall (the pool was short)
+};
+
 // One node's partner-pick hysteresis state (SDD 53 O3)
 struct FSOLPartnerPick
 {
@@ -294,6 +307,16 @@ namespace SOLLaneNetwork
 
     // Writes the slots whose episode opens, ascending (the block take order, P4 b and c)
     SOLTEST_API void EpisodeTakeOrder(TConstArrayView<uint8> slotEpisodeOpens, TArray<int32>& outSlotOrder);
+
+    // Runs one block step (53c2b): every slot owning blocks that CanReleaseSlotBlocks (from inSetNow and its CPU-tier
+    // ships) releases them, then the slots whose episode opens (LaneEpisodeOpens of the previous and current lane and
+    // in-set flags; previous entries past their arrays read as a free slot outside the set) take blocks in
+    // EpisodeTakeOrder up to LaneShipShares(block count, slotWeights). Writes the re-rail set (released, taken and
+    // every block of an opening slot, ascending and unique) and the slots that own blocks afterwards
+    SOLTEST_API void StepShipBlocks(TConstArrayView<FSOLLanePair> previousSlotLanes,
+        TConstArrayView<uint8> previousInSet, TConstArrayView<FSOLLanePair> slotLanes, TConstArrayView<uint8> inSetNow,
+        TConstArrayView<int32> slotCpuShips, TConstArrayView<double> slotWeights, TArray<int32>& inOutBlockSlot,
+        FSOLShipBlockStep& outStep);
 
     // Writes each slot's blocks as a CSR list (slotCount + 1 starts, blocks ascending per slot)
     SOLTEST_API void SlotBlockLists(TConstArrayView<int32> blockSlot, int32 slotCount, TArray<int32>& outSlotStart,

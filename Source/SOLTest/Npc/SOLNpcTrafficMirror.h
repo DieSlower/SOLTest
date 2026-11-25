@@ -169,4 +169,65 @@ namespace SOLNpcTrafficMirror
             + axis * (bFromA ? fromRingMovingM : -fromRingMovingM);
         return bSegment1 ? turnB : (bLeg ? legPosition : turnA);
     }
+
+    // Returns whether the point shader draws a lane ship at timeS by its slot's window (SOLNTR_LaneShipDrawn, SDD 53
+    // section 5.4, contract case 25): railA / railB its GPU rail texels, rows the column's NPC_GROUP_TEXTURE_ROWS group
+    // texels as uploaded (row 6 = (open start, close, active, 0) relative to the GPU epoch; the active flag is not read
+    // here). The float form of SOLLaneNetwork::LaneShipInSpace: on a leg that leg decides, in a U-turn the leg after it
+    // (P1); drawn iff the deciding leg departs at or after the open start and arrives by the close. The departure is
+    // built from per-epoch constants only (the epoch parts, tau0 low, T_leg's rounding and the integer wrap count, never
+    // t), so the decision is the same on every frame of a span; a turn's departure is the same float expression as the
+    // leg after it (TurnAtB: the inbound constants, TurnAtA: the outbound constants of the next wrap)
+    inline bool LaneShipWindowDrawn(const FVector4f& railA, const FVector4f& railB, const FVector4f* rows,
+        const float timeS)
+    {
+        const float nominalLegM = rows[4].Z;
+        const float turnS = rows[5].Y;
+        const float openStartS = rows[6].X;
+        const float closeS = rows[6].Y;
+        const float tauHighS = railA.Y;
+        const float tauLowS = railB.Z;
+        const float legS = railB.W;
+
+        // A parked ship (free-pool block, negative leg time) is never drawn; a lane that is not drivable or a ship
+        // without a leg (the midpoint disc) is drawn while the window is open
+        if (legS < 0.0f)
+        {
+            return false;
+        }
+        if (!(nominalLegM > 0.0f && legS > 0.0f))
+        {
+            return openStartS <= timeS && timeS < closeS;
+        }
+
+        // T_leg's float rounding and the segment selection, as SOLNTR_LaneShipRelM computes them
+        const float legLowS = (railA.X - FMath::RoundHalfToEven(railA.X))
+            * (2.0f * FMath::AsFloat(FMath::AsUInt(legS) & 0x7F800000u) * 1.1920928955078125e-7f);
+        const float movingS = tauLowS + timeS;
+        const float wraps = FMath::Max(FMath::FloorToFloat((tauHighS + movingS) / (2.0f * (legS + turnS))), 0.0f);
+        const float cycleConstS = (tauHighS - wraps * (2.0f * legS)) - wraps * (2.0f * turnS);
+        const float turnBConstS = cycleConstS - legS;
+        const float inboundConstS = turnBConstS - turnS;
+        const float inboundLowS = (turnBConstS - inboundConstS) - turnS;
+        const float turnAConstS = inboundConstS - legS;
+        const float cycleMovingS = movingS - wraps * (2.0f * legLowS);
+        const float turnBMovingS = cycleMovingS - legLowS;
+        const float inboundMovingS = turnBMovingS + inboundLowS;
+        const float turnAMovingS = inboundMovingS - legLowS;
+        const bool bSegment0 = turnBConstS + turnBMovingS < 0.0f;
+        const bool bSegment1 = !bSegment0 && inboundConstS + inboundMovingS < 0.0f;
+        const bool bSegment2 = !bSegment0 && !bSegment1 && turnAConstS + turnAMovingS < 0.0f;
+
+        // The deciding leg's departure relative to the GPU epoch from the moving parts without t: the outbound leg of
+        // this wrap (segment 0), the inbound leg (segments 1 and 2), or the outbound leg of the next wrap (segment 3)
+        const float nextWraps = wraps + 1.0f;
+        const float nextCycleConstS = (tauHighS - nextWraps * (2.0f * legS)) - nextWraps * (2.0f * turnS);
+        const float cycleLowS = tauLowS - wraps * (2.0f * legLowS);
+        const float inboundLowMovingS = (cycleLowS - legLowS) + inboundLowS;
+        const float nextCycleLowS = tauLowS - nextWraps * (2.0f * legLowS);
+        const float departS = bSegment0 ? -cycleConstS - cycleLowS
+            : ((bSegment1 || bSegment2) ? -inboundConstS - inboundLowMovingS : -nextCycleConstS - nextCycleLowS);
+        const float arriveS = (departS + legS) + legLowS;
+        return departS >= openStartS && arriveS <= closeS;
+    }
 }

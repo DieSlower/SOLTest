@@ -677,6 +677,28 @@ void SOLNpcRail::RailTexelRegions(const int32 firstTexel, const int32 texelCount
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Lays out a partial rail upload: each range's rects, each on its own rows of one packed source buffer
+int32 SOLNpcRail::PackRailUploadRegions(TConstArrayView<FSOLShipRange> ranges, const int32 battleShips,
+    const int32 textureWidth, TArray<FSOLTexelRegion>& outRegions, TArray<int32>& outSourceRows)
+{
+    outRegions.Reset();
+    outSourceRows.Reset();
+    int32 sourceRows = 0;
+    TArray<FSOLTexelRegion> rects;
+    for (const FSOLShipRange& range : ranges)
+    {
+        RailTexelRegions(2 * (battleShips + range.First), 2 * range.Count, textureWidth, rects);
+        for (const FSOLTexelRegion& rect : rects)
+        {
+            outRegions.Add(rect);
+            outSourceRows.Add(sourceRows);
+            sourceRows += rect.Height;
+        }
+    }
+    return sourceRows;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns a lane slot's rail group, its group column; NPC_RAIL_PARKED_GROUP for no slot or one past the capacity
 uint16 SOLNpcRail::LaneRailGroup(const FSOLNpcGroupTable& groups, const int32 slot)
 {
@@ -752,7 +774,7 @@ void SOLNpcRail::GpuParkedRailTexels(const int32 faction, FVector4f& outTexelA, 
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes row NPC_GROUP_WINDOW_ROW of the group texels: each slot's window texel at its column, other columns zero
+// Writes row NPC_GROUP_WINDOW_ROW: each slot's window at its column, others zero; no windows: base lanes full-open
 void SOLNpcRail::WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, const FSOLNpcGroupTable& groups,
     TArrayView<FVector4f> groupTexels)
 {
@@ -765,6 +787,20 @@ void SOLNpcRail::WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, con
     for (int32 column = 0; column < width; ++column)
     {
         row[column] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    if (windowBySlot.IsEmpty())
+    {
+        // No network (contract case 25): (-FAR, +FAR) on each base lane column, inactive, the rest stays zero
+        const float farS = static_cast<float>(SOL::NPC_LANE_WINDOW_FAR_S);
+        for (int32 slot = 0; slot < groups.LaneCount; ++slot)
+        {
+            const int32 column = groups.LaneSlotColumn(slot);
+            if (column >= 0 && column < width)
+            {
+                row[column] = FVector4f(-farS, farS, 0.0f, 0.0f);
+            }
+        }
+        return;
     }
     for (int32 slot = 0; slot < windowBySlot.Num(); ++slot)
     {

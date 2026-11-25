@@ -290,3 +290,45 @@ Every assertion in cases 16-26 is pinned; the test author writes all of them.
   copies the registry: `BuildFrame` takes the node positions as a second view (`SOLTest.NpcRail.NodeEndpoints`); trace
   scopes on `UpdateLaneWindows` and `LaneEndpointPositions`. The in-game lane readout and AUTO texts now say "open
   lane" (the Help page screenshots were not regenerated). Suite 2131 / 2131.
+- 2026-11-25: 53c2b done, pending commit. **Steps 1-2:** `SOLNTR_LaneShipDrawn` (`Shaders/Private/SOLNpcTraffic.ush`)
+  and its CPU mirror `SOLNpcTrafficMirror::LaneShipWindowDrawn` hide a lane ship outside its slot window (group texture
+  row 6) and a parked ship (rail `.w` < 0); `M_SOLNpcPoints` rebuilt headless by `create_npc_assets.py`; the CPU point
+  layer draws a Point-tier lane ship only when the mirror says drawn. `SOLTest.NpcRail.GpuLaneWindowMirror` measures
+  the float band: Earth-Moon 0.064 s, Mars-Jupiter 32 s, a 128 AU lane 512 s; 8 of 8 ships touch the band, every
+  in-band disagreement lies exactly on a window bound, 0 mismatches outside it. The first real-RHI game run compiled
+  the new call without a shader error. **Step 3:** per-epoch block moves (`USOLNpcSubsystem::StepLaneBlocks` /
+  `ApplyBlockMoves`, the new `Npc/SOLNpcBlockMoves.h/.cpp`, `SOLLaneNetwork::StepShipBlocks`, the dirty-range rail
+  upload `ASOLNpcVisuals::UploadMovedRails`, an exact re-share and full upload at a time jump), pinned by
+  `SOLTest.LaneBlockMove.Step / UploadRegions / Rebucket / LaneTable`. A slot is held while its blocks own ships.
+  Headless: 0.384-0.398 ms per block (gate 0.5 ms); a large lane opening (1,246 blocks) 310-338 ms in one frame; a
+  time-jump re-share (4,000 blocks) about 1.1 s. **Step 4, smokes** (run on the binary before the `sol.SimDate`
+  command below was added, which none of them uses; 1M NPCs, LaneMerge its default 250k): `-SOLSmokeNpcLanes`
+  35 / 35, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeNpcTraffic` 19 / 19 at 1280x720, 1920x1080 and 2560x1440 (4K
+  proxy, screenshots checked at 2560x1440, not clamped); no smoke fix was needed. **Caveat:** NpcLanes and NpcTraffic
+  start at the real UTC date, so on another day their lane can be closed or an epoch can flip mid-run (with
+  `-SOLSimDate=2026-01-01` the Earth-Mars lane is Sun-closed and NpcTraffic fails its three V2 fly-by checks with 0
+  hull frames, as the window rule requires); pinning their dates is left to the user. **Warp run** (1920x1080, 1M,
+  10 d/s for an estimated 135 s, about 1,350 sim days, then a clock set): 66 per-epoch moves opening 65 slots, 43-394
+  blocks (mean 174), 8,867 blocks
+  released and 8,773 taken, shortfall up to 195 blocks, 0 demoted; **in game 0.581-0.878 ms per block (mean 0.684),
+  every move over the 0.5 ms gate** (headless 0.38-0.40), 34-274 ms per move (mean 118 ms), about 99% of it the Mass
+  re-bucket (`SwapConstSharedFragmentForEntity` per entity); rails up to 2.4 ms; the partial rail upload 1.06 ms mean,
+  2.86 ms max (64 uploads). No column overflow warning, no ensure or crash. **Time jump** (the new developer console
+  command `sol.SimDate <date>`, `Universe/SOLSimClockSubsystem.cpp`, driven by `-SOLSmokeConsole=`): `full=1`, 3,992
+  blocks, 50 slots opened, a **1.76 s** game-thread hitch at 1x and **2.07 s** after the warp run (rails 5-7 ms, the
+  rest Mass). Island links are not logged per epoch at run time, so their appearance and churn in game were not
+  observed (the contract cases `IslandLinks` / `PartnerHysteresis` cover them); 65 openings in an estimated 1,350
+  days is about one per 20 days. Screenshots (smoke views, the default view, the view after the jump) show traffic in
+  open lanes and no row 6 artifacts (no midpoint discs, no flicker clusters); the Sun-closed Earth-Mars lane on
+  2026-01-01 (NpcTraffic V1a, inside the lane) shows its tunnel but no lane traffic, so the GPU window hides docked
+  ships (the material holds the new call). A ship closing mid-leg was not framed, so "no ship vanishes mid-leg" rests
+  on the mirror test and the window rule. After a clock set mid-play the view fills with white space-dust streaks;
+  they appear with 0 NPCs too, so they come from setting the clock during play (the ship's motion against the new
+  frame), not from the re-share. Temporary screenshots
+  and logs deleted; `GameUserSettings.ini` MD5 unchanged. **Interim lifted:** lanes now fill when they open and drain
+  when they close (released blocks go back to the pool), closed lanes hide their ships on the GPU and CPU layers, and
+  parked ships are hidden. **Known, reported, not fixed:** the per-block gate is missed in game, and the opening and
+  time-jump hitches (`TECH_DEBT.md`; the lever is a batched Mass re-bucket); at 10 d/s that is roughly a 120 ms
+  hitch every couple of seconds. Not checked: the tunnel component's lane caches for Gone / released columns.
+  `sol.SimDate` is a thin developer hook over the tested date parser and `SetJulianDate`, with no test of its own.
+  Suite 2136 / 2136.

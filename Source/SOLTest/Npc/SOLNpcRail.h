@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Npc/SOLNpcScaleMath.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 #include "Traffic/SOLLaneTrafficMath.h"
 
 #include "CoreMinimal.h"
@@ -230,6 +231,13 @@ namespace SOLNpcRail
     SOLTEST_API void RailTexelRegions(int32 firstTexel, int32 texelCount, int32 textureWidth,
         TArray<FSOLTexelRegion>& outRegions);
 
+    // Lays out the partial rail upload of lane-local ship ranges (53c2b): each range's rects (RailTexelRegions of
+    // texels 2 x (battleShips + First), count 2 x Count) in outRegions, each given its own rows of one packed source
+    // buffer textureWidth texels wide (source x = the rect's X, first source row = outSourceRows[i]); returns the
+    // source buffer's row count (0 and empty outputs for nothing to upload)
+    SOLTEST_API int32 PackRailUploadRegions(TConstArrayView<FSOLShipRange> ranges, int32 battleShips,
+        int32 textureWidth, TArray<FSOLTexelRegion>& outRegions, TArray<int32>& outSourceRows);
+
     // Returns a lane slot's rail group, its group column; NPC_RAIL_PARKED_GROUP for no slot or one past the capacity
     SOLTEST_API uint16 LaneRailGroup(const FSOLNpcGroupTable& groups, int32 slot);
 
@@ -256,7 +264,8 @@ namespace SOLNpcRail
     // Writes the two GPU rail texels of a parked lane ship (the shader hides a negative leg time)
     SOLTEST_API void GpuParkedRailTexels(int32 faction, FVector4f& outTexelA, FVector4f& outTexelB);
 
-    // Writes row NPC_GROUP_WINDOW_ROW of the group texels: each slot's window texel at its column, other columns zero
+    // Writes row NPC_GROUP_WINDOW_ROW of the group texels: each slot's window texel at its column, other columns zero;
+    // with no slot windows (no lane network) every base lane column gets the full-open window (-FAR, +FAR, inactive)
     SOLTEST_API void WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, const FSOLNpcGroupTable& groups,
         TArrayView<FVector4f> groupTexels);
 

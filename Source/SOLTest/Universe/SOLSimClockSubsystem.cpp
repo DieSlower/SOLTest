@@ -10,8 +10,30 @@
 #include "SOLTest.h"
 
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+
+#if !UE_BUILD_SHIPPING
+namespace
+{
+    // sol.SimDate <date>: sets the sim clock to a UTC date (a time jump, warp back to 1x); developer verification only
+    FAutoConsoleCommandWithWorldAndArgs GSimDateCommand(TEXT("sol.SimDate"),
+        TEXT("sol.SimDate <date>: jump the sim clock to a UTC date (2032-06-01, 2032-06-01T12:00:00Z)"),
+        FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& args, UWorld* world)
+        {
+            USOLSimClockSubsystem* clock = world != nullptr ? world->GetSubsystem<USOLSimClockSubsystem>() : nullptr;
+            double julianDate = 0.0;
+            if (clock != nullptr && args.Num() > 0 && FSOLSimClock::TryParseUtcJulianDate(args[0], julianDate))
+            {
+                clock->SetJulianDate(julianDate);
+                UE_LOG(LogSOL, Log, TEXT("SimClock: sol.SimDate %s, set to JD %.5f"), *args[0], julianDate);
+                return;
+            }
+            UE_LOG(LogSOL, Warning, TEXT("SimClock: sol.SimDate needs a UTC date (2032-06-01)"));
+        }));
+}
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // Starts the clock at the current real UTC date and time (or the -SOLSimDate= override) with warp 1x

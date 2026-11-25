@@ -126,6 +126,7 @@ void USOLNpcTierProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>
     mCollectQuery.AddRequirement<FSOLNpcCombatFragment>(EMassFragmentAccess::ReadOnly);
     mCollectQuery.AddRequirement<FSOLNpcAttitudeFragment>(EMassFragmentAccess::ReadOnly,
         EMassFragmentPresence::Optional);
+    mCollectQuery.AddConstSharedRequirement<FSOLNpcGroupFragment>();   // The parked-bucket check (AddChunkView)
     mCollectQuery.AddTagRequirement<FSOLNpcMidAiTag>(EMassFragmentPresence::Any);
     mCollectQuery.AddTagRequirement<FSOLNpcFullAiTag>(EMassFragmentPresence::Any);
 }
@@ -158,6 +159,19 @@ void USOLNpcTierProcessor::AddChunkView(FMassExecutionContext& context, const bo
     view.States = context.GetMutableFragmentView<FSOLNpcStateFragment>().GetData();
     view.Deviations = context.GetMutableFragmentView<FSOLNpcDeviationFragment>().GetData();
     view.Entities = context.GetEntities().GetData();
+    view.Group = context.GetConstSharedFragment<FSOLNpcGroupFragment>().GroupIndex;
+
+    // A parked lane ship (the trailing bucket past the groups, 53c2b) is never CPU-tier: its rail evaluates to the
+    // universe origin. The block moves release a block only without CPU-tier ships and demote any at a re-share; if
+    // one slips through anyway the chunk is skipped by every pass rather than promoted or handled at the origin
+    const bool bParkedCpuChunk = view.Tier != NPC_TIER_FAR && !mInputs.GroupCandidate.IsEmpty()
+        && view.Group >= mInputs.GroupCandidate.Num();
+    if (!ensureMsgf(!bParkedCpuChunk, TEXT("NPC tier: a Mid / Full chunk in the parked bucket (group %d), skipped"),
+        view.Group))
+    {
+        mChunks.Pop(EAllowShrinking::No);
+        return;
+    }
     if (bCollect)
     {
         // Read only in Collect (the view type is shared with Select, which writes it)
@@ -166,7 +180,6 @@ void USOLNpcTierProcessor::AddChunkView(FMassExecutionContext& context, const bo
         view.Attitudes = context.GetFragmentView<FSOLNpcAttitudeFragment>().GetData();
         return;
     }
-    view.Group = context.GetConstSharedFragment<FSOLNpcGroupFragment>().GroupIndex;
     view.Wake = &context.GetMutableChunkFragment<FSOLNpcChunkWakeFragment>();
     if (mPass == ESOLNpcTierPass::Evaluate)
     {

@@ -24,7 +24,10 @@
 // epoch.
 // Group texels (NpcGroupTex column = lane): g0 = (A relative to the viewpoint, ecliptic m; R), g1 = (B; drawn flag),
 // g2 = (Up; wall speed w m/s), g3 = (Right; D_U), g4 = (pi / T_U; e_A; l0; Z), g5 = (e_B; T_U; (l - l0) / (l0 - Z);
-// 1 / Z), rows 2-5 written by SOLNpcRail::WriteLaneTrafficTexels (l0 = 0 marks a lane that is not drivable).
+// 1 / Z), rows 2-5 written by SOLNpcRail::WriteLaneTrafficTexels (l0 = 0 marks a lane that is not drivable), g6 =
+// (open start s, close s, active flag, 0) relative to the GPU epoch (SOLNpcRail::WriteLaneWindowRow, SDD 53 5.4),
+// read by SOLNTR_LaneShipDrawn (a new call in M_SOLNpcPoints's vertex node since issue #53, part 53c2b). A parked
+// lane ship (free-pool block) has railB.w < 0 and is never drawn.
 
 #pragma once
 
@@ -156,4 +159,63 @@ float3 SOLNTR_LaneShipRelM(float4 railA, float4 railB, float4 g0, float4 g1, flo
         : b - axis * (endArcBM + fromRingConstM);
     precise const float3 legPosition = (ringPosition + lateral) + axis * (bFromA ? fromRingMovingM : -fromRingMovingM);
     return bSegment1 ? turnB : (bLeg ? legPosition : turnA);
+}
+
+// Whether a lane ship is drawn at rail time t by its slot's window (SDD 53 section 5.4, contract case 25): g6 = the
+// group texture's row 6, (open start, close, active, 0) relative to the GPU epoch (the active flag is not read here).
+// The float form of SOLLaneNetwork::LaneShipInSpace, mirrored statement for statement by
+// SOLNpcTrafficMirror::LaneShipWindowDrawn: on a leg that leg decides, in a U-turn the leg after it (P1); drawn iff the
+// deciding leg departs at or after the open start and arrives by the close. The departure is built from per-epoch
+// constants only (the epoch parts, tau0 low, T_leg's rounding and the integer wrap count, never t), so the decision
+// cannot flicker from frame to frame; a turn's departure is the same float expression as the leg after it
+bool SOLNTR_LaneShipDrawn(float4 railA, float4 railB, float4 g4, float4 g5, float4 g6, float t)
+{
+    const float nominalLegM = g4.z;
+    const float turnS = g5.y;
+    const float openStartS = g6.x;
+    const float closeS = g6.y;
+    const float tauHighS = railA.y;
+    const float tauLowS = railB.z;
+    const float legS = railB.w;
+
+    // A parked ship (free-pool block, negative leg time) is never drawn; a lane that is not drivable or a ship without
+    // a leg (the midpoint disc) is drawn while the window is open
+    if (legS < 0.0)
+    {
+        return false;
+    }
+    if (!(nominalLegM > 0.0 && legS > 0.0))
+    {
+        return openStartS <= t && t < closeS;
+    }
+
+    // T_leg's float rounding and the segment selection, as SOLNTR_LaneShipRelM computes them
+    precise const float legLowS = (railA.x - round(railA.x)) * (2.0 * asfloat(asuint(legS) & 0x7F800000u)
+        * 1.1920928955078125e-7);
+    const float movingS = tauLowS + t;
+    const float wraps = max(floor((tauHighS + movingS) / (2.0 * (legS + turnS))), 0.0);
+    precise const float cycleConstS = (tauHighS - wraps * (2.0 * legS)) - wraps * (2.0 * turnS);
+    precise const float turnBConstS = cycleConstS - legS;
+    precise const float inboundConstS = turnBConstS - turnS;
+    precise const float inboundLowS = (turnBConstS - inboundConstS) - turnS;
+    precise const float turnAConstS = inboundConstS - legS;
+    const float cycleMovingS = movingS - wraps * (2.0 * legLowS);
+    const float turnBMovingS = cycleMovingS - legLowS;
+    const float inboundMovingS = turnBMovingS + inboundLowS;
+    const float turnAMovingS = inboundMovingS - legLowS;
+    const bool bSegment0 = turnBConstS + turnBMovingS < 0.0;
+    const bool bSegment1 = !bSegment0 && inboundConstS + inboundMovingS < 0.0;
+    const bool bSegment2 = !bSegment0 && !bSegment1 && turnAConstS + turnAMovingS < 0.0;
+
+    // The deciding leg's departure relative to the GPU epoch from the moving parts without t: the outbound leg of this
+    // wrap (segment 0), the inbound leg (segments 1 and 2), or the outbound leg of the next wrap (segment 3)
+    const float nextWraps = wraps + 1.0;
+    precise const float nextCycleConstS = (tauHighS - nextWraps * (2.0 * legS)) - nextWraps * (2.0 * turnS);
+    precise const float cycleLowS = tauLowS - wraps * (2.0 * legLowS);
+    precise const float inboundLowMovingS = (cycleLowS - legLowS) + inboundLowS;
+    precise const float nextCycleLowS = tauLowS - nextWraps * (2.0 * legLowS);
+    precise const float departS = bSegment0 ? -cycleConstS - cycleLowS
+        : ((bSegment1 || bSegment2) ? -inboundConstS - inboundLowMovingS : -nextCycleConstS - nextCycleLowS);
+    precise const float arriveS = (departS + legS) + legLowS;
+    return departS >= openStartS && arriveS <= closeS;
 }
