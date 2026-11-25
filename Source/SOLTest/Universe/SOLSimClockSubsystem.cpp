@@ -77,10 +77,17 @@ void USOLSimClockSubsystem::AdvanceFrame(const double realDeltaSeconds)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the sim time to a Julian date with warp 1x (tests pin a date with it)
+// Sets the sim time to a Julian date with warp 1x (tests pin a date with it); counts a time jump only for a date
+// other than the last one set, so a writer that holds its pinned date every frame counts once
 void USOLSimClockSubsystem::SetJulianDate(const double julianDate)
 {
     mClock.Init(julianDate);
+    if (!mHasSetJulianDate || julianDate != mLastSetJulianDate)
+    {
+        ++mTimeSetCount;
+    }
+    mHasSetJulianDate = true;
+    mLastSetJulianDate = julianDate;
 }
 
 //////////////////////////////////////////////////////////////////////////

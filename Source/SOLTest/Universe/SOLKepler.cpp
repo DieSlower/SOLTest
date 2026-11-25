@@ -165,6 +165,32 @@ namespace SOLKepler
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns the position of ElementsToState (the same steps) without the velocity terms
+    FVector3d ElementsToPositionM(const FSOLKeplerElements& elements, const double gm, const double elapsedSeconds)
+    {
+        const double a = elements.SemiMajorAxisM;
+        const double e = elements.Eccentricity;
+        const double meanAnomaly = elapsedSeconds == 0.0 ? WrapAngleRad(elements.MeanAnomalyRad)
+            : WrapAngleRad(elements.MeanAnomalyRad + FMath::Sqrt(gm / (a * a * a)) * elapsedSeconds);
+        const double eccAnomaly = SolveEccentricAnomaly(meanAnomaly, e);
+        const double xP = a * (FMath::Cos(eccAnomaly) - e);
+        const double yP = a * FMath::Sqrt(1.0 - e * e) * FMath::Sin(eccAnomaly);
+
+        // Perifocal-to-ecliptic rotation (3-1-3: node, inclination, argument of periapsis)
+        const double sinNode = FMath::Sin(elements.LongitudeOfAscendingNodeRad);
+        const double cosNode = FMath::Cos(elements.LongitudeOfAscendingNodeRad);
+        const double sinArg = FMath::Sin(elements.ArgumentOfPeriapsisRad);
+        const double cosArg = FMath::Cos(elements.ArgumentOfPeriapsisRad);
+        const double sinInc = FMath::Sin(elements.InclinationRad);
+        const double cosInc = FMath::Cos(elements.InclinationRad);
+        const FVector3d pHat(cosNode * cosArg - sinNode * sinArg * cosInc, sinNode * cosArg + cosNode * sinArg * cosInc,
+            sinArg * sinInc);
+        const FVector3d qHat(-cosNode * sinArg - sinNode * cosArg * cosInc,
+            -sinNode * sinArg + cosNode * cosArg * cosInc, cosArg * sinInc);
+        return pHat * xP + qHat * yP;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Converts a state to instantaneous classical elements (RV2COE). Degenerate fallbacks: when the orbit is
     // equatorial to within KEPLER_DEGENERATE_EPSILON the ascending node is taken along +X (node = 0), and when it is
     // circular to within the same epsilon periapsis is placed at the ascending node (argPeri = 0). Angles are left as

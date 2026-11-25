@@ -52,6 +52,13 @@ struct FSOLNpcGroupTable
 
     // Returns the number of groups
     int32 Num() const { return LaneCount + ClusterCount + BattleCount; }
+
+    // Returns how many lane network slots the group texture leaves (SDD 53 4.3 Q28: width - clusters - battles)
+    int32 LaneSlotCapacity() const;
+
+    // Returns the group column of a lane network slot: base slots 0 .. LaneCount - 1 are the lane columns, slots from
+    // LaneCount on follow the clusters and battles, so no slot shares their columns; INDEX_NONE past the capacity
+    int32 LaneSlotColumn(int32 slot) const;
 };
 
 // Per-frame inputs of the rail evaluation: each group's anchor points (universe metres) and the rail time

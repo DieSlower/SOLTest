@@ -193,7 +193,7 @@ The set of epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day) is built in 
 - **Measured before O2 and O3** (script over 250 sim years from 2026-01-01 at 1-day steps, Kepler propagation of the
   registry rows and the belt catalogue rows, rule A picks with no hysteresis and no island links; the game starts at
   the real date, so these are statistics, not a schedule). These figures are kept as the baseline; the final rules are
-  re-measured in 53c (plan):
+  measured in the next table (53c1):
 
   | Figure | Value (before O2, O3) |
   |---|---|
@@ -213,15 +213,29 @@ The set of epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day) is built in 
   the remaining cases: a Sun-closed link or a window shorter than the leg).
 - **Effect of O2 and O3 (derived from the baseline, not measured):**
   - Island links: one per island, so components minus 1: **0-5 links** at the measured 1-6 components. Lanes in the
-    set: **about 22-34** (8 base + 14-21 partner + 0-5 links). Hard bound: 8 base + 23 picks + 7 links (15 non-planet
+    set: **about 22-34, measured 25-30 (below)** (8 base + 14-21 partner + 0-5 links). Hard bound: 8 base + 23 picks + 7 links (15 non-planet
     taking-part nodes, an island needs at least 2) = **38 lanes**.
   - Hysteresis: each node still holds one pick, so partner lanes stay at most 23 and the bounds above hold. It cuts
     set changes and short episodes (a pick lasts at least 30 days, longer than the leg of the inner-planet partner
     lanes, about 9-16 d, and of Mars-4 Vesta, 25.6 d; Earth-belt lanes, about 29 d, barely fit and asteroid-asteroid
-    legs of 35-45 d can still miss a short episode). Re-measured in 53c.
+    legs of 35-45 d can still miss a short episode). Measured in the table below.
   - Longest lane: an island link can join any two taking-part nodes, so the longest possible nominal length is now
     the largest sum of two aphelia, **Eris + Makemake = 150.38 AU, leg about 897 d** (under the 960-epoch horizon).
     The float path is validated at 151 AU (4.7).
+- **Measured with the final rules (53c1):** 250 sim years from 2026-01-01, 91,312 daily steps, one time jump at the
+  start, the real schedule code (partner hysteresis, island links, Sun state):
+
+  | Figure | Value (final rules) |
+  |---|---|
+  | Lanes in the set | 25-30 (mean 27.07) |
+  | Changes of the set | 15.5 per year |
+  | Island links per day | 0-5 (mean 2.01), so 1-6 components before linking |
+  | Lanes Sun-closed at once | at most 5 (mean 0.493) |
+  | Distinct pairs over 250 years | 187 |
+  | Partner-lane episodes | 3,694, of which **393 are shorter than 30 days** (the minimum stay; not the baseline's "shorter than the leg" metric, and which lanes they are was not broken down) |
+  | Longest lane that occurred | Haumea-Eris, 149.08 nominal AU (the possible maximum stays Eris + Makemake, 150.38 AU) |
+  | Group columns at the worst day | 30 lanes + 10 clusters + 16 battles = **56 of 64**, no overflow day at 38 lane columns |
+
 - **Snapshot, illustrative (2026-01-01, rule A picks, before hysteresis):** 18 partner lanes: Mercury-Earth,
   Mercury-Mars, Venus-Mars, Earth-511 Davida, Mars-4 Vesta, Jupiter-87 Sylvia, Saturn-Neptune, Saturn-Pluto, Saturn-2
   Pallas, Uranus-87 Sylvia, Neptune-Eris, Ceres-52 Europa, Haumea-Makemake, 4 Vesta-2 Pallas, 10 Hygiea-87 Sylvia,
@@ -230,8 +244,8 @@ The set of epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day) is built in 
   lanes in all; their endpoints need that day's positions and were not recomputed here.
 - **Group columns (Q28):** 64 shared columns stay the hard pool. Lanes hold a column while they are in the set, and a
   closing lane's column is freed after its 3 s tunnel fade. With the early stop of 5.4 (nothing is in flight at the
-  close) the estimate is **34 lanes + 10 clusters + 16 battles = 60 of 64**; the hard bound of 38 lanes gives
-  **exactly 64**. Under high warp the 3 s real fade spans many epochs (about 90 at 30 d/s), so fading lanes can hold
+  close) the measured worst day is **30 lanes + 10 clusters + 16 battles = 56 of 64** (no overflow day at 38 lane columns, table
+  above); the hard bound of 38 lanes gives **exactly 64**. Under high warp the 3 s real fade spans many epochs (about 90 at 30 d/s), so fading lanes can hold
   columns on top of the set (R7). Hitting 64 is logged, counted and reported to the user; a lane that finds no column
   has no traffic and no tunnel until one frees.
 
@@ -264,9 +278,9 @@ Uranus-87 Sylvia 1.732 (8,333); Saturn-Neptune and Saturn-Pluto 1.414 (6,804); N
 **not** in the last column; with them every figure there drops by about 8-10 % (Earth-Moon about 44,000, 11 %).
 
 **Earth-Moon share:** 31.2 % with the base lanes only, **12.0 %** of all lane ships in the 2026-01-01 set (about 11 %
-with its island links). Over the daily sets it is **estimated at about 9-14 %** (about 38,000-56,000 ships), from the
-snapshot's mean partner weight (2.84) and the 14-26 partner and link lanes of 4.3; it was 23-33 % with the plain
-product. Not re-measured: the 53c script reports the real range.
+with its island links). Over the daily sets of the 250-year run (4.3) it is **measured at 9.9-13.6 %** (mean 12.0 %); it
+was 23-33 % with the plain product. **53c1 interim:** the lane ships still use these sqrt weights over the 8 base lanes
+only (no partner lane gets ships until 53c2), which makes Earth-Moon about 31 % for now; accepted by the user.
 
 **Lane radius of a partner lane (O5, decided):** the larger of its two ends' region radii (table 4.2). It reproduces
 all 7 planet base rows (Mars-Jupiter = max(3e6, 5e6) = 5e6, and so on); the belt value is 4e6 m; Earth-Moon keeps its
@@ -310,6 +324,13 @@ be joined, up to **150.38 AU** (Eris + Makemake, 4.3). So the float rail and tun
 **151 AU** (`FloatPathAtMaxLength` re-pinned; R10), which covers every possible pair (O8, decided). If they fail, 53c
 stops and reports, and the fix is the user's call (cap the nominal length, split the rail time, or leave the Eris lanes
 without a tunnel).
+
+**Result (53c, decided by the user 2026-11-25):** the ring slot offsets pass at 151 AU; the end-arc texels do not
+hold 0.05 Rt on the end far from the foot point once a lane is longer than about 59 AU (float32 rounding of the arc,
+up to 0.09 Rt at 151 AU). The user accepted the error: that end is 50-150 AU from the camera and invisible, and it
+becomes small and exact as the camera nears it. The 151 AU row stays in `FloatPathAtMaxLength` with the far arc's
+tolerance relaxed to the float32 rounding bound (half an ulp) for lanes over 59 AU; no texel layout change; recorded
+in `TECH_DEBT.md`.
 
 ### 4.8 Hooks (record only, not built)
 
@@ -366,15 +387,42 @@ Earth-Moon never comes near.
   `NPC_LANE_SUN_LOOKBACK_EPOCHS` epochs (64, O10); if every epoch in reach is inside the band, Closed (fail safe).
   So the state needs no history and nothing is saved.
 - **Look-ahead schedule:** the early stop (5.4) needs each lane's close time up to one leg ahead. The lane-network
-  state (set, Sun state) of epochs `k .. k + H` is kept in a ring buffer, `H` = `NPC_LANE_NETWORK_HORIZON_EPOCHS`
+  state (set, Sun state) of the `H` epochs `k .. k + H - 1` is kept in a ring buffer, `H` = `NPC_LANE_NETWORK_HORIZON_EPOCHS`
   (960, O10; above the longest possible leg of about 897 d, 4.3), each entry also holding the epoch's partner picks.
   Each epoch change computes one new epoch at the far end, stepping the picks from the entry before it; a time jump
-  (start, `-SOLSimDate`, any clock set) warms the picks up over 64 epochs and rebuilds all `H` epochs. A lane still open at the horizon counts as closing at the horizon (fail safe: a leg
+  (start, `-SOLSimDate`, any clock set) warms the picks up over 64 epochs and rebuilds all `H` epochs. A lane still open through the last entry closes at the start of epoch `k + H` (fail safe: a leg
   longer than the horizon never departs).
-- **Cost:** one epoch = 23 x 23 distances at `t_k`, one pick step per node (one distance each), the island links (at most 7 rounds over at most 23 x 23 pairs), 5 samples x up to 34 segment distances (38 at most) and
-  the ephemeris of 24 nodes; estimated under 0.01 ms. At 30 d/s about 30 epochs per real second (one or two per frame).
-  A full rebuild is 64 warm-up epochs plus 960 epochs, estimated 2-5 ms once per jump (gate in section 13; spread
-  over frames if it misses).
+- **Catch-up and constants:** a forward move of up to `NPC_LANE_NETWORK_CATCH_UP_EPOCHS` (16) epochs is stepped one
+  epoch at a time. A longer move, a backward move or a marked clock set rebuilds. `USOLSimClockSubsystem` counts its
+  `SetJulianDate` calls that set a new date (`GetTimeSetCount`; every clock set goes through it, and a writer that holds
+  its pinned date every frame counts once; `-SOLSimDate` at startup bypasses the counter, which is harmless because it runs before the spawn). `USOLNpcSubsystem` compares the count each
+  frame before `AdvanceNetwork` and calls `USOLLaneTrafficSubsystem::MarkNetworkTimeJump` when it changed.
+  `SOL::SIM_CLOCK_MAX_WARP` = 2,592,000 (30 d/s, the clock's top warp step, `static_assert`-tied to the warp table), and
+  `NPC_LANE_NETWORK_CATCH_UP_EPOCHS x NPC_LANE_NETWORK_EPOCH_S >= MAX_FRAME_DELTA_S (0.5 s) x SIM_CLOCK_MAX_WARP`, so one
+  clamped frame at the top warp moves at most 15 epochs and always steps. `NPC_LANE_NODE_SPEED_MARGIN` (1.1): a node's
+  speed bound is its perihelion speed x 1.1 (the Moon adds Earth's), which covers secular drift. The Sun clearance bound
+  uses it.
+- **Cost (measured, asserted by `SOLTest.LaneNetworkSubsystem.MeasuredCost`):** a full rebuild takes **1.7-2.1 ms**
+  (gate 5 ms, 39.3 ms before the fixes below; met only with parallel passes on an idle 16-core machine, see R13). An epoch step takes a mean 0.0113-0.0154 ms, i.e. **0.0056-0.0077 ms
+  per frame** at the top warp 30 d/s and 60 fps (0.5 epochs per frame; gate 0.01 ms per frame, 0.0265 before the fixes).
+  The rebuild did not need spreading over frames. How:
+  - Node positions at each epoch start sit in a direct-mapped ring covering `k - max(W, L) .. k + H` (`W` = 64 warm-up,
+    `L` = 64 Sun look-back, `H` = 960). The end sample of epoch `e` (`t_k + E`) is the next epoch's start, and the
+    look-back re-reads the same entries.
+  - The inner clearance samples (3 per epoch) are taken only for a lane whose two end-sample bound cannot classify it.
+    Every sample lies at least `min(d0, dE) - v E / 2` from the Sun, so `min(d0, dE) - v (E + dt) / 2` above the reopen
+    distance is surely open and `min(d0, dE) - v dt / 2` below the close distance is surely closed. They go in a second
+    ring of the same span (the two rings are about 0.6 MB and 1.8 MB for v1).
+  - The Moon adds its Earth-relative position to Earth's (no chain re-walk). The position path is
+    `SOLKepler::ElementsToPositionM` (position only, no velocity) and `FSOLBodyRegistry::ComputeRelativePositionAtM`. The
+    position function must be a pure function of time, because worker threads call it.
+  - One shared distance matrix per epoch (`FSOLLaneEpochDistances`, `NearestFromDistances`, `IslandLinksFromDistances`).
+    The results equal `StepPartnerPicks`' nearest and `IslandLinks` (checked daily in the tests).
+  - The rebuild runs in four passes: start positions and nearest partners of every epoch in parallel
+    (`ParallelForWithExistingTaskContext`, one scratch context per worker), the picks in order, each entry's lane set and
+    per-lane clearance class (above reopen, below close or in band, as bit masks) in parallel, then the Sun state in
+    order. Slot assignment is skipped while the set and the held flags are unchanged.
+  - Trace scopes: `Advance`, `Rebuild` (with `RebuildPositions`, `RebuildSets`), `StepOne`, `UpdateSlots`.
 
 ### 5.4 Close, drain and finish (Q8, Q9, Q10, Q14, Q26, Q30)
 
@@ -393,10 +441,10 @@ Earth-Moon never comes near.
   (the latch; -inf allowed, meaning open since before anything known). A lane that was not open at the previous
   epoch (a new lane, or a reopen at `k`) latches `openStart = k E_L`, so no ship is drawn mid-leg on a lane that
   just appeared; departures from `k E_L` on are drawn as they start. The latch is carried per slot from epoch to
-  epoch (in memory only, nothing saved). **Open item (not decided by the user):** what a time jump (start,
-  `-SOLSimDate`, a clock set) passes as the latch for lanes open at the new `k`: -inf (lanes full at once, today's
-  look) or NaN (every lane opens at `k E_L` and fills over one leg time, up to about 897 days for the longest).
-  Decided before 53c wires the schedule.
+  epoch (in memory only, nothing saved). **Latch after a time jump (decided by the user, 2026-11-25):** a time jump
+  (start, `-SOLSimDate`, a clock set) passes **-inf** as the latch for lanes open at the new `k`, so those lanes are
+  full at once, as today. (NaN, every lane opening at `k E_L` and filling over one leg time, up to about 897 days for
+  the longest, was not chosen.) A lane that opens at a later epoch still latches `k E_L`.
 - **Tunnel:** only the tunnel fades, 1 -> 0 over **3 s real time** at the close (tunnel texture row 3 `.z`), 0 -> 1 at a
   reopen (Q9). The traffic is not faded; it drains by finishing.
 - **Share (Q10):** a Sun-closed lane keeps its share (its blocks); a Gone lane's empty blocks go back to the pool
@@ -408,7 +456,7 @@ Earth-Moon never comes near.
 - **Short episodes:** a lane whose open window is shorter than its leg time never gets a departure: 854 of 5,096
   partner episodes in the baseline run (17 %; Mercury-Mars alone has 54 episodes in 20 years, some of 4 days; before
   O3). Its tunnel still draws while it is in the set (an empty lane). The partner hysteresis (O3, 4.3) keeps a pick at
-  least 30 days, which removes most short inner-planet episodes (a Sun closure can still cut one); the remaining share is re-measured in 53c.
+  least 30 days, which removes most short inner-planet episodes (a Sun closure can still cut one); the measured share is 393 of 3,694 episodes under 30 days (4.3; a different metric from the baseline's "shorter than the leg").
 
 ## 6. Routing (D3, D4)
 
@@ -474,6 +522,18 @@ the case for a route planned now: a lane in the set is open now or closed). With
 arrival can miss it where a slower arrival at the same state would meet it, and that slower path is not explored.
 Exactness there would need a list of arrivals per state (allocation per call), so it is not built; routes are
 re-planned at each epoch change that touches the plan (6.1), which picks up a lane once it opens.
+
+**Horizon rule (user decision, 53c1):** routes over the lane graph ignore windows beyond the look-ahead horizon (960 d).
+A slot window whose close equals the horizon end (the start of epoch `k + H`) plans as open with no close, and every
+edge carries `PlanOpenFromS` = the horizon end: a leg departing at or after it uses the lane as open whatever its known
+window (the current lane set past the horizon). The plan is re-planned at each node, when the real windows are known
+(Q14). A leg departing inside the horizon must fit its window. Measured on 2026-01-01: routes from Earth are found to
+10 of 23 nodes (the Moon, Mercury, Venus, Mars and six belt asteroids). The cause that day, from the slot windows:
+Venus-Earth and Earth-Mars are Sun-closed, and Mars-Jupiter, the only way outward, closes 0.5 d after the start against
+a 42.7 d leg, so nothing past Mars is reachable in time; every block lies inside the horizon.
+`SOLTest.LaneNetworkSubsystem.RouteQuery` asserts that the found set lies between a pessimistic earliest-arrival search
+(worst transfer at every node) and an optimistic one (free transfers), both 10 that day, and checks the router's
+plan-open rule directly (R11).
 
 ### 6.4 AUTO integration (Q11, Q13, Q15, Q16)
 
@@ -620,10 +680,9 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
   Upper bound **24 x 15,380 = 369,120 vertices** (all Full). Replaces `NPC_TUNNEL_VERTEX_BUDGET` / `_LANES` (the
   100,000 / 8 interim).
 - **Real worst case:** every lane of the set at once could need an instance only if all were above 0.5 px together;
-  the set holds about 34 lanes, 38 at most (4.3). Sampled estimate before O2 and O3: at most **8** lanes above 0.5 px
-  from one viewpoint (cameras at every node and lane midpoint every 10 days over 250 years, `Rt` at its 3 R maximum,
-  focal 960). The island links add at most 5 lanes, each ending at one node in Earth's group and one in the island,
-  so a single viewpoint gains at most a few: estimated **at most about 13**, still well under 24. Re-sampled in 53c.
+  the set holds at most **30 lanes** (mean 27.07, measured, 4.3), 38 at the hard bound. Measured with the final rules
+  (53c1): at most **8** tunnels above 0.5 px from one viewpoint (cameras at every node and every lane midpoint every
+  10 days over the 250 years, tunnel radius 3 lane radii, focal 960 reference px), well under the 24-instance pool.
   So the pool is not expected to fill, but can in principle.
 - **When the pool is full:** the drawn lanes are ranked by `r_max_px` and the smallest on screen lose their instance; a
   warning is logged once per change of the overflow, a stat counter shows it, and the user is told (the limitation,
@@ -733,6 +792,10 @@ The #52 gates (SDD 52 section 8, D18), at 1920x1080, 1M NPCs, plus new CPU gates
   over frames if missed); a route query <= 0.05 ms; the per-frame class pass (about 34 point-segment distances, 38 at
   most) <= 0.003 ms; a ship-block move <= 0.5 ms (partial rail upload); the AUTO
   lane rules get their own `SCOPE_CYCLE_COUNTER` (closes the SDD 50 debt).
+- **Measured (53c1), asserted by `SOLTest.LaneNetworkSubsystem.MeasuredCost`:** full rebuild 1.7-2.1 ms (gate 5 ms),
+  epoch step 0.0056-0.0077 ms per frame at 30 d/s and 60 fps (gate 0.01 ms; thin headroom). The rebuild meets its gate
+  through the parallel passes (16-core machine); its serial cost was about 8.8 ms. The route query, class pass and block move
+  gates are measured in their own parts. Caveat: the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred).
 - **Points draw:** no gate (SDD 52 D19), recorded against SDD 52's interleaved baseline. The flame CPU gate (#51 debt)
   is re-measured and reported, no fix in #53 (Q27).
 - **1M ramp:** every stage passes as in SDD 52 13.3.
@@ -752,11 +815,12 @@ in SDD 52; 3840x3744 and two-eye not measured.
 - **R5 multi-hop AUTO regressions:** per-hop `Left`, re-planning and the Sun detour (now on every AUTO order, War power
   included) touch the 50d review-fixed code; `AutopilotRegression.NoLaneBitIdentical` and the AUTO smokes guard it.
 - **R6 daily churn:** before O3, about 24 set changes a year and 17 % of partner episodes too short for a trip. The
-  partner hysteresis cuts both; island links have no hysteresis of their own and can still switch relay between two
-  nearly equal candidates from one day to the next (an empty, flickering link). Re-measured in 53c; if link churn is
+  partner hysteresis cuts both: measured 15.5 set changes a year and 393 of 3,694 episodes under 30 days (4.3). The
+  short ones are island links and lanes held by the other end, which have no hysteresis of their own and can still
+  switch relay between two nearly equal candidates from one day to the next (an empty, flickering link). If link churn is
   visible, a link hysteresis is a new decision for the user.
-- **R7 group columns:** about 60 of 64 with the island links (34 lanes), exactly 64 at the hard bound of 38 lanes, plus
-  lanes still in their 3 s fade under warp. Report if hit.
+- **R7 group columns:** 56 of 64 at the worst measured day (30 lanes + 10 clusters + 16 battles, no overflow day), exactly
+  64 at the hard bound of 38 lanes, plus lanes still in their 3 s fade under warp. Report if hit.
 - **R8 shader mirror drift:** windows, open fade and active flag go into `SOLNpcTraffic.ush` and `SOLNpcTunnel.ush` and
   their CPU mirrors in the same change.
 - **R9 re-epoch hitch** (existing debt) is untouched; block moves must use partial uploads, not the full re-epoch.
@@ -764,13 +828,18 @@ in SDD 52; 3840x3744 and two-eye not measured.
   O8).
 - **R11 islands (reduced by O2):** the island links put every node in Earth's graph every day, but a node can still be
   unreachable by route while its link is Sun-closed or its window is shorter than the leg (an Eris link of about 897 d
-  needs a window that long); AUTO then falls back to today's flight.
+  needs a window that long); AUTO then falls back to today's flight. **Horizon rule (6.3):** routes ignore windows beyond
+  the 960 d horizon (a leg departing past it uses the current lanes), but a window closing inside it still blocks.
+  Measured on 2026-01-01: routes from Earth are found to 10 of 23 nodes, because Mars-Jupiter closes 0.5 d after the
+  start (42.7 d leg) and Venus-Earth and Earth-Mars are Sun-closed; the outer system waits for the next re-plan.
 - **R12 docking pop (accepted, O9):** a promoted ship docks at its demotion; a lane ship that arrives at a node where
   the next leg is not flown disappears at the end ring, which can be on screen. No fade.
-- **R13 look-ahead rebuild hitch** on a time jump (5.3).
+- **R13 look-ahead rebuild hitch** on a time jump (5.3): measured 1.7-2.1 ms, but the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred). Recorded in `Docs/TECH_DEBT.md`.
+- **R13b router plan-open rule near the horizon is untested by a real route:** no route on 2026-01-01 reaches the horizon, and in v1 it is unreachable (12 hops x 42.7 d < 960 d); only the pure-math case covers it.
 - **R14 approximate normalisation** with ship blocks (4.5, O1, accepted).
-- **R15 Earth-Moon share:** with the sqrt weights about 12 % in the 2026-01-01 set and an estimated 9-14 % over the
-  daily sets (was 23-33 % with the plain product); re-measured in 53c (O6).
+- **R15 Earth-Moon share:** with the sqrt weights about 12 % in the 2026-01-01 set and a measured 9.9-13.6 % over the
+  daily sets (was 23-33 % with the plain product, O6). Until 53c2 the lane ships use the 8 base lanes only, so it is
+  about 31 % (accepted by the user).
 - **R16 draw gate at the new pool:** the 0.15 ms tunnel draw gate was set for 100,000 vertices; it is now measured with
   the pool full at up to 369,120 vertices and may miss (reported, not relaxed).
 - **R17 a player hop on a Gone lane:** a player finishing a hop on a lane that is no longer chosen still needs the
@@ -806,6 +875,15 @@ in SDD 52; 3840x3744 and two-eye not measured.
   times, reports a status (edge cap told apart from unreachable) and pins the current-windows limit (6.3). Scratch
   speed-ups with identical outputs (base-link masks, per-epoch distance matrix, incremental island search). No
   persistence change.
+
+- 2026-11-25: 53c1 review fixes. Performance: the full rebuild went from 39.3 ms to 1.7-2.1 ms and the epoch step from
+  0.0265 to 0.0056-0.0077 ms per frame (rings of epoch-start positions and clearance samples, bound-classified lanes,
+  shared distance matrix, parallel rebuild, 5.3), and the gates are asserted by `MeasuredCost`. Routing reach (user
+  decision): routes ignore windows beyond the 960 d horizon (6.3, R11). Time jumps: the clock counts its sets and the
+  NPC subsystem marks a jump (5.3, `NPC_LANE_NETWORK_CATCH_UP_EPOCHS`, `NPC_LANE_NODE_SPEED_MARGIN`,
+  `SIM_CLOCK_MAX_WARP`). Final-rule 250-year figures replace the derived ones (4.3, 4.4, 7.3, R6, R7, R15). The ring
+  buffer holds the entries `k .. k + H - 1` (5.3). `FSOLNpcGroupTable::LaneSlotCapacity` and `LaneSlotColumn` keep
+  schedule slots clear of the cluster and battle columns (53c2 uses them). No persistence change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
 

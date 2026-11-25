@@ -30,6 +30,11 @@ public:
     // next UpdateFromClock)
     void SetJulianDate(double julianDate);
 
+    // Returns how many times the sim time was set to a new date (a time jump, not the per-frame advance; holding the
+    // same pinned date again does not count); readers that keep time-derived state (the lane network, SDD 53 4.3)
+    // compare it each frame and rebuild when it changed
+    uint32 GetTimeSetCount() const { return mTimeSetCount; }
+
     // Returns the wrapped clock (read-only)
     const FSOLSimClock& GetClock() const { return mClock; }
 
@@ -55,5 +60,8 @@ protected:
 
 private:
 
-    FSOLSimClock mClock; // Sim time and warp state
+    FSOLSimClock mClock;            // Sim time and warp state
+    uint32 mTimeSetCount = 0;       // SetJulianDate calls with a new date so far
+    double mLastSetJulianDate = 0.0;    // The date of the last SetJulianDate
+    bool mHasSetJulianDate = false;
 };

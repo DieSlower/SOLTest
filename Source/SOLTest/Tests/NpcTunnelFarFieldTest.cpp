@@ -30,6 +30,8 @@ namespace
 {
     constexpr double NPCFF_TOL = 1.0e-9;
     constexpr double NPCFF_ALPHA_TOL = 1.0e-6;          // Slot alpha vs the reference (arcs up to 7.6e12 m)
+    constexpr double NPCFF_FLOAT_HALF_ULP = 5.9604644775390625e-8;     // 2^-24: float32 round-to-nearest, relative
+    constexpr double NPCFF_FAR_ARC_RELAX_LENGTH_M = 59.0 * SOL::AU_M;   // Lanes above 59 AU: far arc relaxed
     constexpr double NPCFF_NAN = std::numeric_limits<double>::quiet_NaN();
     constexpr double NPCFF_INF = std::numeric_limits<double>::infinity();
     constexpr double NPCFF_ASPECT = 16.0 / 9.0;         // The reference view's aspect
@@ -1375,10 +1377,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldFloatTest, "SOLTest.Npc.Tu
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 52 case 8 on every D2 lane up to 757,000 Rt (7.57e12 m): RingSlotOffsetM (the shader's float path: slot, phase,
-// Rt) matches the double offset w S0 within 1e-3 Rt for rings within 64 Rt of the foot point and within 1e-5 of the
-// distance beyond, always finite (no exp, no overflow); the tunnel texels carry the phase within 1e-6 and the end
-// arcs relative to the foot within 0.05 Rt
+// SDD 52 case 8 on every D2 lane up to 757,000 Rt (7.57e12 m) and on the 151 AU lane of SDD 53 4.7: RingSlotOffsetM
+// (the shader's float path: slot, phase, Rt) matches the double offset w S0 within 1e-3 Rt for rings within 64 Rt of
+// the foot point and within 1e-5 of the distance beyond, always finite (no exp, no overflow); the tunnel texels carry
+// the phase within 1e-6 and the end arcs relative to the foot within 0.05 Rt
 bool FSOLNpcTunnelFarFieldFloatTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -1386,7 +1388,14 @@ bool FSOLNpcTunnelFarFieldFloatTest::RunTest(const FString& /*parameters*/)
     const int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
     FNpcFarFieldFailures failures;
     int32 checked = 0;
-    for (const FNpcFarFieldLane& lane : NPCFF_LANES)
+
+    // The D2 lanes plus the longest lane the lane network can form (SDD 53 4.7, O8): an island link Eris - Makemake
+    // of 150.38 AU, pinned at 151 AU (the design bound; the longest lane observed over 250 years is Haumea-Eris at 149.08 AU) and at the minimum tunnel radius (lane radius 1e7 m x
+    // NPC_TUNNEL_RADIUS_MIN_SCALE), so the most lane radii any lane can span (about 2.26e6 Rt)
+    TArray<FNpcFarFieldLane, TInlineAllocator<8>> lanes(NPCFF_LANES, UE_ARRAY_COUNT(NPCFF_LANES));
+    const double longestRt = 1.0e7 * SOL::NPC_TUNNEL_RADIUS_MIN_SCALE;
+    lanes.Add({ TEXT("Eris-Makemake 151 AU"), 151.0 * SOL::AU_M / longestRt, longestRt, 1.163e6, 7.15e5 });
+    for (const FNpcFarFieldLane& lane : lanes)
     {
         const double rt = lane.TunnelRadiusM;
         const double s0 = NpcFarFieldS0(rt);
@@ -1428,13 +1437,21 @@ bool FSOLNpcTunnelFarFieldFloatTest::RunTest(const FString& /*parameters*/)
             const FVector4f& row2 = texels[2 * width];
             const FVector4f& row3 = texels[3 * width];
             TestEqual(FString::Printf(TEXT("%s: phase texel"), lane.Name), static_cast<double>(row2.W), phase, 1.0e-6);
+            // Accepted float32 error (user, 2026-11-25; Docs/TECH_DEBT.md): on a lane over about 59 AU the end arc far
+            // from the foot (50-150 AU from the camera, invisible there) is rounded to half a float32 ulp, which is
+            // above 0.05 Rt (up to 0.09 Rt at 151 AU); the near end, the one the camera can see, stays within 0.05 Rt
+            const bool bRelaxedFarArc = NpcFarFieldLengthM(lane) > NPCFF_FAR_ARC_RELAX_LENGTH_M;
+            const double arcATolerance = bRelaxedFarArc
+                ? FMath::Max(0.05 * rt, NPCFF_FLOAT_HALF_ULP * FMath::Abs(data.EndArcAM)) : 0.05 * rt;
+            const double arcBTolerance = bRelaxedFarArc
+                ? FMath::Max(0.05 * rt, NPCFF_FLOAT_HALF_ULP * FMath::Abs(data.EndArcBM)) : 0.05 * rt;
             TestEqual(FString::Printf(TEXT("%s: end arc A texel"), lane.Name), static_cast<double>(row3.X),
-                data.EndArcAM, 0.05 * rt);
+                data.EndArcAM, arcATolerance);
             TestEqual(FString::Printf(TEXT("%s: end arc B texel"), lane.Name), static_cast<double>(row3.Y),
-                data.EndArcBM, 0.05 * rt);
+                data.EndArcBM, arcBTolerance);
         }
     }
-    TestEqual(TEXT("every slot checked"), checked, 5 * 3 * RingSlotCount());
+    TestEqual(TEXT("every slot checked"), checked, lanes.Num() * 3 * RingSlotCount());
     if (!TestEqual(TEXT("float path within tolerance at every lane length"), failures.Count, 0))
     {
         AddInfo(TEXT("first: ") + failures.First);

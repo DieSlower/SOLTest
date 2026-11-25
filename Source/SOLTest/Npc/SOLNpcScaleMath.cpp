@@ -5,6 +5,9 @@
 
 #include "Npc/SOLNpcScaleMath.h"
 
+#include "Npc/SOLLaneNodeTable.h"
+#include "Traffic/SOLLaneNetworkMath.h"
+
 namespace
 {
     // Hash streams, one per hashed spawn field (any distinct values; new ones are appended so the battle and cluster
@@ -639,23 +642,23 @@ SOLNpcScale::FLayout SOLNpcScale::DefaultLayout()
 {
     FLayout layout;
 
-    // Lanes: body A, body B, capsule radius, weight (busier inner-system lanes weigh more)
+    // Lanes (the lane network's base lanes, slots 0-7, SDD 53 Q23): body A, body B, capsule radius; the weight is the
+    // population weight sqrt(tier A x tier B) of the node table's tiers (SDD 53 4.4, O6)
     struct FLaneRow
     {
         const TCHAR* BodyA;
         const TCHAR* BodyB;
         double RadiusM;
-        double Weight;
     };
     const FLaneRow lanes[] = {
-        { TEXT("Mercury"), TEXT("Venus"), 2.0e6, 1.0 },
-        { TEXT("Venus"), TEXT("Earth"), 2.0e6, 1.5 },
-        { TEXT("Earth"), TEXT("Moon"), 2.0e5, 1.0 },
-        { TEXT("Earth"), TEXT("Mars"), 3.0e6, 2.0 },
-        { TEXT("Mars"), TEXT("Jupiter"), 5.0e6, 1.5 },
-        { TEXT("Jupiter"), TEXT("Saturn"), 8.0e6, 1.0 },
-        { TEXT("Saturn"), TEXT("Uranus"), 1.0e7, 0.5 },
-        { TEXT("Uranus"), TEXT("Neptune"), 1.0e7, 0.5 },
+        { TEXT("Mercury"), TEXT("Venus"), 2.0e6 },
+        { TEXT("Venus"), TEXT("Earth"), 2.0e6 },
+        { TEXT("Earth"), TEXT("Moon"), 2.0e5 },
+        { TEXT("Earth"), TEXT("Mars"), 3.0e6 },
+        { TEXT("Mars"), TEXT("Jupiter"), 5.0e6 },
+        { TEXT("Jupiter"), TEXT("Saturn"), 8.0e6 },
+        { TEXT("Saturn"), TEXT("Uranus"), 1.0e7 },
+        { TEXT("Uranus"), TEXT("Neptune"), 1.0e7 },
     };
     for (const FLaneRow& row : lanes)
     {
@@ -663,7 +666,8 @@ SOLNpcScale::FLayout SOLNpcScale::DefaultLayout()
         lane.BodyA = FName(row.BodyA);
         lane.BodyB = FName(row.BodyB);
         lane.RadiusM = row.RadiusM;
-        lane.Weight = row.Weight;
+        lane.Weight = SOLLaneNetwork::LaneWeight(SOLLaneNodeTable::TierOf(lane.BodyA),
+            SOLLaneNodeTable::TierOf(lane.BodyB));
         layout.Lanes.Add(lane);
     }
 

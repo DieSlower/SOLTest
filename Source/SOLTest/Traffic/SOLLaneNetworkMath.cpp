@@ -163,6 +163,32 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Steps every taking-part node's pick one epoch in place (scratch masks built; positions cover the nodes)
+    void LaneGraphStepPicks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+        TConstArrayView<FSOLLanePair> baseLanes, FLaneGraphPickScratch& scratch, const int32 minStayEpochs,
+        const double switchRatio, TArray<FSOLPartnerPick>& inOutPicks)
+    {
+        // Each node's step reads only its own previous pick and this epoch's distances (NaN held distance when either
+        // end is no longer a candidate)
+        const int32 nodeCount = nodes.Num();
+        LaneGraphFillDistances(nodes, positionsM, scratch);
+        for (int32 node = 0; node < nodeCount; ++node)
+        {
+            if (!LaneGraphTakesPart(nodes[node].Kind))
+            {
+                continue;
+            }
+            double nearestDistance = LANEGRAPH_NAN;
+            const int32 nearest = LaneGraphNearestOf(nodes, positionsM, baseLanes, scratch, node, nearestDistance);
+            const int32 held = inOutPicks[node].Partner;
+            const double heldDistance = (held >= 0 && held < nodeCount)
+                ? scratch.DistanceM[node * nodeCount + held] : LANEGRAPH_NAN;
+            inOutPicks[node] = SOLLaneNetwork::StepPartnerPick(inOutPicks[node], nearest, nearestDistance,
+                heldDistance, minStayEpochs, switchRatio);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns the sorted pair of two node indices
     FSOLLanePair LaneGraphSortedPair(const int32 a, const int32 b)
     {
@@ -495,27 +521,35 @@ namespace SOLLaneNetwork
         FLaneGraphPickScratch scratch;
         LaneGraphBuildBaseMasks(baseLanes, nodeCount, scratch);
 
-        // One StepPartnerPick per taking-part node per epoch, with the nearest and held distances at that epoch (the
-        // held distance is NaN when either end is no longer a candidate)
+        // The same one-epoch step as StepPartnerPicks, so a replay equals a chain of steps bit for bit
         for (int32 epoch = 0; epoch < epochCount; ++epoch)
         {
-            const TConstArrayView<FVector3d> positions = positionsOldestFirstM.Slice(epoch * nodeCount, nodeCount);
-            LaneGraphFillDistances(nodes, positions, scratch);
-            for (int32 node = 0; node < nodeCount; ++node)
-            {
-                if (!LaneGraphTakesPart(nodes[node].Kind))
-                {
-                    continue;
-                }
-                double nearestDistance = LANEGRAPH_NAN;
-                const int32 nearest = LaneGraphNearestOf(nodes, positions, baseLanes, scratch, node, nearestDistance);
-                const int32 held = outPicks[node].Partner;
-                const double heldDistance = (held >= 0 && held < nodeCount)
-                    ? scratch.DistanceM[node * nodeCount + held] : LANEGRAPH_NAN;
-                outPicks[node] = StepPartnerPick(outPicks[node], nearest, nearestDistance, heldDistance,
-                    minStayEpochs, switchRatio);
-            }
+            LaneGraphStepPicks(nodes, positionsOldestFirstM.Slice(epoch * nodeCount, nodeCount), baseLanes, scratch,
+                minStayEpochs, switchRatio, outPicks);
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Steps every taking-part node's pick one epoch at the given positions; false (picks untouched) on short positions
+    bool StepPartnerPicks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+        TConstArrayView<FSOLLanePair> baseLanes, const int32 minStayEpochs, const double switchRatio,
+        TArray<FSOLPartnerPick>& inOutPicks)
+    {
+        const int32 nodeCount = nodes.Num();
+        if (positionsM.Num() < nodeCount)
+        {
+            return false;
+        }
+        if (inOutPicks.Num() != nodeCount)
+        {
+            inOutPicks.Reset();
+            inOutPicks.SetNum(nodeCount);
+        }
+        FLaneGraphPickScratch scratch;
+        LaneGraphBuildBaseMasks(baseLanes, nodeCount, scratch);
+        LaneGraphStepPicks(nodes, positionsM.Slice(0, nodeCount), baseLanes, scratch, minStayEpochs, switchRatio,
+            inOutPicks);
+        return true;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -610,6 +644,196 @@ namespace SOLLaneNetwork
             }
             outLinks.Add(best);
             LaneGraphUnion(parent, best.NodeA, best.NodeB);
+        }
+        outLinks.Sort([](const FSOLLanePair& a, const FSOLLanePair& b) { return LaneGraphPairLess(a, b); });
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Sets up the node kinds and base links of the epoch distances; false above 64 nodes
+    bool PrepareEpochDistances(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FSOLLanePair> baseLanes,
+        FSOLLaneEpochDistances& outDistances)
+    {
+        const int32 count = nodes.Num();
+        outDistances = FSOLLaneEpochDistances();
+        if (count > 64)
+        {
+            return false;
+        }
+        outDistances.NodeCount = count;
+        outDistances.BaseMask.Init(0, count);
+        outDistances.DistanceM.Init(LANEGRAPH_NAN, count * count);
+        for (int32 node = 0; node < count; ++node)
+        {
+            outDistances.TakesPartMask |= LaneGraphTakesPart(nodes[node].Kind) ? uint64(1) << node : 0;
+        }
+        for (const FSOLLanePair& lane : baseLanes)
+        {
+            if (lane.NodeA >= 0 && lane.NodeA < count && lane.NodeB >= 0 && lane.NodeB < count)
+            {
+                outDistances.BaseMask[lane.NodeA] |= uint64(1) << lane.NodeB;
+                outDistances.BaseMask[lane.NodeB] |= uint64(1) << lane.NodeA;
+            }
+        }
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Fills the candidate mask and the symmetric distance matrix (NaN unless both ends are candidates)
+    void FillEpochDistances(TConstArrayView<FVector3d> positionsM, FSOLLaneEpochDistances& inOutDistances)
+    {
+        const int32 count = inOutDistances.NodeCount;
+        uint64 candidates = 0;
+        for (int32 node = 0; node < count && node < positionsM.Num(); ++node)
+        {
+            const bool bCandidate = ((inOutDistances.TakesPartMask >> node) & 1) != 0
+                && LaneGraphIsFinite(positionsM[node]);
+            candidates |= bCandidate ? uint64(1) << node : 0;
+        }
+        inOutDistances.CandidateMask = candidates;
+        double* matrix = inOutDistances.DistanceM.GetData();
+        for (int32 index = 0; index < count * count; ++index)
+        {
+            matrix[index] = LANEGRAPH_NAN;
+        }
+
+        // Each candidate pair once, the same value both ways (|b - a| and |a - b| are the same bits)
+        for (uint64 restA = candidates; restA != 0; restA &= restA - 1)
+        {
+            const int32 a = static_cast<int32>(FPlatformMath::CountTrailingZeros64(restA));
+            const uint64 above = a < 63 ? candidates & (~uint64(0) << (a + 1)) : 0;
+            for (uint64 restB = above; restB != 0; restB &= restB - 1)
+            {
+                const int32 b = static_cast<int32>(FPlatformMath::CountTrailingZeros64(restB));
+                const double distance = (positionsM[b] - positionsM[a]).Length();
+                matrix[a * count + b] = distance;
+                matrix[b * count + a] = distance;
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes each node's nearest non-base-linked candidate and its distance from filled distances (LaneGraphNearestOf)
+    void NearestFromDistances(const FSOLLaneEpochDistances& distances, TArrayView<int32> outNearest,
+        TArrayView<double> outNearestDistanceM)
+    {
+        const int32 count = FMath::Min3(distances.NodeCount, outNearest.Num(), outNearestDistanceM.Num());
+        const double* matrix = distances.DistanceM.GetData();
+        for (int32 node = 0; node < count; ++node)
+        {
+            // Ties go to the lower index; NaN (no candidate) never compares below
+            int32 nearest = INDEX_NONE;
+            double bestDistance = LANEGRAPH_INF;
+            if (((distances.CandidateMask >> node) & 1) != 0)
+            {
+                const double* row = matrix + node * distances.NodeCount;
+                const uint64 baseMask = distances.BaseMask[node];
+                for (int32 other = 0; other < distances.NodeCount; ++other)
+                {
+                    const double distance = row[other];
+                    if (other == node || !(distance < bestDistance) || ((baseMask >> other) & 1) != 0)
+                    {
+                        continue;
+                    }
+                    bestDistance = distance;
+                    nearest = other;
+                }
+            }
+            outNearest[node] = nearest;
+            outNearestDistanceM[node] = nearest != INDEX_NONE ? bestDistance : LANEGRAPH_NAN;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // IslandLinks over filled distances: components as bit masks, the same scan order and tie rules
+    void IslandLinksFromDistances(const FSOLLaneEpochDistances& distances, TConstArrayView<FSOLLanePair> lanes,
+        const int32 rootNode, TArray<FSOLLanePair>& outLinks)
+    {
+        outLinks.Reset();
+        const int32 count = distances.NodeCount;
+        if (rootNode < 0 || rootNode >= count)
+        {
+            return;
+        }
+
+        // Adjacency through the epoch's lanes (lanes naming no node are ignored)
+        uint64 adjacency[64] = {};
+        for (const FSOLLanePair& lane : lanes)
+        {
+            if (lane.NodeA >= 0 && lane.NodeA < count && lane.NodeB >= 0 && lane.NodeB < count)
+            {
+                adjacency[lane.NodeA] |= uint64(1) << lane.NodeB;
+                adjacency[lane.NodeB] |= uint64(1) << lane.NodeA;
+            }
+        }
+
+        // Returns the component mask of a node through the lanes
+        const auto componentOf = [&adjacency](const int32 start)
+        {
+            uint64 reached = uint64(1) << start;
+            uint64 frontier = reached;
+            while (frontier != 0)
+            {
+                uint64 next = 0;
+                for (uint64 rest = frontier; rest != 0; rest &= rest - 1)
+                {
+                    next |= adjacency[FPlatformMath::CountTrailingZeros64(rest)];
+                }
+                frontier = next & ~reached;
+                reached |= next;
+            }
+            return reached;
+        };
+
+        // Newly joined relays update every outside candidate's best (distance, sorted pair); then the smallest joins
+        const double* matrix = distances.DistanceM.GetData();
+        const uint64 candidates = distances.CandidateMask;
+        double bestDistanceByNode[64];
+        FSOLLanePair bestPairByNode[64];
+        for (int32 node = 0; node < count; ++node)
+        {
+            bestDistanceByNode[node] = LANEGRAPH_INF;
+        }
+        uint64 rootMask = componentOf(rootNode);
+        uint64 joinedMask = 0;
+        for (;;)
+        {
+            const uint64 newlyJoined = rootMask & ~joinedMask;
+            joinedMask |= newlyJoined;
+            for (uint64 restU = newlyJoined & candidates; restU != 0; restU &= restU - 1)
+            {
+                const int32 u = static_cast<int32>(FPlatformMath::CountTrailingZeros64(restU));
+                for (uint64 restV = candidates & ~rootMask; restV != 0; restV &= restV - 1)
+                {
+                    const int32 v = static_cast<int32>(FPlatformMath::CountTrailingZeros64(restV));
+                    const double distance = matrix[u * count + v];
+                    const FSOLLanePair pair = LaneGraphSortedPair(u, v);
+                    if (distance < bestDistanceByNode[v]
+                        || (distance == bestDistanceByNode[v] && LaneGraphPairLess(pair, bestPairByNode[v])))
+                    {
+                        bestDistanceByNode[v] = distance;
+                        bestPairByNode[v] = pair;
+                    }
+                }
+            }
+            FSOLLanePair best;
+            double bestDistance = LANEGRAPH_INF;
+            for (uint64 restV = candidates & ~rootMask; restV != 0; restV &= restV - 1)
+            {
+                const int32 v = static_cast<int32>(FPlatformMath::CountTrailingZeros64(restV));
+                const FSOLLanePair& pair = bestPairByNode[v];
+                if (pair.NodeA != INDEX_NONE && (bestDistanceByNode[v] < bestDistance
+                    || (bestDistanceByNode[v] == bestDistance && LaneGraphPairLess(pair, best))))
+                {
+                    bestDistance = bestDistanceByNode[v];
+                    best = pair;
+                }
+            }
+            if (best.NodeA == INDEX_NONE)
+            {
+                break;
+            }
+            outLinks.Add(best);
+            rootMask |= componentOf(((rootMask >> best.NodeA) & 1) != 0 ? best.NodeB : best.NodeA);
         }
         outLinks.Sort([](const FSOLLanePair& a, const FSOLLanePair& b) { return LaneGraphPairLess(a, b); });
     }
@@ -974,9 +1198,11 @@ namespace SOLLaneNetwork
                     transferS = NodeTransferTimeS(arrivingRing, leavingRing, arrivingOutward, leavingOutward,
                         wallSpeedMps, penaltyS);
                 }
+                // A departure at or after the edge's plan-open time (past the look-ahead) uses the lane as open
                 const double departElapsedS = router.ElapsedS[state] + transferS;
-                if (!FMath::IsFinite(departElapsedS)
-                    || !LegFitsWindow(startS + departElapsedS, edge.TimeS, edge.OpenStartS, edge.CloseS))
+                const double departS = startS + departElapsedS;
+                if (!FMath::IsFinite(departElapsedS) || (!(departS >= edge.PlanOpenFromS)
+                    && !LegFitsWindow(departS, edge.TimeS, edge.OpenStartS, edge.CloseS)))
                 {
                     continue;
                 }

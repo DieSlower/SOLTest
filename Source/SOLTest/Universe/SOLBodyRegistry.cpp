@@ -488,6 +488,49 @@ const FSOLSecularElements& FSOLBodyRegistry::GetElements(const int32 index) cons
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the GM the body's own orbit is propagated with
+double FSOLBodyRegistry::GetOrbitGM(const int32 index) const
+{
+    return mOrbitGMs[index];
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the body's Sun-frame position at a sim time: the parent chain summed from the root down, as Update does
+FVector3d FSOLBodyRegistry::ComputePositionAtM(const int32 index, const double secondsSinceJ2000) const
+{
+    constexpr int32 maxDepth = 8;
+    int32 chain[maxDepth];
+    int32 depth = 0;
+    for (int32 body = index; body != INDEX_NONE && depth < maxDepth; body = mParents[body])
+    {
+        chain[depth++] = body;
+    }
+
+    // The root (last in the chain) stays at the origin; each child adds its parent-relative position
+    const double centuries = secondsSinceJ2000 / SOL::SECONDS_PER_JULIAN_CENTURY;
+    FVector3d positionM = FVector3d::ZeroVector;
+    for (int32 link = depth - 2; link >= 0; --link)
+    {
+        const int32 body = chain[link];
+        positionM = positionM + SOLKepler::ElementsToPositionM(mElements[body].AtCenturies(centuries), mOrbitGMs[body],
+            0.0);
+    }
+    return positionM;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the body's parent-relative position at a sim time (zero for a root body)
+FVector3d FSOLBodyRegistry::ComputeRelativePositionAtM(const int32 index, const double secondsSinceJ2000) const
+{
+    if (mParents[index] == INDEX_NONE)
+    {
+        return FVector3d::ZeroVector;
+    }
+    return SOLKepler::ElementsToPositionM(mElements[index].AtCenturies(secondsSinceJ2000
+        / SOL::SECONDS_PER_JULIAN_CENTURY), mOrbitGMs[index], 0.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns all Sun-frame positions, indexed like the bodies
 TConstArrayView<FVector3d> FSOLBodyRegistry::GetPositionsM() const
 {

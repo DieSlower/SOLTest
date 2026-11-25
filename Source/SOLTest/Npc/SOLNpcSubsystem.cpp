@@ -7,6 +7,8 @@
 
 #include "Game/SOLGameMode.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "MinorBodies/SOLAsteroidBelt.h"
+#include "Npc/SOLLaneNodeTable.h"
 #include "Npc/SOLNpcAiMath.h"
 #include "Npc/SOLNpcFragments.h"
 #include "Npc/SOLNpcFullAiProcessor.h"
@@ -578,6 +580,7 @@ void USOLNpcSubsystem::Despawn()
         ? GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>() : nullptr)
     {
         laneTraffic->ClearLanes();
+        laneTraffic->ClearNetwork();
     }
 }
 
@@ -695,6 +698,31 @@ void USOLNpcSubsystem::Spawn(const int32 count)
     {
         // The lane table for the HUD's merge readout (SDD 50 section 4.10), frozen with the profiles
         laneTraffic->SetLanes(mGroups.LaneBodyA, mGroups.LaneBodyB, mGroups.LaneProfile);
+
+        // The lane network (SDD 53 4.2-4.3): the 24-node table at the spawn epoch and its positions from the registry
+        // and the belt catalogue; the schedule is built on the first Update
+        SOLLaneNodeTable::FTable nodeTable = SOLLaneNodeTable::Build(registry, SOLAsteroidBelt::RealAsteroids(),
+            layout.Lanes, mEpochSecondsSinceJ2000);
+        if (nodeTable.bValid)
+        {
+            FSOLLaneNetworkConfig config;
+            config.Nodes = nodeTable.Nodes;
+            config.NodeMaxSpeedMps = nodeTable.MaxSpeedMps;
+            config.BaseLanes = nodeTable.BaseLanes;
+            config.RootNode = SOLLaneNodeTable::EARTH_NODE;
+            config.SlotCapacity = mGroups.LaneSlotCapacity();   // Slot columns: FSOLNpcGroupTable::LaneSlotColumn
+            const FSOLBodyRegistry* registryPtr = &registry;
+            laneTraffic->ConfigureNetwork(config, [registryPtr, table = MoveTemp(nodeTable)](
+                const double secondsSinceJ2000, TArrayView<FVector3d> outPositionsM)
+            {
+                SOLLaneNodeTable::PositionsAt(table, *registryPtr, secondsSinceJ2000, outPositionsM);
+            });
+        }
+        else
+        {
+            UE_LOG(LogSOL, Warning, TEXT("Lane network: node table incomplete, no lane network"));
+            laneTraffic->ClearNetwork();
+        }
     }
 
     // (3) Rails for every NPC index, in parallel blocks (stateless per-index hash), and each block's largest lane peak
@@ -944,6 +972,18 @@ void USOLNpcSubsystem::Update()
     const double aiKeepScale = 1.0 + FMath::Max(mOptions.AiHysteresis, 0.0);
     const FVector3d viewpointM = Anchor->GetViewpointM();
     const double railTimeS = SimClock->GetClock().GetSecondsSinceJ2000() - mEpochSecondsSinceJ2000;
+    if (USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>())
+    {
+        // The lane network's epoch (SDD 53 5.3): nothing while the epoch holds, a step per new epoch, a rebuild on
+        // a jump (a clock set, even within the catch-up limit, or a move past it); read by no traffic yet (53c2 wires
+        // the ships to it)
+        if (SimClock->GetTimeSetCount() != mSeenClockTimeSetCount)
+        {
+            mSeenClockTimeSetCount = SimClock->GetTimeSetCount();
+            laneTraffic->MarkNetworkTimeJump();
+        }
+        laneTraffic->AdvanceNetwork(SimClock->GetClock().GetSecondsSinceJ2000());
+    }
     SOLNpcRail::BuildFrame(mGroups, BodyRegistry->GetRegistry().GetPositionsM(), railTimeS, mRailFrame);
     if (mPendingFaceBattle != INDEX_NONE)
     {

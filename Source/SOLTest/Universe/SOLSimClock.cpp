@@ -14,6 +14,8 @@ namespace
     // Sim seconds per real second: 1x, 10x, 100x, 1000x, 1 h/s, 1 d/s, 10 d/s, 30 d/s
     constexpr double SIMCLOCK_WARP_FACTORS[] = { 1.0, 10.0, 100.0, 1000.0, 3600.0, 86400.0, 864000.0, 2592000.0 };
     constexpr int32 SIMCLOCK_WARP_COUNT = UE_ARRAY_COUNT(SIMCLOCK_WARP_FACTORS);
+    static_assert(SIMCLOCK_WARP_FACTORS[SIMCLOCK_WARP_COUNT - 1] == SOL::SIM_CLOCK_MAX_WARP,
+        "SOL::SIM_CLOCK_MAX_WARP is the top warp step");
 }
 
 //////////////////////////////////////////////////////////////////////////

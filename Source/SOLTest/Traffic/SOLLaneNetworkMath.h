@@ -56,6 +56,8 @@ struct FSOLLaneEdge
     double TimeS = 0.0;                                                 // T_edge, same both ways
     double OpenStartS = -std::numeric_limits<double>::infinity();      // The lane's current open window (SDD 53 5.4)
     double CloseS = std::numeric_limits<double>::infinity();
+    double PlanOpenFromS = std::numeric_limits<double>::infinity();    // A departure from here ignores the window
+                                                                        // (the horizon rule, SDD 53 6.3)
     FVector3d DirectionAB = FVector3d::ZeroVector;                      // Unit, NodeA -> NodeB
     double EndRingDistanceAM = 0.0;                                     // End-ring distance from each node's centre
     double EndRingDistanceBM = 0.0;
@@ -110,8 +112,37 @@ struct FSOLPartnerPick
     int32 StayEpochs = 0;
 };
 
+// One epoch's pair distances for the schedule's fast path (SDD 53 5.3), up to 64 nodes: the taking-part nodes and the
+// candidates (taking part, finite position) as bit masks, each node's base-linked partners, and the symmetric centre
+// distance matrix (NaN where an end is no candidate). The nearest partners and the island links of an epoch share
+// it, so each pair's distance is computed once per epoch; the results equal StepPartnerPicks' nearest and IslandLinks
+struct FSOLLaneEpochDistances
+{
+    int32 NodeCount = 0;
+    uint64 TakesPartMask = 0;
+    uint64 CandidateMask = 0;
+    TArray<uint64> BaseMask;        // Per node
+    TArray<double> DistanceM;       // NodeCount x NodeCount
+};
+
 namespace SOLLaneNetwork
 {
+    // Sets up the distances' node kinds and base links (once per node set); false above 64 nodes
+    SOLTEST_API bool PrepareEpochDistances(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FSOLLanePair> baseLanes,
+        FSOLLaneEpochDistances& outDistances);
+
+    // Fills the candidate mask and the distance matrix for one epoch's positions (they must cover the nodes)
+    SOLTEST_API void FillEpochDistances(TConstArrayView<FVector3d> positionsM, FSOLLaneEpochDistances& inOutDistances);
+
+    // Writes each node's nearest candidate not base-linked to it and that distance from filled distances (ties to the
+    // lower index; INDEX_NONE and NaN for a node that is no candidate or has none): StepPartnerPicks' nearest
+    SOLTEST_API void NearestFromDistances(const FSOLLaneEpochDistances& distances, TArrayView<int32> outNearest,
+        TArrayView<double> outNearestDistanceM);
+
+    // IslandLinks over filled distances
+    SOLTEST_API void IslandLinksFromDistances(const FSOLLaneEpochDistances& distances,
+        TConstArrayView<FSOLLanePair> lanes, int32 rootNode, TArray<FSOLLanePair>& outLinks);
+
     // Writes the sorted, de-duplicated pairs of each taking-part node's nearest non-base-linked partner (no hysteresis)
     SOLTEST_API void NextClosestPairs(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
         TConstArrayView<FSOLLanePair> baseLanes, TArray<FSOLLanePair>& outNew);
@@ -131,6 +162,12 @@ namespace SOLLaneNetwork
     SOLTEST_API void ReplayPartnerPicks(TConstArrayView<FSOLLaneNode> nodes,
         TConstArrayView<FVector3d> positionsOldestFirstM, int32 epochCount, TConstArrayView<FSOLLanePair> baseLanes,
         int32 minStayEpochs, double switchRatio, TArray<FSOLPartnerPick>& outPicks);
+
+    // Steps every taking-part node's pick one epoch at positionsM (the look-ahead buffer's step; picks of a wrong size
+    // start empty); false, picks untouched, when the positions do not cover the nodes
+    SOLTEST_API bool StepPartnerPicks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,
+        TConstArrayView<FSOLLanePair> baseLanes, int32 minStayEpochs, double switchRatio,
+        TArray<FSOLPartnerPick>& inOutPicks);
 
     // Writes the sorted island links that join every candidate component to the root group (O2; never from a Moon)
     SOLTEST_API void IslandLinks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVector3d> positionsM,

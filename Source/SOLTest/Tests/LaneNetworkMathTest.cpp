@@ -628,6 +628,26 @@ bool FSOLLaneNetworkPartnerHysteresisTest::RunTest(const FString& /*parameters*/
                 heldDistance, minStay, ratio);
             LaneNetPickIs(*this, FString::Printf(TEXT("consecutive n %d node %d"), n, node), next[node], stepped);
         }
+
+        // StepPartnerPicks (the look-ahead buffer's step, 53c) is that same step for every node at once
+        TArray<FSOLPartnerPick> bufferStep = previous;
+        TestTrue(FString::Printf(TEXT("StepPartnerPicks n %d: stepped"), n),
+            SOLLaneNetwork::StepPartnerPicks(nodes, slice, noBase, minStay, ratio, bufferStep));
+        LaneNetPicksMatch(*this, FString::Printf(TEXT("StepPartnerPicks n %d"), n), bufferStep, next);
+    }
+
+    // StepPartnerPicks from no picks (a wrong-sized array starts empty) equals a one-epoch replay; short positions
+    // leave the picks untouched
+    {
+        TArray<FSOLPartnerPick> stepped = { LaneNetPick(9, 9) };
+        TArray<FSOLPartnerPick> replayed;
+        SOLLaneNetwork::StepPartnerPicks(nodes, LaneNetEpochSlice(series, 0, 3), noBase, minStay, ratio, stepped);
+        SOLLaneNetwork::ReplayPartnerPicks(nodes, series, 1, noBase, minStay, ratio, replayed);
+        LaneNetPicksMatch(*this, TEXT("StepPartnerPicks from empty"), stepped, replayed);
+        TArray<FSOLPartnerPick> untouched = { LaneNetPick(9, 9) };
+        TestFalse(TEXT("StepPartnerPicks short positions: false"), SOLLaneNetwork::StepPartnerPicks(nodes,
+            TArray<FVector3d>{ FVector3d::ZeroVector }, noBase, minStay, ratio, untouched));
+        TestEqual(TEXT("StepPartnerPicks short positions: untouched"), untouched.Num(), 1);
     }
 
     // Start dependence: the same positions replayed from e1

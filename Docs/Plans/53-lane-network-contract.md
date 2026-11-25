@@ -34,6 +34,9 @@ metres, sim seconds, double. Inputs are plain arrays; nothing reads the registry
 | `NPC_TUNNEL_RING_SLOTS_PER_SIDE` | int32 | 160 | pinned (Q19; was 80); full slot mesh 15,380 vertices |
 | `NPC_TUNNEL_INSTANCE_POOL` | int32 | 24 | pinned (Q18); invariant: <= `NPC_GROUP_TEXTURE_WIDTH` |
 | `NPC_LANE_ROUTE_MAX_HOPS` | int32 | 12 | implementer; invariant: >= 8 |
+| `NPC_LANE_NETWORK_CATCH_UP_EPOCHS` | int32 | 16 | implemented in 53c1; a forward clock move of up to this many epochs is stepped one by one, more, backward or a marked clock set rebuilds; invariant: 1 <= it < `NPC_LANE_NETWORK_HORIZON_EPOCHS`, and it x `NPC_LANE_NETWORK_EPOCH_S` >= `MAX_FRAME_DELTA_S` (0.5 s) x `SIM_CLOCK_MAX_WARP` (`static_assert`: one clamped frame at the top warp moves at most 15 epochs and always steps) |
+| `NPC_LANE_NODE_SPEED_MARGIN` | double | 1.1 | implemented in 53c1; node speed bound = perihelion speed x this (the Moon adds Earth's), covers secular drift, used by the Sun clearance bound; invariant: >= 1 |
+| `SIM_CLOCK_MAX_WARP` | double | 2,592,000 | implemented in 53c1; the clock's top warp step, 30 d/s, `static_assert`-tied to the warp table |
 
 Existing constants used (not changed): `SUN_RADIUS_M` 6.957e8, `NPC_GROUP_TEXTURE_WIDTH` 64,
 `NPC_LANE_AUTO_TRACK_WALL_RADII` 0.25, `NPC_LANE_EFFORT_MEAN` 0.75, `NPC_LANE_WALL_SPEED_MPS` 2e4,
@@ -177,6 +180,12 @@ void ReplayPartnerPicks(TConstArrayView<FSOLLaneNode> nodes, TConstArrayView<FVe
     3) give {2, 3}, {2, 3}, {0, 3}: node 2 holds 0, not 1, so a warm-up start changes picks; this is why the warm-up
     runs only after a time jump and the buffer steps otherwise (SDD 53 4.3).
   - **Determinism:** two calls with the same inputs give bit-identical output.
+- `bool StepPartnerPicks(nodes, positionsM, baseLanes, minStayEpochs, switchRatio, TArray<FSOLPartnerPick>&
+  inOutPicks)` (added in 53c, the look-ahead buffer's step): one `StepPartnerPick` per taking-part node at
+  `positionsM`, nearest and held distance as in the replay; picks of a size other than `nodes.Num()` start as
+  {INDEX_NONE, 0}; positions shorter than the nodes: false, picks untouched. For the series above, the step from the
+  replay over e0 .. e(n-1) equals the replay over e0 .. e(n) (n 1 to 3), and from no picks it equals a one-epoch
+  replay. `ReplayPartnerPicks` is built on the same step, so a replay equals a chain of steps bit for bit.
 
 ### 1c. `IslandLinks` (case `IslandLinks`, O2)
 
@@ -535,3 +544,28 @@ radius `NPC_LANE_SUN_REOPEN_RADII x SUN_RADIUS_M` (1.53054e10 m); the tests pass
   1.53054e10, 0). Target (2e10, 0, 0): unchanged. Ship (0, 0, 0), target (1e9, 0, 0): (0, 0, 1.53054e10).
 - The detour waypoint (one point on the edge sphere, in the plane of the Sun, the ship and the target, on the side
   nearer the ship's velocity, SDD 53 6.5) and the plan logic are specified by the 53e test author before that code.
+
+## 53c1 additions (schedule, implemented after 53a/53b)
+
+Added by part 53c1 (SDD 53 5.3, 6.3). Not part of the 53a test-first set. Tests in `Tests/LaneNetworkSubsystemTest.cpp`
+(`SOLTest.LaneNetworkSubsystem.*`) and `NpcRail.LaneSlotColumns`.
+
+**Positions function:** the schedule takes a node-positions function that must be a **pure function of time** (it is
+called from worker threads in the parallel rebuild), the same position for the same time, no shared mutable state.
+
+| API | Notes |
+|---|---|
+| `SOLKepler::ElementsToPositionM(elements, gm, elapsedSeconds)` (`Universe/SOLKepler.h`) | position only, no velocity; `FVector3d` metres |
+| `FSOLBodyRegistry::ComputeRelativePositionAtM(index, secondsSinceJ2000)` (`Universe/SOLBodyRegistry.h`) | a body's position relative to its parent at a time; the Moon adds it to Earth's (no chain re-walk) |
+| `FSOLLaneEpochDistances` (`SOLLaneNetworkMath.h`) | one epoch's pair distances, up to 64 nodes: taking-part and candidate bit masks, per-node base-link masks, symmetric distance matrix (NaN where an end is no candidate) |
+| `PrepareEpochDistances(nodes, baseLanes, out)` | node kinds and base links, once per node set; false above 64 nodes |
+| `FillEpochDistances(positionsM, inOut)` | candidate mask and distance matrix for one epoch's positions |
+| `NearestFromDistances(distances, outNearest, outNearestDistanceM)` | each node's nearest candidate not base-linked to it, ties to the lower index, `INDEX_NONE` and NaN if none; equals `StepPartnerPicks`' nearest |
+| `IslandLinksFromDistances(distances, lanes, rootNode, outLinks)` | `IslandLinks` over filled distances; equals `IslandLinks`; the tests check both daily |
+| `FSOLLaneNetworkSchedule::GetHorizonEndS()` | the start of epoch `k + H`, where a lane open through the last buffer entry closes |
+| `FSOLLaneNetworkSchedule::FindRoute(source, target, startS, slotProfiles, wallSpeedMps, penaltyS)` | `FindFastestRoute` over the slot lanes; **horizon rule:** a window whose close equals the horizon end plans as open with no close (no close beyond 960 d), windows that close inside the horizon are respected (SDD 53 6.3) |
+| `USOLLaneTrafficSubsystem::MarkNetworkTimeJump()` | the next `AdvanceNetwork` rebuilds |
+| `USOLSimClockSubsystem::GetTimeSetCount()` | counts `SetJulianDate` calls with a new date (holding the same pinned date counts once); `USOLNpcSubsystem` compares it each frame before `AdvanceNetwork` |
+| `FSOLLaneEdge::PlanOpenFromS` | default +inf; a departure at or after it ignores the edge's window (the schedule sets the horizon end, SDD 53 6.3) |
+| `FSOLNpcGroupTable::LaneSlotCapacity()` | lane network slots the group texture leaves: 64 - clusters - battles |
+| `FSOLNpcGroupTable::LaneSlotColumn(slot)` | base slots 0 .. `LaneCount` - 1 keep their lane columns, slots from `LaneCount` on map to `slot + clusters + battles`, `INDEX_NONE` past the capacity; 53c2 uses it for schedule slots 8 and up |

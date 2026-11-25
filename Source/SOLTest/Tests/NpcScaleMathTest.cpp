@@ -1318,6 +1318,25 @@ bool FSOLNpcScaleDefaultLayoutTest::RunTest(const FString& /*parameters*/)
         TestTrue(*(TEXT("Lane radius > 0: ") + label), lane.RadiusM > 0.0 && FMath::IsFinite(lane.RadiusM));
         TestTrue(*(TEXT("Lane weight > 0: ") + label), lane.Weight > 0.0 && FMath::IsFinite(lane.Weight));
     }
+
+    // Re-pinned for issue #53 (SDD 53 Q23, 4.4): the layout's lanes are the lane network's 8 base lanes, slots 0-7 in
+    // this order, weighted sqrt(tier A x tier B) (Earth 10, Moon 10, Mars 6, Mercury / Venus / Jupiter / Saturn 2,
+    // Uranus / Neptune 1); the old hand weights (1, 1.5, 1, 2, 1.5, 1, 0.5, 0.5) are gone
+    const TCHAR* baseNames[8][2] = { { TEXT("Mercury"), TEXT("Venus") }, { TEXT("Venus"), TEXT("Earth") },
+        { TEXT("Earth"), TEXT("Moon") }, { TEXT("Earth"), TEXT("Mars") }, { TEXT("Mars"), TEXT("Jupiter") },
+        { TEXT("Jupiter"), TEXT("Saturn") }, { TEXT("Saturn"), TEXT("Uranus") }, { TEXT("Uranus"), TEXT("Neptune") } };
+    const double baseWeights[8] = { 2.0, FMath::Sqrt(20.0), 10.0, FMath::Sqrt(60.0), FMath::Sqrt(12.0), 2.0,
+        FMath::Sqrt(2.0), 1.0 };
+    if (TestEqual(TEXT("8 base lanes"), layout.Lanes.Num(), SOL::NPC_LANE_BASE_COUNT))
+    {
+        for (int32 lane = 0; lane < SOL::NPC_LANE_BASE_COUNT; ++lane)
+        {
+            TestTrue(FString::Printf(TEXT("base lane %d bodies"), lane), layout.Lanes[lane].BodyA
+                == FName(baseNames[lane][0]) && layout.Lanes[lane].BodyB == FName(baseNames[lane][1]));
+            TestEqual(FString::Printf(TEXT("base lane %d weight"), lane), layout.Lanes[lane].Weight,
+                baseWeights[lane], 1.0e-12);
+        }
+    }
     bool bHasBelt = false;
     for (const FClusterDef& cluster : layout.Clusters)
     {

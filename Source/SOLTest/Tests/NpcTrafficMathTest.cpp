@@ -1325,7 +1325,9 @@ bool FSOLNpcTrafficMathLaneProfileTest::RunTest(const FString& /*parameters*/)
             NPCTRAFFIC_URANUS_APHELION_M + NPCTRAFFIC_NEPTUNE_APHELION_M },
     };
     const SOLNpcScale::FLayout layout = SOLNpcScale::DefaultLayout();
-    TestEqual(TEXT("the default layout has the 8 lanes of the table"), layout.Lanes.Num(),
+    // Still 8 since issue #53: the layout's lanes are the lane network's base lanes (slots 0-7, SDD 53 Q23; only their
+    // weights changed, to sqrt of the tier product); partner lanes and island links come from the lane network
+    TestEqual(TEXT("the default layout has the 8 base lanes of the table"), layout.Lanes.Num(),
         static_cast<int32>(UE_ARRAY_COUNT(table)));
     for (const FDefaultLane& row : table)
     {

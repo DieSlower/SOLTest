@@ -298,6 +298,10 @@ private:
     int32 mCombatModel = SOL::NPC_COMBAT_DEFAULT_MODEL;
     int32 mLastSeenCVarCombatModel = SOL::NPC_COMBAT_DEFAULT_MODEL;
 
+    // The sim clock's time-set count last seen: a change (any SetJulianDate) marks a lane network time jump
+    // (SDD 53 4.3)
+    uint32 mSeenClockTimeSetCount = 0;
+
     // Stats overlay (Part 10e)
     bool mIsStatsVisible = false;
     TArray<double> mOverlayFrameMs;                         // Ring of the last NPC_STATS_FRAME_WINDOW frame times

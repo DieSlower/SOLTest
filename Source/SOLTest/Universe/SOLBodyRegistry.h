@@ -71,6 +71,15 @@ public:
     // Returns the body's secular orbital elements relative to its parent (unused for the Sun)
     const FSOLSecularElements& GetElements(int32 index) const;
 
+    // Returns the GM the body's own orbit about its parent is propagated with (0 for a root body)
+    double GetOrbitGM(int32 index) const;
+
+    // Returns the body's Sun-frame position at any sim time without touching the stored state (the same sums as Update)
+    FVector3d ComputePositionAtM(int32 index, double secondsSinceJ2000) const;
+
+    // Returns the body's position relative to its parent at any sim time (zero for a root body)
+    FVector3d ComputeRelativePositionAtM(int32 index, double secondsSinceJ2000) const;
+
     // Returns all Sun-frame positions, indexed like the bodies
     TConstArrayView<FVector3d> GetPositionsM() const;
 

@@ -321,7 +321,8 @@ namespace
         double NominalLengthM;
     };
 
-    // Every default lane (SOLNpcScale::DefaultLayout), with mean radii and aphelion sums
+    // Every default lane (SOLNpcScale::DefaultLayout, the lane network's 8 base lanes since issue #53: bodies, radii
+    // and lengths unchanged, so these rows still hold), with mean radii and aphelion sums
     const FNpcRailDefaultLane NPCRAIL_DEFAULT_LANES[] = {
         { TEXT("Mercury"), TEXT("Venus"), NPCRAIL_MERCURY_RADIUS_M, NPCRAIL_VENUS_RADIUS_M,
             NPCRAIL_MERCURY_APHELION_M + NPCRAIL_VENUS_APHELION_M },
@@ -2338,6 +2339,53 @@ bool FSOLNpcRailLaneThrustTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("cluster rail: 0"),
         SOLNpcRail::LaneThrustMps2(NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f), frame0, 5) == FVector3d::ZeroVector);
     TestTrue(TEXT("battle rail: 0"), SOLNpcRail::LaneThrustMps2(NpcRailBattle(), frame0, 6) == FVector3d::ZeroVector);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailLaneSlotColumnsTest, "SOLTest.NpcRail.LaneSlotColumns",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 53 4.3 Q28: the lane network's slots map to group columns that never meet a cluster or battle column (base
+// slots keep their lane columns, later slots follow the battles), every column inside the 64-wide texture
+bool FSOLNpcRailLaneSlotColumnsTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 layouts[][3] = { { 8, 10, 16 }, { 8, 10, 1 }, { 8, 0, 0 }, { 3, 2, 4 }, { 8, 30, 26 } };
+    for (const int32* counts : layouts)
+    {
+        FSOLNpcGroupTable groups;
+        groups.LaneCount = counts[0];
+        groups.ClusterCount = counts[1];
+        groups.BattleCount = counts[2];
+        const int32 capacity = groups.LaneSlotCapacity();
+        TestEqual(FString::Printf(TEXT("%d/%d/%d: capacity"), counts[0], counts[1], counts[2]), capacity,
+            SOL::NPC_GROUP_TEXTURE_WIDTH - counts[1] - counts[2]);
+        TArray<uint8> used;
+        used.Init(0, SOL::NPC_GROUP_TEXTURE_WIDTH);
+        for (int32 group = counts[0]; group < groups.Num(); ++group)
+        {
+            used[group] = 1;    // Cluster and battle columns, as BuildFrame lays them out
+        }
+        for (int32 slot = 0; slot < capacity; ++slot)
+        {
+            const int32 column = groups.LaneSlotColumn(slot);
+            if (!TestTrue(FString::Printf(TEXT("%d/%d/%d: slot %d column %d in the texture"), counts[0], counts[1],
+                counts[2], slot, column), column >= 0 && column < SOL::NPC_GROUP_TEXTURE_WIDTH))
+            {
+                continue;
+            }
+            TestEqual(FString::Printf(TEXT("%d/%d/%d: slot %d column %d unshared"), counts[0], counts[1], counts[2],
+                slot, column), used[column], uint8(0));
+            used[column] = 1;
+            if (slot < counts[0])
+            {
+                TestEqual(TEXT("a base slot keeps its lane column"), column, slot);
+            }
+        }
+        TestEqual(TEXT("slot at the capacity: none"), groups.LaneSlotColumn(capacity), static_cast<int32>(INDEX_NONE));
+        TestEqual(TEXT("negative slot: none"), groups.LaneSlotColumn(-1), static_cast<int32>(INDEX_NONE));
+        TestFalse(TEXT("every column used exactly once"), used.Contains(0));
+    }
     return true;
 }
 

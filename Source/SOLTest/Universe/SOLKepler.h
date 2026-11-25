@@ -59,6 +59,9 @@ namespace SOLKepler
     // Returns the state elapsedSeconds after the instant of the elements (M advances by sqrt(GM/a^3)*elapsed)
     SOLTEST_API FSOLOrbitState ElementsToState(const FSOLKeplerElements& elements, double gm, double elapsedSeconds);
 
+    // Returns ElementsToState's position only (no velocity terms; the lane network's node ephemeris, SDD 53 5.3)
+    SOLTEST_API FVector3d ElementsToPositionM(const FSOLKeplerElements& elements, double gm, double elapsedSeconds);
+
     // The documented inverse of ElementsToState: converts a Cartesian position+velocity relative to a central body of
     // the given gm into the instantaneous classical elements describing that exact state (same orbit-plane/angle
     // conventions ElementsToState uses, so ElementsToState(StateToElements(state, gm), gm, 0.0) reproduces state up to

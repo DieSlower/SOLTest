@@ -85,6 +85,24 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns how many lane network slots the group texture leaves after the clusters and battles
+int32 FSOLNpcGroupTable::LaneSlotCapacity() const
+{
+    return FMath::Max(SOL::NPC_GROUP_TEXTURE_WIDTH - FMath::Max(ClusterCount, 0) - FMath::Max(BattleCount, 0), 0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane network slot's group column: a base slot is its lane column, a later slot follows the battles
+int32 FSOLNpcGroupTable::LaneSlotColumn(const int32 slot) const
+{
+    if (slot < 0 || slot >= LaneSlotCapacity())
+    {
+        return INDEX_NONE;
+    }
+    return slot < LaneCount ? slot : slot + FMath::Max(ClusterCount, 0) + FMath::Max(BattleCount, 0);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Packs the kind-specific spawn fields into the rail's float parameters
 FSOLNpcRail SOLNpcRail::FromSpawn(const SOLNpcScale::FSpawn& spawn, int32 groupBase,
     const FSOLLaneProfile& laneProfile, double bodyGM)

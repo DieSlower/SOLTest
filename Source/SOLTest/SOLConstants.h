@@ -33,6 +33,9 @@ namespace SOL
     // step, so a long hitch slows the whole universe uniformly instead of desynchronising the ship from the bodies
     inline constexpr double MAX_FRAME_DELTA_S = 0.5;
 
+    // The sim clock's top time-warp step, sim seconds per real second (30 d/s; FSOLSimClock::WarpFactors' last entry)
+    inline constexpr double SIM_CLOCK_MAX_WARP = 2592000.0;
+
     // Ship flight step (Mass): a frame's real delta is split into substeps of at most this length...
     inline constexpr double SHIP_MAX_SUBSTEP_S = 1.0 / 30.0;
 
@@ -3288,6 +3291,15 @@ namespace SOL
         NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII;   // dots and chevrons are alpha 0
     inline constexpr int32 NPC_TUNNEL_INSTANCE_POOL = 24;              // Tunnel instances drawn at once (fixed pool)
     inline constexpr int32 NPC_LANE_ROUTE_MAX_HOPS = 12;               // Longest route the router returns
+    inline constexpr int32 NPC_LANE_NETWORK_CATCH_UP_EPOCHS = 16;      // A forward move of up to this many epochs is
+                                                                       // stepped one by one; more, or back, is a jump
+    inline constexpr double NPC_LANE_NODE_SPEED_MARGIN = 1.1;          // Node speed bound = perihelion speed x this
+                                                                       // (secular drift; the Sun clearance bound)
+    static_assert(NPC_LANE_NETWORK_CATCH_UP_EPOCHS >= 1
+        && NPC_LANE_NETWORK_CATCH_UP_EPOCHS < NPC_LANE_NETWORK_HORIZON_EPOCHS && NPC_LANE_NODE_SPEED_MARGIN >= 1.0,
+        "the catch-up limit fits the look-ahead and the speed bound is not below the perihelion speed");
+    static_assert(NPC_LANE_NETWORK_CATCH_UP_EPOCHS * NPC_LANE_NETWORK_EPOCH_S >= MAX_FRAME_DELTA_S * SIM_CLOCK_MAX_WARP,
+        "one frame at the top warp (clamped delta) never moves more epochs than the catch-up limit, so it steps");
     static_assert(NPC_LANE_SUN_REOPEN_RADII > NPC_LANE_SUN_CLEARANCE_RADII, "the Sun band reopens above the close");
     static_assert(NPC_LANE_NETWORK_EPOCH_S > 0.0 && NPC_LANE_NETWORK_EPOCH_SAMPLES >= 2
         && NPC_LANE_SUN_LOOKBACK_EPOCHS >= 1, "the epoch and its samples are valid");
