@@ -168,6 +168,34 @@ Every assertion in cases 16-26 is pinned; the test author writes all of them.
 
 ### 53e: AUTO routing and Sun safety
 
+**Status (2026-11-25): implemented, pending commit and review.** Done: step 1 (`LaneRouteAutoTest`, 18 cases), step 2
+(`LanePlan`, `bSunDetour`, `bSunStoppedAtZone`, reset by `SOLAutopilotOrder::ResetLaneState`), step 3 except the
+finish-if-safe wiring (the pure functions exist and are tested, the processor still applies `CheckLaneLatch`'s Hold
+Keep), step 4 except the R20 check and the 11-sector screenshots (unreal-mcp was down), step 5 except the lane-closed
+notice and the first and last mile in the ETA. Step 6: `STAT_SOL_ShipLanePlan` (planning) was added, a counter around
+the AUTO lane rules in the processor is not recorded as done. **Not done:** step 7 (`-SOLSmokeLaneRoute` and the re-runs). The leftovers are in
+`TECH_DEBT.md`. The `Docs/Images/33-help-*.png` shots are stale for the new row and HUD lines.
+**Review fixes (2026-11-26):** the Sun check on the flown aim, the braking-path and swept-substep latch, leaving a lane
+for good (`ForceLeaveLane`, `bHopLeftEarly`, `FinishEarlyHop`), finish-if-safe wired (`UpdateHeldLaneFinish`) with the
+"LANE CLOSING: LEFT FOR SUN SAFETY" notice, the hop-lane mask re-applied mid-frame, the detour HUD readout to the order
+target, `OrderArrived`, the HUD block fixes and the map plan in the route share (SDD 53 6.5 "Review fixes"). Tests
+added test-after.
+**Step 7 (2026-11-26): done.** `-SOLSmokeLaneRoute` is built (SDD 53 6.5 "Smoke"), with the radial menu and map
+screenshots at 1280x720, 1920x1080 and 2560x1440. It led to one fix: the radial label side cosine is now 0.2, because
+the bottom labels overlapped. It also found three open items, all in `TECH_DEBT.md`:
+- the fast Sunward entry dips to 19.4 radii;
+- the older warp arrival limit at a heavy body;
+- a plan hop that goes from Approach to `Left` without ever holding is counted as flown (the ship was 2.3 AU short of
+  Jupiter); the plan is dropped and plain AUTO finishes the trip. The player guide text was regenerated without the images.
+Still open: R20, the list menu screenshots, processor-level unit tests.
+**Smoke follow-ups (2026-11-26, user decisions, SDD 53 section 19):** the never-held hop is fixed
+(`SOLLaneRoutePlan::LeaveHopOnLaneRulesLeft`: left early, flown to its end node, re-planned there; test
+`NeverHeldHopLeftEarly`), but the last hop (Jupiter > Saturn) still never holds at warp, so `plan-day-hops` and
+`plan-top-hops` count only hops that have a later hop (the last hop is excluded by user decision, its lane state is logged; older than the fix, `TECH_DEBT.md` item 9; a hop left early is not counted as away when left, the smoke asserts the hop ended via FinishEarlyHop and the order arrived before the time limit, with the within-100-radii proximity sample kept only when one frame travels under 50 body radii, otherwise logged and skipped); the fast Sunward entry dip is accepted, and `fast-entry-zone` asserts at least 19 radii and
+never below 15. `sun-chase` failed at 2560x1440 only: the older warp arrival limit (`TECH_DEBT.md`) left the chase
+12 m off its tail at 0.8 m/s under 3600x; smoke timing, fixed in the smoke (a chase goes to 1x within 1 km of its
+tail point), and the case logs the chase state every 120 frames.
+
 1. Tests first for the pure plan logic (hop sequencing, per-hop `Left`, re-plan trigger at an epoch change, ETA sum,
    finish-if-safe check with and without the override, Sun detour waypoint): extend the contract (case 15 and new
    cases) with these (separate author) before the code.
@@ -373,3 +401,10 @@ Every assertion in cases 16-26 is pinned; the test author writes all of them.
   (the known Mass re-bucket debt). Peak column use and pre-emption counts were not instrumented, so the fade
   pre-emption is covered by unit tests only. Item 10 (a lane opened with 0 blocks) not changed: my reading is that in
   the set it keeps its slot by membership and after its close by its fade hold; to confirm with the reviewer.
+- 2026-11-25: 53e implemented, pending commit and review (details in the 53e status paragraph above and SDD 53 6.4,
+  6.5). Pure plan logic `Traffic/SOLLaneRoutePlan` with `LaneRouteAutoTest`; the player's transient lane plan, planned in
+  `USOLShipSubsystem::UpdateLanePlan` (only lanes between two registry bodies); per-hop `Left` and re-plan at each node
+  and epoch; Sun safety on every AUTO order; the session-only "Toggle Sun Safety" row (`MAX_ACTIONS` 11, no schema or
+  key-layout change); the VIA and Sun HUD lines; the map plan polyline; Info text, glossary and `GAME_MECHANICS.md`
+  updated. Not built: finish-if-safe wiring, the lane-closed notice, `-SOLSmokeLaneRoute`, menu screenshots,
+  asteroid-end routing, R20.

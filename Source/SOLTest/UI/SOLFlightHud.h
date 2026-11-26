@@ -222,6 +222,12 @@ public:
     // Returns the top marker's text as last drawn (AUTOPILOT / CHASE, with its LANE tag; verification, SDD 50 V7)
     const FString& GetLastAutopilotMarkerText() const;
 
+    // Returns the Sun safety line drawn this frame, empty when none (verification, SDD 53 6.5)
+    const TCHAR* GetLastSunSafetyLine() const { return mLastSunSafetyLine; }
+
+    // Returns the body the VIA line named this frame, INDEX_NONE when none was drawn (verification, SDD 53 6.4)
+    int32 GetLastViaBody() const { return mLastViaBody; }
+
     // Returns the projected dot rows the labels kept clear of last frame (verification)
     TConstArrayView<FVector2D> GetLastLaneRowStarts() const { return TConstArrayView<FVector2D>(mLaneRowStarts,
         mLaneRowCount); }
@@ -513,6 +519,9 @@ private:
     // with its ETA and the high-warp hint (top centre); SDD 18 placeholders, #19 owns the final layout
     void DrawPilotBlock(const FSOLShipControl& control);
 
+    // Draws the Sun safety line (SUN SAFETY OFF, or the order's Sun notice) at a height; returns the height below it
+    float DrawSunSafetyLine(float lineY);
+
     // Fills the route overlay's inputs from the route and map-mode subsystems and draws it (map, or flight with P on)
     void DrawRouteOverlay(const FSOLMapOverlayView& overlayView);
 
@@ -683,8 +692,11 @@ private:
     FBox2D mLastRouteLineRect = FBox2D(ForceInit);  // Its screen rectangle
     FBox2D mLastHintsRect = FBox2D(ForceInit);      // Key-hint lines' screen rectangle of the last frame
     float mAutopilotBlockBottomY = 0.0f;            // Bottom of the autopilot marker block this frame, 0 if none
+    const TCHAR* mLastSunSafetyLine = TEXT("");     // The Sun safety line drawn this frame (static text), else empty
+    int32 mLastViaBody = INDEX_NONE;                // The body the VIA line named this frame, else INDEX_NONE
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
     FSOLHudLineCache mLines[static_cast<int32>(ESOLHudLine::Count)];   // Per-line cached text
+    FVector3d mLanePlanPointsM[SOL::NPC_LANE_ROUTE_MAX_HOPS + 1];        // The AUTO lane plan's map polyline (scratch)
     TArray<FSOLRadarContact> mRadarContacts;        // Reused radar contacts, rebuilt in place each frame
     TArray<int32> mRadarOrder;                      // Budgeted contacts to draw (indices), reused each frame
     int32 mLastRadarAboveCount = 0;                 // Contacts drawn above / below the plane last frame

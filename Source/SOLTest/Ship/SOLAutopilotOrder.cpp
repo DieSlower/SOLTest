@@ -54,3 +54,31 @@ const TCHAR* SOLAutopilotOrder::AutopilotActivityText(const bool bWarPowerOrder)
 {
     return bWarPowerOrder ? SOLMenuText::AUTOPILOT_WAR_POWER_ACTIVITY : TEXT("");
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Resets an order's transient lane state: the latched leg and mode, the War power pulse, the plan, the Sun detour and
+// its notices
+void SOLAutopilotOrder::ResetLaneState(FSOLShipStateFragment& state)
+{
+    state.LaneLeg = FSOLLaneAutoLeg();
+    state.LaneMode = ESOLLaneAutoMode::None;
+    state.WarPowerPulse = FSOLWarPowerPulseState();
+    state.LanePlan = FSOLLaneRoutePlan();
+    state.bSunDetour = false;
+    state.bSunStoppedAtZone = false;
+    state.bLaneLeftForSun = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the HUD's Sun safety line: the SUN SAFETY OFF token while the override is on, else empty
+const TCHAR* SOLAutopilotOrder::SunSafetyLineText(const bool bSunSafetyOverridden)
+{
+    return bSunSafetyOverridden ? SOLMenuText::AUTOPILOT_SUN_SAFETY_OFF : TEXT("");
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Appends the AUTOPILOT marker's VIA line for a node name ("VIA <node>")
+void SOLAutopilotOrder::AppendViaLine(FStringBuilderBase& out, const FStringView nodeName)
+{
+    out << SOLMenuText::AUTOPILOT_VIA_PREFIX << nodeName;
+}

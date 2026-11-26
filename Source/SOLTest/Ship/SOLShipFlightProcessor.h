@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "SOLConstants.h"
 #include "Traffic/SOLLaneTrafficMath.h"
 #include "Traffic/SOLLaneTrafficSubsystem.h"
 
@@ -25,6 +26,23 @@ struct FSOLShipFrameInputs
     FVector3d CarryVelocityMps = FVector3d::ZeroVector;     // Velocity carry of the reference frame for this frame
     double WarpFactor = 1.0;                                // Sim seconds per real second during this frame
     TConstArrayView<FSOLLaneTrafficEntry> Lanes;            // The NPC population's lane table (empty: no lane rules)
+    bool bSunSafety = false;                                // The AUTO Sun safety applies (SDD 53 6.5: the player
+                                                            // has not overridden it)
+    int32 PlanHopEntries[SOL::NPC_LANE_ROUTE_MAX_HOPS];     // Per plan hop, its lane table entry (SDD 53 6.4)
+    int32 PlanHopEndBodies[SOL::NPC_LANE_ROUTE_MAX_HOPS];   // Per plan hop, its end node's registry body
+    int32 HeldLaneEntry = INDEX_NONE;                       // The held lane the finish-if-safe decision is for
+    bool bHeldLaneLeave = false;                            // That lane closes before the hop ends and the rest is
+                                                            // not Sun-safe: AUTO leaves it at once (SDD 53 6.5)
+
+    // Starts with no plan hop resolved
+    FSOLShipFrameInputs()
+    {
+        for (int32 hop = 0; hop < SOL::NPC_LANE_ROUTE_MAX_HOPS; ++hop)
+        {
+            PlanHopEntries[hop] = INDEX_NONE;
+            PlanHopEndBodies[hop] = INDEX_NONE;
+        }
+    }
 };
 
 /**

@@ -62,6 +62,7 @@ enum class ESOLAction : uint8
     Communicate,    // Placeholder
     Trade,          // Placeholder
     MoveToWarPower, // Issue #50 (SDD 50 D22): Move To ignoring the lane rules at full thrust (appended: no ordinal moves)
+    SunSafetyOverride, // Issue #53 (SDD 53 6.5, O4): flips the session-only AUTO Sun safety override (appended)
     Count,
 };
 

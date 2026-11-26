@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Traffic/SOLLaneRoutePlan.h"
 #include "Traffic/SOLLaneTrafficMath.h"
 
 #include "CoreMinimal.h"
@@ -30,6 +31,16 @@ struct FSOLShipStateFragment : public FMassFragment
     ESOLLaneAutoMode LaneMode = ESOLLaneAutoMode::None;  // Its mode after the last substep (the HUD's LANE tag;
                                                          // Left is final for the order)
     FSOLWarPowerPulseState WarPowerPulse;     // War power pulse phase (transient, reset with each order, never saved)
+    FSOLLaneRoutePlan LanePlan;               // AUTO lane route plan (SDD 53 6.4; transient, reset with each order,
+                                              // never saved; player ship only: about 400 bytes on one entity)
+    bool bSunDetour = false;                  // The Sun detour latch of the AUTO aim (SDD 53 6.5; transient, reset
+                                              // with each order, never saved)
+    bool bSunStoppedAtZone = false;           // The AUTO order's target lies inside the Sun danger zone, so it stops
+                                              // at the zone's edge (the HUD notice; transient, never saved)
+    bool bLaneLeftForSun = false;             // AUTO left a held lane that closes before the hop ends because the rest
+                                              // of it is not Sun-safe (the HUD notice; transient, never saved)
+    double SunMinDistanceM = 0.0;          // Closest approach to the Sun over the last step's substep segments of an
+                                              // AUTO order, 0 without one (the smoke's measure; transient, never saved)
     FVector3f ThrustLocalG = FVector3f::ZeroVector;  // Achieved thrust of the last step in the ship frame (X nose, Y
                                                      // right, Z top), G: the substeps' time-weighted mean (SDD 51
                                                      // section 4.2; drives the plume, transient, never saved)

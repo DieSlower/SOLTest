@@ -215,6 +215,7 @@ namespace SOLMenuText
     {
         TEXT("Target"), TEXT("Info"), TEXT("Move To"), TEXT("Follow / Orbit"), TEXT("Jump To"), TEXT("Match speed"),
         TEXT("Attack"), TEXT("Chase Down"), TEXT("Communications"), TEXT("Trade"), TEXT("War Power Move"),
+        TEXT("Toggle Sun Safety"),
     };
     inline constexpr const TCHAR* INTERACT_BLOCK_TEXTS[] =
     {
@@ -557,6 +558,10 @@ namespace SOLMenuText
         { TEXT("Flight HUD"), TEXT(""), TEXT("AUTOPILOT > MARS"), TEXT("Autopilot marker"),
             TEXT("At the top centre while the autopilot flies you: its target, the time to arrive and the distance. "
                 "While it holds a traffic lane at the traffic speed the marker ends with LANE (a chase marker too). "
+                "On a multi-hop lane route a VIA line names the next node. A Sun line shows SUN DETOUR while the order "
+                "bends around the Sun's danger zone, STOPS AT SUN DANGER ZONE for a target inside it, LANE CLOSING: "
+                "LEFT FOR SUN SAFETY after it left a closing lane whose rest ran too near the Sun, and SUN SAFETY "
+                "OFF (red, with or without an order) while Toggle Sun Safety has turned the safety off. "
                 "Any thrust, roll, steering or stop spin of yours, or {ToggleAssist}, takes control back in assisted "
                 "flight at once. A key you were already holding counts only after you let it go.") },
         { TEXT("Flight HUD"), TEXT(""), TEXT("{ChaseBurstSample}|{ChaseCoolSample}|{ChaseBrakeSample}"),
@@ -820,8 +825,26 @@ namespace SOLMenuText
             "usual): it slows to the traffic speed where it joins, on the right half of the lane, keeps to the right "
             "and holds the traffic speed to the lane's end, turning over at the middle like the lane ships, then "
             "flies on to its target. The trip is slower (Earth to Mars takes over two weeks, 16 days, instead of "
-            "about three) and the ETA counts it; the marker shows LANE while it holds the lane. A route and a Chase Down follow the same rules "
-            "(a chase holds the traffic speed without bursts)."),
+            "about three) and the ETA counts it; the marker shows LANE while it holds the lane. A route and a Chase "
+            "Down follow the same rules "
+            "(a chase holds the traffic speed without bursts). A Move To or Follow / Orbit given within 100 radii of "
+            "the start node's own body (the planet, dwarf or star with a lane node that you are at, or whose moon you "
+            "are at), to another body with a node (or a moon of one), is planned over the lane network instead: the "
+            "fastest chain "
+            "of open lanes (up to 12 hops; each change of lane costs one hour plus the turn between them), planned "
+            "again at each node and each new day. While a later hop remains the marker shows VIA and the next node, "
+            "the ETA counts the whole plan, and the map draws it as a dashed line from your ship through its nodes; "
+            "with no lane route AUTO flies as above. Every autopilot order, War Power Move and Chase Down included, "
+            "keeps out of the Sun's danger zone (20 Sun radii): a path through it bends around the Sun at 22 Sun "
+            "radii (SUN DETOUR on the HUD), and a target inside it, such as the Sun itself, stops at its edge (STOPS "
+            "AT SUN DANGER ZONE); an order given while already falling fast toward the Sun can dip just inside the "
+            "zone (to about 19 Sun radii) before it turns away. A planned lane the autopilot cannot get onto in time "
+            "is skipped: it flies straight to that lane's end node and plans again there. A held lane that closes before you reach its end is flown to its end only if the "
+            "rest of it keeps clear of the zone; otherwise the autopilot leaves it at once (LANE CLOSING: LEFT FOR "
+            "SUN SAFETY) and flies around the Sun to the lane's end node (or to your target on the last lane). "
+            "Toggle Sun Safety, in the menu of the star, a planet, a moon or a dwarf planet, "
+            "turns this safety off or on for the session (it is never saved); SUN SAFETY OFF shows on the HUD while "
+            "it is off."),
         TEXT("Above the sustained G limit your body takes a G dose. The G meter on the HUD drains, faster the harder "
             "you pull, and refills below the limit. Manual flight warns when you pass the limit (assisted flight "
             "never does). As the meter runs low your vision narrows and grays out; when it empties you black out "
@@ -887,7 +910,8 @@ namespace SOLMenuText
             "from its corners with a sound and fades away; Move To flies the autopilot there "
             "and stops; War Power Move flies straight there with boost, ignoring the lane rules (it may cut through a "
             "traffic lane), for that order only, in pulses of full thrust at about 6.8 G that let your G meter "
-            "recover in between, so you never grey out; Follow / Orbit keeps station at the autopilot's safe "
+            "recover in between, so you never grey out; Toggle Sun Safety turns the autopilot's Sun danger zone "
+            "safety off or on for this session; Follow / Orbit keeps station at the autopilot's safe "
             "distance on your side until you take control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
             "Attack targets it and shows the fire hint. Greyed entries say why they are unavailable (Chase Down on a "
             "ship, Communications and Trade are not available yet). The menu is a hologram: its ring draws in and "
@@ -972,6 +996,17 @@ namespace SOLMenuText
     inline constexpr const TCHAR* AUTOPILOT_LANE_TAG = TEXT("LANE");
     // The AUTOPILOT marker's activity line while a War power order flies (SDD 50 D22)
     inline constexpr const TCHAR* AUTOPILOT_WAR_POWER_ACTIVITY = TEXT("WAR POWER");
+    // The AUTOPILOT marker's route line while a multi-hop lane plan runs (SDD 53 6.4, Q16): the prefix, then the node
+    inline constexpr const TCHAR* AUTOPILOT_VIA_PREFIX = TEXT("VIA ");
+    // The HUD line shown at all times while the player has overridden the AUTO Sun safety (SDD 53 6.5, O4)
+    inline constexpr const TCHAR* AUTOPILOT_SUN_SAFETY_OFF = TEXT("SUN SAFETY OFF");
+    // The AUTOPILOT marker's notices of the Sun safety (SDD 53 6.5): the order's target lies inside the danger zone
+    // (it stops at the zone's edge), and the order is flying the detour around the zone
+    inline constexpr const TCHAR* AUTOPILOT_STOPPED_AT_ZONE = TEXT("STOPS AT SUN DANGER ZONE");
+    inline constexpr const TCHAR* AUTOPILOT_SUN_DETOUR = TEXT("SUN DETOUR");
+    // The AUTOPILOT marker's notice after AUTO left a held lane that closes before the hop ends because the rest of it
+    // was not Sun-safe (SDD 53 6.5), shown until a lane is joined again
+    inline constexpr const TCHAR* AUTOPILOT_LANE_LEFT_FOR_SUN = TEXT("LANE CLOSING: LEFT FOR SUN SAFETY");
 
     // HUD chase marker (SDD 32 section 3.9): "CHASE > <name>  <distance>  closing <speed>  T <time>", the activity line
     // ("BURST 6.8 G", "COOL 1.5 G (resume at 45%)", "BRAKE 6.8 G", "BRAKE COOL 1.5 G", "HOLD"), the cancel hint and the

@@ -188,6 +188,22 @@ void FSOLMapRouteOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, 
             inputs.PlanePointM);
     }
 
+    // The AUTO lane route plan (SDD 53 6.4, Q16), within the route's share (it is the ship's live route, so the
+    // draft keeps its own triangles): Secondary dashed legs through the moving nodes, line width in pixels like every
+    // leg (at most NPC_LANE_ROUTE_MAX_HOPS legs)
+    if (inputs.LanePlanPointsM.Num() >= 2)
+    {
+        FLegStyle planStyle;
+        planStyle.Color = SOL::HudPalette::SECONDARY;
+        planStyle.Alpha = SOLRouteOverlayMath::StyleAlpha(ESOLRouteDrawStyle::LanePlan);
+        planStyle.bDashed = true;
+        planStyle.Arrows = 1;
+        for (int32 point = 1; point < inputs.LanePlanPointsM.Num(); ++point)
+        {
+            DrawLeg(frame, inputs.LanePlanPointsM[point - 1], inputs.LanePlanPointsM[point], planStyle);
+        }
+    }
+
     // Draft (map planning): dim, focused on its newest leg, with the rest of the triangles
     SetBudgetLimit(SOL::Route::OVERLAY_MAX_TRIANGLES);
     if (draftCount > 0)

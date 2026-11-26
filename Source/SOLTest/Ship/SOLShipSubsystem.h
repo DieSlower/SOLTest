@@ -10,6 +10,8 @@
 #include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipSmokeFlight.h"
 #include "Targeting/SOLTargetable.h"
+#include "Traffic/SOLLaneNetworkMath.h"
+#include "Traffic/SOLLaneRoutePlan.h"
 #include "Traffic/SOLLaneTrafficMath.h"
 
 #include "CoreMinimal.h"
@@ -247,6 +249,38 @@ public:
     // Returns whether the current autopilot order is a War power move (false without an order)
     bool IsAutopilotWarPower() const;
 
+    // Returns whether the player has overridden the AUTO Sun safety this session (SDD 53 6.5; default off, never saved)
+    bool IsSunSafetyOverridden() const { return mIsSunSafetyOverridden; }
+
+    // Flips the session-only Sun safety override (the "Toggle Sun Safety" row; takes effect at once, also mid-order)
+    void ToggleSunSafetyOverride() { mIsSunSafetyOverridden = !mIsSunSafetyOverridden; }
+
+    // Returns whether the AUTO order flies the Sun detour as of the last step (SDD 53 6.5)
+    bool IsAutopilotSunDetour() const;
+
+    // Returns whether the AUTO order's target lies inside the Sun danger zone, so it stops at the edge (last step)
+    bool IsAutopilotSunStoppedAtZone() const;
+
+    // Returns whether AUTO left a held lane that closes before the hop ends for the Sun safety (the HUD notice)
+    bool IsAutopilotLaneLeftForSun() const;
+
+    // Returns the AUTO order's closest approach to the Sun over the last step's substep segments, 0 without an order
+    double GetAutopilotSunMinDistanceM() const;
+
+    // Returns the registry body the HUD's VIA line names (the current hop's end node while a later hop remains), else
+    // INDEX_NONE (SDD 53 6.4, Q16)
+    int32 GetAutopilotViaBodyIndex() const;
+
+    // Writes the AUTO lane plan's system map polyline (the ship, then each remaining hop's end node where it is now,
+    // Unreal-handed universe metres) and returns its point count; 0 without a plan (SDD 53 6.4, Q16)
+    int32 GetAutopilotLaneRoutePolylineM(TArrayView<FVector3d> outPointsM) const;
+
+    // Returns the player's AUTO lane plan as of the last step, empty without a ship (verification, SDD 53 6.4)
+    FSOLLaneRoutePlan GetAutopilotLanePlan() const;
+
+    // Returns the AUTO lane leg latched as of the last step (bFound false without one; verification)
+    FSOLLaneAutoLeg GetAutopilotLaneLeg() const;
+
     // Returns whether the autopilot or chase holds a traffic lane as of the last step (the marker's LANE tag)
     bool IsAutopilotLaneHold() const;
 
@@ -358,6 +392,18 @@ private:
     // Drops the lane leg latched for the previous order (every order write calls it, SDD 50 section 4.9)
     void ResetLaneState();
 
+    // Plans, re-plans and resolves the player's AUTO lane route plan for this frame's flight run (SDD 53 6.4)
+    void UpdateLanePlan(FSOLShipFrameInputs& inputs);
+
+    // Decides the finish-if-safe of a held lane that closes before the hop ends (SDD 53 6.5) for this frame's run
+    void UpdateHeldLaneFinish(FSOLShipFrameInputs& inputs) const;
+
+    // Writes a fresh plan from a route over the network's open slot lanes between two nodes; false (empty) if none
+    bool PlanLaneRoute(int32 sourceNode, int32 targetNode, double nowS, int64 epoch, uint32 serial);
+
+    // Returns the fastest network route between two nodes now and fills the slot-indexed edges (mLanePlanEdges)
+    FSOLLaneRoute FindLaneRoute(int32 sourceNode, int32 targetNode, double nowS);
+
     // Ends the chase order (fragment, run state and plan), without touching the flight mode or the autopilot order
     void ClearChaseOrder();
 
@@ -418,6 +464,12 @@ private:
     uint32 mPilotResetCount = 0;                           // Pilot resets so far (jump arrival, spawn)
     uint32 mAutopilotArrivalCount = 0;                     // Autopilot arrivals so far (SDD 20 routes)
     uint32 mAutopilotOrderSerial = 0;                      // Serial of the current / last autopilot order
+    uint32 mLanePlanTriedSerial = 0;                       // The order serial the AUTO lane plan was last tried for
+    int32 mLanePlanHop = INDEX_NONE;                       // The plan's current hop as of the last plan update
+    TArray<FSOLLaneProfile> mLanePlanSlotProfiles;         // Route query scratch: profiles by network slot
+    TArray<FSOLLaneEdge> mLanePlanEdges;                   // Route query scratch: edges by network slot
+    bool mIsSunSafetyOverridden = false;                   // The player's AUTO Sun safety override (SDD 53 6.5;
+                                                           // session only: not reflected, never saved)
     uint32 mLastArrivalOrderSerial = 0;                    // Serial of the order the last arrival belonged to
     uint32 mChaseTargetLostCount = 0;                      // Chases ended by a lost target
     double mChaseTargetLostRealS = -1.0;                   // World real time of the last loss (negative: none)

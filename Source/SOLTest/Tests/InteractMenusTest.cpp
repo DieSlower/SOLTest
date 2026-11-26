@@ -58,7 +58,8 @@ namespace
         case ESOLObjectType::Moon:
         case ESOLObjectType::Dwarf:
             return TArray<FInteractMenusRow>{ { ESOLAction::Target, false }, { ESOLAction::Info, false },
-                { ESOLAction::MoveTo, false }, { ESOLAction::MoveToWarPower, false }, { ESOLAction::Follow, false },
+                { ESOLAction::MoveTo, false }, { ESOLAction::MoveToWarPower, false },
+                { ESOLAction::SunSafetyOverride, false }, { ESOLAction::Follow, false },
                 { ESOLAction::ChaseDown, false }, { ESOLAction::JumpTo, false }, { ESOLAction::MatchSpeed, false },
                 { ESOLAction::Communicate, true }, { ESOLAction::Trade, true } };
         case ESOLObjectType::Asteroid:
@@ -99,7 +100,7 @@ namespace
     {
         static const TCHAR* names[] = { TEXT("Target"), TEXT("Info"), TEXT("MoveTo"), TEXT("Follow"),
             TEXT("JumpTo"), TEXT("MatchSpeed"), TEXT("Attack"), TEXT("ChaseDown"), TEXT("Communicate"),
-            TEXT("Trade"), TEXT("MoveToWarPower"), TEXT("Count") };
+            TEXT("Trade"), TEXT("MoveToWarPower"), TEXT("SunSafetyOverride"), TEXT("Count") };
         return names[FMath::Clamp(static_cast<int32>(action), 0, INTERACTMENUS_ACTION_COUNT)];
     }
 
@@ -302,16 +303,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInteractMenusRowCountTest, "SOLTest.Interac
 bool FSOLInteractMenusRowCountTest::RunTest(const FString& /*parameters*/)
 {
     using SOLActionTable::RowCount;
-    TestEqual(TEXT("Star"), RowCount(ESOLObjectType::Star), 10);
-    TestEqual(TEXT("Planet"), RowCount(ESOLObjectType::Planet), 10);
-    TestEqual(TEXT("Moon"), RowCount(ESOLObjectType::Moon), 10);
-    TestEqual(TEXT("Dwarf"), RowCount(ESOLObjectType::Dwarf), 10);
+    TestEqual(TEXT("Star"), RowCount(ESOLObjectType::Star), 11);
+    TestEqual(TEXT("Planet"), RowCount(ESOLObjectType::Planet), 11);
+    TestEqual(TEXT("Moon"), RowCount(ESOLObjectType::Moon), 11);
+    TestEqual(TEXT("Dwarf"), RowCount(ESOLObjectType::Dwarf), 11);
     TestEqual(TEXT("Asteroid"), RowCount(ESOLObjectType::Asteroid), 7);
     TestEqual(TEXT("Ship"), RowCount(ESOLObjectType::Ship), 6);
     TestEqual(TEXT("DroppedTarget"), RowCount(ESOLObjectType::DroppedTarget), 4);
     TestEqual(TEXT("Count"), RowCount(ESOLObjectType::Count), 0);
     TestEqual(TEXT("out of range"), RowCount(static_cast<ESOLObjectType>(200)), 0);
-    TestEqual(TEXT("MAX_ACTIONS is 10"), SOL::Interact::MAX_ACTIONS, 10);
+    TestEqual(TEXT("MAX_ACTIONS is 11"), SOL::Interact::MAX_ACTIONS, 11);
     for (int32 typeIndex = 0; typeIndex < INTERACTMENUS_TYPE_COUNT; ++typeIndex)
     {
         const ESOLObjectType type = static_cast<ESOLObjectType>(typeIndex);
@@ -694,7 +695,7 @@ bool FSOLInteractMenusChaseDownRowsTest::RunTest(const FString& /*parameters*/)
     for (const ESOLObjectType type : bodyTypes)
     {
         const FString name = InteractMenusTypeName(type);
-        TestEqual(name + TEXT(": 10 rows"), RowCount(type), 10);
+        TestEqual(name + TEXT(": 11 rows"), RowCount(type), 11);
         TestTrue(name + TEXT(": ChaseDown live"), Offers(type, ESOLAction::ChaseDown)
             && !IsPlaceholder(type, ESOLAction::ChaseDown));
         FSOLActionList list;
@@ -706,7 +707,7 @@ bool FSOLInteractMenusChaseDownRowsTest::RunTest(const FString& /*parameters*/)
             followRow = list.Entries[row].Action == ESOLAction::Follow ? row : followRow;
             chaseRow = list.Entries[row].Action == ESOLAction::ChaseDown ? row : chaseRow;
         }
-        TestEqual(name + TEXT(": Follow is row 4"), followRow, 4);
+        TestEqual(name + TEXT(": Follow is row 5 (after the Sun safety row, issue #53)"), followRow, 5);
         TestEqual(name + TEXT(": ChaseDown right after Follow"), chaseRow, followRow + 1);
         TestTrue(name + TEXT(": fits MAX_ACTIONS"), list.Num <= SOL::Interact::MAX_ACTIONS);
     }
@@ -861,10 +862,11 @@ bool FSOLInteractMenusBuildBlocksTest::RunTest(const FString& /*parameters*/)
             mismatches, 0);
     }
 
-    // A concrete case: a favourable Planet enables exactly its eight live rows (Chase Down and War power included)
+    // A concrete case: a favourable Planet enables exactly its nine live rows (Chase Down, War power and the Sun safety
+    // toggle included)
     FSOLActionList list;
     SOLActionTable::Build(ESOLObjectType::Planet, InteractMenusFavourable(), list);
-    const bool expectedEnabled[] = { true, true, true, true, true, true, true, true, false, false };
+    const bool expectedEnabled[] = { true, true, true, true, true, true, true, true, true, false, false };
     TestEqual(TEXT("favourable Planet: Num"), list.Num, static_cast<int32>(UE_ARRAY_COUNT(expectedEnabled)));
     for (int32 row = 0; row < FMath::Min(list.Num, static_cast<int32>(UE_ARRAY_COUNT(expectedEnabled))); ++row)
     {

@@ -582,6 +582,25 @@ plan-open rule directly (R11).
   token), **and the planned route is drawn on the system map**: a polyline through the current positions of the plan's
   nodes, rebuilt each frame so it follows the moving bodies, in a new `ESOLRouteDrawStyle` distinct from the player's
   waypoint routes (colour and dash). Its line width is in pixels; no distance or count LOD.
+- **As built (53e, 2026-11-25):** the pure plan logic is `Traffic/SOLLaneRoutePlan` (`MakePlan`, `LeaveHop`,
+  `ShouldReplan`, `ReplaceRemainingHops`, `PlanEtaS`, `PlanPolylineM`, tests `LaneRouteAutoTest`); the plan lives in
+  `FSOLShipStateFragment::LanePlan` (about 400 bytes, player entity only, reset at every order write by
+  `SOLAutopilotOrder::ResetLaneState`) and `USOLShipSubsystem::UpdateLanePlan` plans it on the game thread before the
+  flight run (`STAT_SOL_ShipLanePlan`). Differences from the text above:
+  - Scope: a plan is made only for a body order (Move To or Follow) that is not War power, not a route waypoint and
+    not a chase, whose start node is the ship's anchor body (or its parent), with the ship within `SOL::AUTO_LANE_PLAN_AT_NODE_RADII` (100) body radii of that node's body, and whose target (or its parent) is a
+    different node. Other orders keep today's D20 straight search.
+  - Only lanes between two registry bodies are routable for the player; asteroid-end lanes are excluded (no AUTO lane
+    view yet, `TECH_DEBT.md`).
+  - While a hop runs, the lane search may only take that hop's lane, and a hop whose lane gives no leg drops the plan
+    (AUTO then flies as before). Re-plan: at each node a fresh plan from that node (none found drops the plan), and at
+    each epoch change `ReplaceRemainingHops` from the current hop's end node, routed from now (a failure keeps only the
+    current hop).
+  - ETA: current hop ETA + later hops' `TimeS`, the last mile counted as 0 (the first and last mile are not added,
+    `TECH_DEBT.md`).
+  - Display: "VIA <node>" under the AUTOPILOT marker only while a later hop remains. The map polyline is the ship then
+    each remaining hop's end node, at most 12 legs, drawn as Secondary-colour dashed legs with arrows in the new
+    `ESOLRouteDrawStyle::LanePlan` (alpha `OVERLAY_ALPHA_ACTIVE`, width in pixels).
 
 ### 6.5 Player Sun safety (Q14, O4)
 
@@ -646,6 +665,100 @@ plan-open rule directly (R11).
   6. With the override on, the finish-if-safe check and the detour are skipped for the player: a held hop on a
      Sun-closing lane is finished, and direct legs fly straight. Starting a hop still needs the lane's window (6.3),
      since a closed lane has no window.
+- **As built (53e, 2026-11-25):**
+  - Sun safety runs in `USOLShipFlightProcessor` each substep through `SOLLaneRoutePlan::SunSafeAim` for every AUTO
+    order (Move To, War Power Move, Follow, Chase Down, route waypoints, plan hops), the Sun at the universe origin.
+    The danger zone is 20 Sun radii (1.3914e10 m). The detour waypoint is on the 22-radii sphere (`k_on`) at the
+    tangent point, at least `SOL::AUTO_SUN_DETOUR_MIN_ARC_DEG` = 15 degrees ahead (a `static_assert` keeps it below
+    acos(20/22) = 24.6 degrees), on the side nearer the velocity. The latch engages below 20 radii and releases when the
+    path clears min(22 radii, arrival radius, ship radius). A ship inside the zone flies straight out to 22 radii. A
+    target inside the zone (the Sun itself) stops at the 22-radii point facing the ship. The detour is flown as a
+    rendezvous with the waypoint at rest relative to the Sun (War power without its pulses), lane rules are suspended
+    while the Sun aim steers, and the order never arrives while the latch is on. A path that never enters the zone (and whose braking path and swept substep stay out of it, review
+    fix) is unchanged bit for bit. The detour time is not in the ETA.
+  - Override: `ESOLAction::SunSafetyOverride` (row "Toggle Sun Safety" right after War Power Move on the Star, Planet,
+    Moon and Dwarf rows, blocked only by No ship), `MAX_ACTIONS` 11, `ESOLHudLine::RadialItem10` and `SunSafety`; the
+    flag is `USOLShipSubsystem::mIsSunSafetyOverridden` (session-only, not reflected, never saved, no key binding;
+    `SAVE_VERSION` 13 and `KEY_BINDING_LAYOUT_VERSION` 10 unchanged), effective at once also on an order in flight.
+  - HUD line: "SUN SAFETY OFF" in red at all times while overridden (at the marker's place when no order flies), else
+    "SUN DETOUR" while detouring, else "STOPS AT SUN DANGER ZONE" for a target inside the zone.
+  - **Review fixes (2026-11-26):**
+    - The Sun check runs each substep on exactly the aim the branch flies: the lane track's end (the leg target) in
+      a Hold, the merge point in an Approach, the chase's tail point, else the direct aim. Between plan hops (and on a
+      hop left early) the direct aim is the standoff above the hop's end node, so the order target is no longer
+      flown mid-plan.
+    - `SunSafeAim` also latches when the ship's braking path (ship -> ship + v|v| / 2a, `a` = the order's own brake
+      plan's `BrakeAccelMps2`: boosted for War power and a boosted chase) or this substep's swept segment (ship -> ship + v dt, the long warp substeps) enters
+      the 20-radii zone. The motion only sets or holds the latch while it enters the zone itself; a k_on release on
+      the motion could keep a ship circling the edge latched for ever.
+    - **Leaving a lane for good** (`ForceLeaveLane`): the Sun aim latching during an Approach or Hold, or the
+      subsystem's finish-if-safe saying "leave", drops the leg. With a later hop the hop is marked
+      `bHopLeftEarly`: no lane search, the direct aim to the hop's end node, and the hop ends (`FinishEarlyHop`)
+      within `AUTO_LANE_PLAN_AT_NODE_RADII` body radii of that node or at its standoff. The subsystem then re-plans
+      from there. On the last hop, or without a plan, the mode is per-hop Left (final). Lane rules never resume on
+      that lane, so nothing chatters across the boundary.
+    - **Finish if safe** (`USOLShipSubsystem::UpdateHeldLaneFinish`, game thread, before the run):
+      - Applies to a held leg whose lane is closed now, or whose slot window (`GetSlotWindow`) closes before the
+        estimated end. The estimate is the distance to the leg's end body divided by the ship's speed.
+      - The rest is checked with `HopFinishSafe`: ship -> end body, with the body at evenly spread times up to the
+        arrival, one per epoch and at most 63 samples, from `FSOLBodyRegistry::ComputePositionAtM`. These are
+        Kepler positions, not the schedule's node positions (deviation). The ship is held at its current position
+        (conservative).
+      - `FinishClosingHop` decides. "Leave" is passed in `FSOLShipFrameInputs::bHeldLaneLeave` / `HeldLaneEntry`.
+      - The HUD then shows "LANE CLOSING: LEFT FOR SUN SAFETY" (`SOLMenuText::AUTOPILOT_LANE_LEFT_FOR_SUN`) until a
+        lane latches again or the order changes.
+    - While a plan exists the lane views are masked to the hop's lane at the frame start and again after a mid-frame
+      hop change or stale leg, rebuilt where the bodies are. The hop's search then runs on the next substep, not the
+      next frame. `FindHopSlot` and `IsStraightSearchAllowed` were deleted as unused.
+    - After a Sun step the HUD distance and closing speed are to the order's own target. The ETA is the direct
+      braking-curve estimate to it (`EstimateTimeToArrivalS`) plus the later plan hops, without the detour time.
+    - The arrival rule is `OrderArrived`: no arrival while latched, in a lane step, or at a VIA node.
+    - The HUD shows SUN SAFETY OFF also with the lost-chase note, and with no order it sets the block bottom (below
+      the key hints). The LANE tag is off during a detour, and the block height counts the VIA and Sun lines.
+    - The map draws the plan inside the route's triangle share. Its last point is the order's own body, so a moon
+      target is drawn at the moon.
+    - `FSOLShipStateFragment::SunMinDistanceM` records the substep-swept closest approach for the smoke.
+  - **Smoke (2026-11-26):** `-SOLSmokeLaneRoute` (`Npc/SOLLaneRouteSmoke`) drives the real flight processor and reads
+    the substep-swept closest approach (`GetAutopilotSunMinDistanceM`), not frame-end samples. Its cases are listed
+    in `ARCHITECTURE.md`. Verification getters were added: `USOLShipSubsystem::GetAutopilotLanePlan` and
+    `GetAutopilotLaneLeg`, and `ASOLFlightHud::GetLastSunSafetyLine` and `GetLastViaBody` (the lines drawn this
+    frame). The run uses the smoke settings slot. It found two things:
+    - The two bottom labels of the 11-sector radial menu were drawn on top of each other: `cos(73.6 deg)` = 0.28 was
+      under `SOL::Interact::LABEL_SIDE_COSINE` (0.3), so both were centred. The constant is now 0.2.
+    - A fast Sunward entry dips to 19.4 Sun radii. **Accepted by the user (2026-11-26) as a limitation**
+      (`TECH_DEBT.md`): the detour brakes instead of escaping sideways. The documented bound is a closest approach of
+      at least 19 Sun radii, the detour latched, and never below 15 radii (the unpowered line); the smoke's
+      `fast-entry-zone` check asserts that bound (`LANEROUTE_FAST_MIN_RADII`, `LANEROUTE_FAST_FLOOR_RADII`). Every
+      other Sun check keeps 20 radii, and the zone constants are unchanged.
+    - A hop whose Approach ends in the lane rules' `Left` before it ever holds was treated as finished at its node
+      (`LeaveHop`). On Earth > Mars > Jupiter > Saturn this happened with the ship about 2.3 AU short of Jupiter; the
+      plan was re-made from Jupiter and dropped, and plain AUTO took over. **Fixed (user decision 2026-11-26):**
+      `SOLLaneRoutePlan::LeaveHopOnLaneRulesLeft` decides the lane rules' `Left` on a plan hop. A hop that never held
+      its lane (the mode before was not Hold, so Approach or a search straight to Left), with a later hop, and farther
+      than `AUTO_LANE_PLAN_AT_NODE_RADII` body radii from its end node is left early exactly like `ForceLeaveLane`: no
+      lane search, the direct aim to the hop's end node, `FinishEarlyHop` there, and the subsystem re-plans from that
+      node. The plan and the VIA line are kept, and no Sun notice is shown. A held hop, a hop at its node, the last hop
+      and no plan keep per-hop `Left`. Test `SOLTest.LaneRouteAuto.NeverHeldHopLeftEarly` (test-after). In the
+      smoke the Mars > Jupiter hop now ends at Jupiter (73 radii, left early). **Still open:** the last hop
+      (Jupiter > Saturn) stays in Approach for about 12 days at 86400x and at the top warp without ever holding, then
+      goes to the final `Left` (the trip still arrives), so the smoke's `plan-day-hops` and `plan-top-hops` count only hops
+      with a later hop (user decision, 2026-11-26: the last hop is excluded from the held-lane assertion and its lane
+      state is logged; arrival and no other lane mid-plan are still asserted). A hop flagged left early is not counted
+      as away when it is left: the smoke instead asserts that the hop ended via `FinishEarlyHop` (the plan moved to the
+      next hop or was re-made) and that the order arrived before the time limit. The within-100-body-radii proximity
+      sample of the end node is kept only when one frame travels under 50 body radii (at top warp one frame spans
+      hundreds, so it cannot see the hop end); otherwise it is logged and skipped with the reason. The same
+      happened before the fix under plain AUTO, so it is older; the cause is not found (`TECH_DEBT.md` item 9).
+    The 3+ hop trips drop to 3600x within 20 body radii of the target, and to 1x within 1 km of the arrival point,
+    because of an older warp arrival limit (`TECH_DEBT.md`). The same limit made `sun-chase` fail at 2560x1440 only
+    (2026-11-26): reproduced on a rerun (not flaky), the chase sat 12 m off Mercury's tail point at 0.8 m/s under
+    3600x with about 9 ms frames, so the tail hold (the same 10 m / 1 m/s arrival) never came. That 1280x720 held
+    because of its shorter frames (about 5 ms) is inferred, not measured. The Sun part of the case was the same at
+    every resolution (closest approach 21.27 radii). It is the known production warp arrival limit, not a Sun safety
+    defect, worked around in the smoke: a chase now drops to 1x within 1 km of its tail point too (then it passed at
+    2560x1440 after 2.74 days sim).
+  - **Not built (open, `TECH_DEBT.md`):** the R20 check of promoted NPC tiers, the list menu screenshots, and unit tests
+    that drive the flight processor itself.
 
 ## 7. Activation and budget by pixels (D2, D8)
 
@@ -815,8 +928,10 @@ Re-validated: `NpcScaleMathTest` (`DefaultLayout`), `LaneAutoRulesTest` (layout 
 row is no longer the last action; War power obeys the Sun safety), `InteractMenusTest` and `HoloRadialTest` (11 body
 rows, `MAX_ACTIONS` 11), `AutopilotRegression.NoLaneBitIdentical` (stays bit-identical for paths that keep out of the
 danger zone; zone paths get new tests), smokes that assume 8 lanes (`-SOLSmokeNpcTunnel`, `-SOLSmokeNpcLanes`,
-`-SOLSmokeAutoLanes`, `-SOLSmokeLaneMerge`, `-SOLSmokeNpcTraffic`). New smoke `-SOLSmokeLaneRoute` (a two-hop AUTO trip
-at warp, a lane closing mid-plan and the re-plan, a Sun detour, the override row toggled, the VIA line, the map route).
+`-SOLSmokeAutoLanes`, `-SOLSmokeLaneMerge`, `-SOLSmokeNpcTraffic`). New smoke `-SOLSmokeLaneRoute` (as built: a 3+ hop AUTO
+trip at 1x, 86400x and the top warp with its re-plans and epochs, a held lane closing for the Sun, the Sun detour on
+Move To, War Power Move and Chase Down, the override row toggled, the stop at the zone, the VIA line, the map route;
+6.5 "Smoke").
 PIE smoke screenshots at 1280x720, 1920x1080 and 4K.
 
 ## 13. Performance targets (Q25)
@@ -953,6 +1068,16 @@ in SDD 52; 3840x3744 and two-eye not measured.
   once at its end); pool hysteresis `NPC_TUNNEL_POOL_KEEP_RATIO` 1.1 (7.3); the wall label alpha follows the open fade;
   the open-fade step, the hold rule and the per-class instance split are pure functions with tests. No persistence
   change.
+- 2026-11-25: 53e built (6.4 and 6.5 carry an "As built" note each): `SOLLaneRoutePlan` pure plan logic, the player's
+  lane plan in `FSOLShipStateFragment` (transient), planning in `USOLShipSubsystem::UpdateLanePlan`, per-hop `Left` and
+  re-plan at each node and epoch, Sun safety on every AUTO order (danger zone 20 radii, detour waypoint on the 22-radii
+  sphere, at least 15 degrees ahead), the session-only "Toggle Sun Safety" row (`MAX_ACTIONS` 11), the VIA and Sun HUD
+  lines, the map plan polyline. Not built (`TECH_DEBT.md`): the finish-if-safe wiring for a held hop on a closing lane,
+  the lane-closed-by-Sun notice, `-SOLSmokeLaneRoute`, the 11-sector menu screenshots, asteroid-end routing, R20.
+  No persistence change (`SAVE_VERSION` 13, `KEY_BINDING_LAYOUT_VERSION` 10).
+- 2026-11-26: 53e smoke follow-ups (user decisions, 6.5 "Smoke"): a plan hop that never held its lane and ends far
+  from its end node is left early and flown to that node, then re-planned (`LeaveHopOnLaneRulesLeft`); the fast
+  Sunward entry dip is accepted with a documented bound of 19 Sun radii (never below 15). No persistence change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
 
@@ -1077,3 +1202,12 @@ decisions"), as answered by the user. Every assertion of contract cases 16-26 is
   recommendation:* active whenever the overlay is off, no quality scale. The shader reads the flag in 53d (7.2).
 - **P6 AUTO latch on a closing lane: as recommended.** An Approach on a lane that closes is Stale (dropped, searched
   again on the next search); a Hold on a closed lane is unchanged until 53e's finish-if-safe (5.4).
+
+## 19. Resolved 53e smoke decisions (user, 2026-11-26)
+
+- **Plan hop ending early:** when the lane rules go to `Left` without the ship ever holding the hop's lane, far from
+  the hop's end node, AUTO flies to that node exactly as after `ForceLeaveLane` / `FinishEarlyHop` (no lane search)
+  and re-plans there; the plan and the VIA line are kept. Fixed in the flight processor (6.5 "Smoke"). The last hop
+  is not covered by this decision; its never-held Approach is open (`TECH_DEBT.md`).
+- **Fast Sunward entry:** the dip to about 19.4 Sun radii is accepted as a limitation (`TECH_DEBT.md`); the bound is
+  at least 19 radii, latched, never below 15 (6.5 "Smoke").

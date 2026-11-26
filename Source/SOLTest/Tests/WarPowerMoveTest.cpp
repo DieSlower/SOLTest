@@ -348,8 +348,8 @@ bool FSOLWarPowerActionRowTest::RunTest(const FString& /*parameters*/)
     using namespace SOLActionTable;
     TestEqual(TEXT("appended after Trade"), static_cast<int32>(ESOLAction::MoveToWarPower),
         static_cast<int32>(ESOLAction::Trade) + 1);
-    TestEqual(TEXT("the last before Count"), static_cast<int32>(ESOLAction::MoveToWarPower),
-        static_cast<int32>(ESOLAction::Count) - 1);
+    TestEqual(TEXT("only the Sun safety row after it (issue #53)"), static_cast<int32>(ESOLAction::MoveToWarPower),
+        static_cast<int32>(ESOLAction::Count) - 2);
     TestEqual(TEXT("MoveTo keeps its ordinal"), static_cast<int32>(ESOLAction::MoveTo), 2);
 
     for (const ESOLObjectType type : WARPOWER_BODY_TYPES)

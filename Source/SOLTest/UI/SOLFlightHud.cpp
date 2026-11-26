@@ -1281,6 +1281,8 @@ void ASOLFlightHud::DrawHUD()
     mLastRouteLineRect = FBox2D(ForceInit);
     mLastHintsRect = FBox2D(ForceInit);
     mAutopilotBlockBottomY = 0.0f;
+    mLastSunSafetyLine = TEXT("");
+    mLastViaBody = INDEX_NONE;
     mLeftBlockRect = FBox2D(ForceInit);
     mTopBlockRect = FBox2D(ForceInit);
     mLastMergeSpot = FSOLLaneMergeSpot();
@@ -1958,6 +1960,20 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     const int32 autopilotBody = (bChase || bLostNote) ? INDEX_NONE : Ships->GetAutopilotBodyIndex();
     if (!bChase && !bLostNote && autopilotBody == INDEX_NONE)
     {
+        // No order: only the Sun safety override line, at the marker's place (SDD 53 6.5: shown at all times), below
+        // the key-hint lines where it would overlap them; the route lines start below it
+        const float lineCenterX = Canvas->ClipX * 0.5f;
+        float lineTop = HUD_AUTOPILOT_TOP_PX * mUiScale;
+        if (mLastHintsRect.bIsValid && mLastHintsRect.Min.X < lineCenterX && mLastHintsRect.Max.X > lineCenterX
+            && mLastHintsRect.Min.Y < lineTop + HUD_LINE_SMALL_PX * mUiScale && mLastHintsRect.Max.Y > lineTop)
+        {
+            lineTop = static_cast<float>(mLastHintsRect.Max.Y) + HUD_LINE_SMALL_PX * mUiScale;
+        }
+        const float lineBottom = DrawSunSafetyLine(lineTop);
+        if (lineBottom > lineTop)
+        {
+            mAutopilotBlockBottomY = lineBottom;
+        }
         return;
     }
     mText.Reset();
@@ -1983,8 +1999,8 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         SOLHudFormat::AppendDistanceM(mText, guidance.DistanceM);
     }
 
-    // Holding a traffic lane at the traffic speed (SDD 50 section 4.9): the LANE tag
-    if (!bLostNote && Ships->IsAutopilotLaneHold())
+    // Holding a traffic lane at the traffic speed (SDD 50 section 4.9): the LANE tag (never during a Sun detour)
+    if (!bLostNote && Ships->IsAutopilotLaneHold() && !Ships->IsAutopilotSunDetour())
     {
         mText.Append(SOLMenuText::AUTOPILOT_LANE_TAG_SEPARATOR);
         mText.Append(SOLMenuText::AUTOPILOT_LANE_TAG);
@@ -1992,11 +2008,15 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     const float textWidth = static_cast<float>(MeasureLine(ESOLHudLine::Autopilot, ESOLHudFont::Medium).X);
 
     // The block sits below the top edge, or below the key-hint lines where it would overlap them (long hint lines at
-    // 1280x720)
+    // 1280x720); its height counts the marker, the activity, cancel, VIA and Sun lines it will draw
     const float centerX = Canvas->ClipX * 0.5f;
     float top = HUD_AUTOPILOT_TOP_PX * mUiScale;
     const float halfWidth = 0.5f * textWidth * mUiScale;
-    const float blockHeight = (HUD_LINE_MEDIUM_PX + 2.0f * HUD_LINE_SMALL_PX) * mUiScale;
+    const int32 viaBody = (bChase || bLostNote) ? INDEX_NONE : Ships->GetAutopilotViaBodyIndex();
+    const bool bSunLine = Ships->IsSunSafetyOverridden() || (!bLostNote && (Ships->IsAutopilotSunStoppedAtZone()
+        || Ships->IsAutopilotLaneLeftForSun() || Ships->IsAutopilotSunDetour()));
+    const float blockHeight = (HUD_LINE_MEDIUM_PX + (2.0f + (viaBody != INDEX_NONE ? 1.0f : 0.0f)
+        + (bSunLine ? 1.0f : 0.0f)) * HUD_LINE_SMALL_PX) * mUiScale;
     if (mLastHintsRect.bIsValid && mLastHintsRect.Min.X < centerX + halfWidth
         && mLastHintsRect.Max.X > centerX - halfWidth && mLastHintsRect.Min.Y < top + blockHeight
         && mLastHintsRect.Max.Y > top)
@@ -2007,7 +2027,8 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         ESOLHudFont::Medium);
     if (bLostNote)
     {
-        mAutopilotBlockBottomY = top + HUD_LINE_MEDIUM_PX * mUiScale;
+        // The note alone, but the override line still shows under it (SDD 53 6.5: at all times)
+        mAutopilotBlockBottomY = DrawSunSafetyLine(top + HUD_LINE_MEDIUM_PX * mUiScale);
         return;
     }
     float lineY = top + HUD_LINE_MEDIUM_PX * mUiScale;
@@ -2030,6 +2051,20 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
             ESOLHudFont::Small);
         lineY += HUD_LINE_SMALL_PX * mUiScale;
     }
+    if (viaBody != INDEX_NONE)
+    {
+        // A multi-hop lane plan (SDD 53 6.4, Q16): the current hop's end node, as the activity line (never with War
+        // power or a chase, so the line is not shared in one frame)
+        mLastViaBody = viaBody;
+        mText.Reset();
+        const FNameBuilder viaName(BodyRegistry->GetRegistry().GetName(viaBody));
+        TStringBuilder<128> viaLine;
+        SOLAutopilotOrder::AppendViaLine(viaLine, viaName.ToView());
+        mText.Append(viaLine.ToView());
+        mTopBlockRect += DrawBufferCentered(ESOLHudLine::ChaseActivity, HUD_SECONDARY, centerX, lineY,
+            ESOLHudFont::Small);
+        lineY += HUD_LINE_SMALL_PX * mUiScale;
+    }
     mText.Reset();
     mText.Append(bChase ? SOLMenuText::CHASE_CANCEL_HINT : SOLMenuText::AUTOPILOT_CANCEL_HINT);
     mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotCancel, HudDimText(HUD_PRIMARY), centerX, lineY,
@@ -2043,7 +2078,30 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
             ESOLHudFont::Small);
         lineY += HUD_LINE_SMALL_PX * mUiScale;
     }
+    lineY = DrawSunSafetyLine(lineY);
     mAutopilotBlockBottomY = lineY;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the Sun safety line at a height and returns the height below it: SUN SAFETY OFF while the player's override
+// is on, else the order's detour or stopped-at-zone notice, else nothing (SDD 53 6.5)
+float ASOLFlightHud::DrawSunSafetyLine(const float lineY)
+{
+    const bool bOverridden = Ships->IsSunSafetyOverridden();
+    const TCHAR* line = bOverridden ? SOLAutopilotOrder::SunSafetyLineText(true)
+        : Ships->IsAutopilotSunStoppedAtZone() ? SOLMenuText::AUTOPILOT_STOPPED_AT_ZONE
+        : Ships->IsAutopilotLaneLeftForSun() ? SOLMenuText::AUTOPILOT_LANE_LEFT_FOR_SUN
+        : Ships->IsAutopilotSunDetour() ? SOLMenuText::AUTOPILOT_SUN_DETOUR : TEXT("");
+    if (FCString::Strlen(line) == 0)
+    {
+        return lineY;
+    }
+    mLastSunSafetyLine = line;
+    mText.Reset();
+    mText.Append(line);
+    mTopBlockRect += DrawBufferCentered(ESOLHudLine::SunSafety, bOverridden ? HUD_BAD : HUD_SECONDARY,
+        Canvas->ClipX * 0.5f, lineY, ESOLHudFont::Small);
+    return lineY + HUD_LINE_SMALL_PX * mUiScale;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2084,6 +2142,8 @@ void ASOLFlightHud::DrawRouteOverlay(const FSOLMapOverlayView& overlayView)
     {
         inputs.bHasShip = true;
         inputs.ShipPositionM = Ships->GetUniversePositionM();
+        inputs.LanePlanPointsM = TConstArrayView<FVector3d>(mLanePlanPointsM,
+            Ships->GetAutopilotLaneRoutePolylineM(mLanePlanPointsM));
     }
     inputs.PlanePointM = inputs.bHasShip ? inputs.ShipPositionM : AnchorSubsystem->GetViewpointM();
 

@@ -50,6 +50,7 @@ void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
     const bool bTunnelSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_TUNNEL);
     const bool bMergeSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_MERGE);
     const bool bAutoLanesSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_AUTO_LANES);
+    const bool bLaneRouteSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_ROUTE);
     const bool bHasSimDate = FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate);
     if (bCropRun)
     {
@@ -67,7 +68,11 @@ void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
     {
         simDate = SOL::CommandLine::SMOKE_AUTO_LANES_SIM_DATE;
     }
-    if (bCropRun || bTunnelSmoke || bMergeSmoke || bAutoLanesSmoke || bHasSimDate)
+    else if (bLaneRouteSmoke && !bHasSimDate)
+    {
+        simDate = SOL::CommandLine::SMOKE_LANE_ROUTE_SIM_DATE;
+    }
+    if (bCropRun || bTunnelSmoke || bMergeSmoke || bAutoLanesSmoke || bLaneRouteSmoke || bHasSimDate)
     {
         double julianDate = 0.0;
         if (FSOLSimClock::TryParseUtcJulianDate(simDate, julianDate))

@@ -1269,7 +1269,7 @@ namespace SOL
     // Pixel sizes are at a 720 px canvas (x UI scale)
     namespace Interact
     {
-        inline constexpr int32 MAX_ACTIONS = 10;                  // Actions one object's menu can hold (table rows)
+        inline constexpr int32 MAX_ACTIONS = 11;                  // Actions one object's menu can hold (table rows)
         inline constexpr double ICON_HIT_SLACK_PX = 6.0;          // Hover / press reach beyond an icon's radius
         inline constexpr float HOVER_RING_SCALE = 1.7f;           // Hovered icon: highlight ring this many icon radii
         inline constexpr float RADIAL_INNER_PX = 24.0f;           // Radial menu: cancel zone and the sector ring's
@@ -1290,7 +1290,10 @@ namespace SOL
         inline constexpr float LIST_MARGIN_PX = 12.0f;            // Map list menu: kept this far inside the screen
         inline constexpr float LIST_CURSOR_OFFSET_PX = 14.0f;     // ... and opened this far right / below the cursor
         inline constexpr int32 LIST_Z_ORDER = 15;                 // Map list menu: above the HUD, below the pause menu
-        inline constexpr double LABEL_SIDE_COSINE = 0.3;          // Radial labels beside the ring past this |cos|
+        inline constexpr double LABEL_SIDE_COSINE = 0.2;          // Radial labels beside the ring past this |cos|
+                                                                  // (below cos(73.6 deg) = 0.28, so the two bottom
+                                                                  // labels of an 11-sector menu sit apart, not centred
+                                                                  // on top of each other)
         inline constexpr float DISABLED_TEXT_SCALE = 0.4f;        // Disabled radial labels: colour scale
         inline constexpr float HINT_Y_FRACTION = 0.68f;           // Attack hint line (fraction of the screen height)
         inline constexpr float INFO_CARD_WIDTH_PX = 230.0f;       // Info card: left edge this far from the right edge
@@ -1901,6 +1904,7 @@ namespace SOL
     namespace BodyNames
     {
         inline constexpr const TCHAR* SUN = TEXT("Sun");
+        inline constexpr const TCHAR* MERCURY = TEXT("Mercury");
         inline constexpr const TCHAR* VENUS = TEXT("Venus");
         inline constexpr const TCHAR* EARTH = TEXT("Earth");
         inline constexpr const TCHAR* MOON = TEXT("Moon");
@@ -1909,6 +1913,7 @@ namespace SOL
         inline constexpr const TCHAR* SATURN = TEXT("Saturn");
         inline constexpr const TCHAR* URANUS = TEXT("Uranus");
         inline constexpr const TCHAR* NEPTUNE = TEXT("Neptune");
+        inline constexpr const TCHAR* CERES = TEXT("Ceres");
         inline constexpr const TCHAR* PAN = TEXT("Pan");
         inline constexpr const TCHAR* DAPHNIS = TEXT("Daphnis");
     }
@@ -1994,6 +1999,14 @@ namespace SOL
         // The sim date -SOLSmokeAutoLanes starts at unless -SOLSimDate= is given (the lane's length and the planets'
         // places decide the trip times and views), pinned like the merge smoke's
         inline constexpr const TCHAR* SMOKE_AUTO_LANES_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
+        // AUTO lane routing and Sun safety (SDD 53 6.4, 6.5): multi-hop plans at three warps, a held lane closing for
+        // the Sun, the Sun detour on every AUTO order, the override (radial row) and the stop at the zone, then quit
+        inline constexpr const TCHAR* SMOKE_LANE_ROUTE = TEXT("SOLSmokeLaneRoute");
+        // The sim date -SOLSmokeLaneRoute starts at unless -SOLSimDate= is given (the daily lane set decides the plans
+        // and the closing lanes), pinned like the AUTO lanes smoke's
+        inline constexpr const TCHAR* SMOKE_LANE_ROUTE_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
+        // With -SOLSmokeLaneRoute: -SOLLaneRouteCases=<names> runs only those cases (comma-separated case names)
+        inline constexpr const TCHAR* SMOKE_LANE_ROUTE_CASES = TEXT("SOLLaneRouteCases=");
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -3303,7 +3316,18 @@ namespace SOL
         "the catch-up limit fits the look-ahead and the speed bound is not below the perihelion speed");
     static_assert(NPC_LANE_NETWORK_CATCH_UP_EPOCHS * NPC_LANE_NETWORK_EPOCH_S >= MAX_FRAME_DELTA_S * SIM_CLOCK_MAX_WARP,
         "one frame at the top warp (clamped delta) never moves more epochs than the catch-up limit, so it steps");
+    inline constexpr double AUTO_SUN_DETOUR_MIN_ARC_DEG = 15.0;        // The AUTO Sun detour waypoint lies at least
+                                                                       // this far ahead of the ship on the 22-radii
+                                                                       // sphere (SDD 53 6.5; a pursuit settles at
+                                                                       // 22 cos(arc) radii, 21.25 at 15 degrees)
+    inline constexpr double AUTO_SUN_DETOUR_MAX_ARC_DEG = 24.6;        // Below acos(20 / 22) = 24.62 degrees
+    inline constexpr double AUTO_LANE_PLAN_AT_NODE_RADII = 100.0;      // An AUTO order is lane-routed only from a ship
+                                                                       // within this many body radii of a node (SDD
+                                                                       // 53 6.4 Q11; Earth 637,000 km, past the Moon)
     static_assert(NPC_LANE_SUN_REOPEN_RADII > NPC_LANE_SUN_CLEARANCE_RADII, "the Sun band reopens above the close");
+    static_assert(AUTO_SUN_DETOUR_MIN_ARC_DEG > 0.0 && AUTO_SUN_DETOUR_MIN_ARC_DEG < AUTO_SUN_DETOUR_MAX_ARC_DEG
+        && NPC_LANE_SUN_CLEARANCE_RADII == 20.0 && NPC_LANE_SUN_REOPEN_RADII == 22.0,
+        "the detour pursuit settles at 22 cos(min arc) Sun radii, outside the 20-radii zone (24.6 is acos(20 / 22))");
     static_assert(NPC_LANE_NETWORK_EPOCH_S > 0.0 && NPC_LANE_NETWORK_EPOCH_SAMPLES >= 2
         && NPC_LANE_SUN_LOOKBACK_EPOCHS >= 1, "the epoch and its samples are valid");
     static_assert(NPC_LANE_NETWORK_HORIZON_EPOCHS * NPC_LANE_NETWORK_EPOCH_S > 897.0 * 86400.0,

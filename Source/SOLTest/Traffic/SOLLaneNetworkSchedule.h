@@ -128,6 +128,12 @@ public:
     FSOLLaneRoute FindRoute(int32 sourceNode, int32 targetNode, double startS,
         TConstArrayView<FSOLLaneProfile> slotProfiles, double wallSpeedMps, double penaltyS);
 
+    // Returns the last FindRoute's edges (valid until the next FindRoute; game thread)
+    TConstArrayView<FSOLLaneEdge> GetLastRouteEdges() const { return mEdges; }
+
+    // Returns the slot of each of the last FindRoute's edges (parallel to GetLastRouteEdges)
+    TConstArrayView<int32> GetLastRouteEdgeSlots() const { return mEdgeSlot; }
+
 private:
 
     // Returns a lane's pair index (A-major order), or INDEX_NONE for an invalid pair

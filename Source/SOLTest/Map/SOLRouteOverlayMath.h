@@ -20,6 +20,7 @@ enum class ESOLRouteDrawStyle : uint8
     Draft,      // Being planned on the map: SOL::Route::OVERLAY_ALPHA_DRAFT
     Paused,     // Paused by manual input: SOL::Route::OVERLAY_ALPHA_PAUSED (plus a PAUSED tag)
     Finished,   // A Move that reached its end: SOL::Route::OVERLAY_ALPHA_FINISHED
+    LanePlan,   // The AUTO lane route plan (SDD 53 6.4, Q16): Secondary, dashed, SOL::Route::OVERLAY_ALPHA_ACTIVE
 };
 
 // One drawn leg of a route: from one waypoint to the next; the closing leg of a Patrol Loop (last back to first) is

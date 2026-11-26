@@ -560,6 +560,11 @@ bool USOLInteractionSubsystem::Execute(const FSOLObjectRef& object, const ESOLAc
         // The War power move (SDD 50 D22): this order only ignores the lane rules and flies at full thrust
         bDone = bBody && Ships->EngageAutopilot(object.Index, true);
         break;
+    case ESOLAction::SunSafetyOverride:
+        // The session-only Sun safety override (SDD 53 6.5, O4): takes effect at once, also on an order in flight
+        Ships->ToggleSunSafetyOverride();
+        bDone = true;
+        break;
     case ESOLAction::Follow:
         bDone = bBody && FollowBody(object.Index);
         break;

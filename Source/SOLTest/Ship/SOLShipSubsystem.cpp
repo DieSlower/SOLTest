@@ -17,6 +17,9 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "Traffic/SOLLaneNetworkSchedule.h"
+#include "Traffic/SOLLaneRoutePlan.h"
+#include "Traffic/SOLLaneTrafficSubsystem.h"
 #include "UI/SOLHudFormat.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -35,11 +38,14 @@
 #include "Misc/Parse.h"
 #include "Stats/Stats.h"
 
+#include <limits>
+
 // Game-thread cycle stats of the ship step (`stat SOLShip`, `stat dumpsum -root=STAT_SOL_`; SDD 32 section 3.5 cost)
 DECLARE_STATS_GROUP(TEXT("SOLShip"), STATGROUP_SOLShip, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("SOL_ChasePlan"), STAT_SOL_ChasePlan, STATGROUP_SOLShip);
 DECLARE_CYCLE_STAT(TEXT("SOL_ChaseUpdate"), STAT_SOL_ChaseUpdate, STATGROUP_SOLShip);
 DECLARE_CYCLE_STAT(TEXT("SOL_ShipFlightRun"), STAT_SOL_ShipFlightRun, STATGROUP_SOLShip);
+DECLARE_CYCLE_STAT(TEXT("SOL_ShipLanePlan"), STAT_SOL_ShipLanePlan, STATGROUP_SOLShip);
 
 namespace
 {
@@ -65,6 +71,45 @@ namespace
     {
         return SOLChase::ChaseAimPointM(sample.PositionM, sample.VelocityMps - sample.FrameVelocityMps, approachDir,
             sample.TrailM);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the lane node of a body: its own node, else its parent's (a body under a node), else INDEX_NONE
+    int32 ShipLaneNodeOfBody(const TConstArrayView<FSOLLaneNode> nodes, const FSOLBodyRegistry& registry,
+        const int32 body)
+    {
+        for (int32 pass = 0, candidate = body; pass < 2 && candidate >= 0;
+            ++pass, candidate = registry.GetParent(candidate))
+        {
+            for (int32 node = 0; node < nodes.Num(); ++node)
+            {
+                if (nodes[node].BodyIndex == candidate)
+                {
+                    return node;
+                }
+            }
+        }
+        return INDEX_NONE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the lane table entry of a lane identity between two node bodies (an open one first), INDEX_NONE if none
+    int32 ShipLaneEntryOf(const TConstArrayView<FSOLLaneTrafficEntry> lanes, const int32 bodyA, const int32 bodyB)
+    {
+        int32 closedEntry = INDEX_NONE;
+        for (int32 entry = 0; entry < lanes.Num(); ++entry)
+        {
+            const FSOLLaneTrafficEntry& lane = lanes[entry];
+            if ((lane.BodyA == bodyA && lane.BodyB == bodyB) || (lane.BodyA == bodyB && lane.BodyB == bodyA))
+            {
+                if (lane.bOpenNow)
+                {
+                    return entry;
+                }
+                closedEntry = closedEntry == INDEX_NONE ? entry : closedEntry;
+            }
+        }
+        return closedEntry;
     }
 
     // sol.Autopilot <Body|Target|Off>: orders the player ship's autopilot (SDD 18; #19 adds the real controls)
@@ -494,6 +539,11 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
         const bool bAutoOrder = GetAutopilotBodyIndex() != INDEX_NONE || mChase.bActive;
         inputs.Lanes = LaneTraffic != nullptr && bAutoOrder ? LaneTraffic->GetLanes()
             : TConstArrayView<FSOLLaneTrafficEntry>();
+        // The player's Sun safety and AUTO lane route plan for this run (SDD 53 6.4, 6.5)
+        inputs.bSunSafety = SOLLaneRoutePlan::OrderSunSafetyActive(mIsSunSafetyOverridden, IsAutopilotWarPower(),
+            mChase.bActive);
+        UpdateLanePlan(inputs);
+        UpdateHeldLaneFinish(inputs);
         FlightProcessor->SetFrameInputs(inputs);
         mLastWarpFactor = inputs.WarpFactor;
         UE::Mass::FProcessingContext context(*mEntityManager, realDeltaSeconds);
@@ -1066,10 +1116,304 @@ void USOLShipSubsystem::ResetLaneState()
     {
         return;
     }
+    SOLAutopilotOrder::ResetLaneState(mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Plans, re-plans and resolves the player's AUTO lane route plan for this frame's flight run (SDD 53 6.4)
+void USOLShipSubsystem::UpdateLanePlan(FSOLShipFrameInputs& inputs)
+{
     FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
-    state.LaneLeg = FSOLLaneAutoLeg();
-    state.LaneMode = ESOLLaneAutoMode::None;
-    state.WarPowerPulse = FSOLWarPowerPulseState();
+    const FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(
+        mPlayerShip);
+    FSOLLaneRoutePlan& plan = state.LanePlan;
+
+    // Lane-routed orders (Q11): a body order (Move To, Follow), not War power, a route waypoint or a chase
+    const int32 targetBody = control.AutopilotBodyIndex;
+    const bool bBodyOrder = targetBody != INDEX_NONE && !control.bAutopilotPoint && !control.bAutopilotIgnoreLanes
+        && !mChase.bActive;
+    if (!bBodyOrder || LaneTraffic == nullptr || inputs.Lanes.IsEmpty() || !LaneTraffic->GetNetwork().IsBuilt())
+    {
+        if (!bBodyOrder)
+        {
+            SOLLaneRoutePlan::ClearPlan(plan);
+        }
+        mLanePlanHop = INDEX_NONE;
+        return;
+    }
+    SCOPE_CYCLE_COUNTER(STAT_SOL_ShipLanePlan);
+    const FSOLLaneNetworkSchedule& network = LaneTraffic->GetNetwork();
+    const TConstArrayView<FSOLLaneNode> nodes = network.GetConfig().Nodes;
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const int64 epoch = network.GetCurrentEpoch();
+    const double nowS = SimClock->GetClock().GetSecondsSinceJ2000();
+
+    if (!SOLLaneRoutePlan::HasPlan(plan) && mLanePlanTriedSerial != mAutopilotOrderSerial)
+    {
+        // A new order: route once from the ship's node (its anchor body) to the target's node
+        mLanePlanTriedSerial = mAutopilotOrderSerial;
+        // The ship must be at that node: within AUTO_LANE_PLAN_AT_NODE_RADII body radii of it; elsewhere (open space,
+        // whatever the anchor) AUTO flies as today
+        int32 startNode = ShipLaneNodeOfBody(nodes, registry, Anchor->GetAnchorIndex());
+        const int32 startBody = startNode != INDEX_NONE ? nodes[startNode].BodyIndex : INDEX_NONE;
+        if (!mPrevBodyPositionsM.IsValidIndex(startBody) || FVector3d::Dist(state.State.PositionM,
+            mPrevBodyPositionsM[startBody]) > SOL::AUTO_LANE_PLAN_AT_NODE_RADII * nodes[startNode].ClearanceRadiusM)
+        {
+            startNode = INDEX_NONE;
+        }
+        const int32 targetNode = ShipLaneNodeOfBody(nodes, registry, targetBody);
+        if (SOLLaneRoutePlan::ShouldPlanLaneRoute(false, startNode, targetNode))
+        {
+            PlanLaneRoute(startNode, targetNode, nowS, epoch, mAutopilotOrderSerial);
+        }
+    }
+    else if (SOLLaneRoutePlan::HasPlan(plan) && plan.CurrentHop != mLanePlanHop && mLanePlanHop != INDEX_NONE)
+    {
+        // At a node (the last hop left): re-plan from it with the real windows (SDD 53 6.3); none: fly as today
+        PlanLaneRoute(plan.Hops[plan.CurrentHop].FromNode, SOLLaneRoutePlan::PlanTargetNode(plan), nowS, epoch,
+            plan.Serial + 1);
+    }
+    else if (SOLLaneRoutePlan::ShouldReplan(plan, epoch))
+    {
+        // An epoch change: the hops after the current one from its end node (Q14); none: the current hop alone
+        const FSOLLaneRoute route = FindLaneRoute(SOLLaneRoutePlan::ReplanSourceNode(plan),
+            SOLLaneRoutePlan::PlanTargetNode(plan), nowS);
+        SOLLaneRoutePlan::ReplaceRemainingHops(plan, route, mLanePlanEdges, SOL::NPC_LANE_TRANSFER_PENALTY_S,
+            SOL::NPC_LANE_WALL_SPEED_MPS, epoch);
+    }
+
+    // Each remaining hop's lane table entry and end body; a hop without both drops the plan (AUTO flies as today)
+    for (int32 hop = plan.CurrentHop; hop < plan.HopCount && SOLLaneRoutePlan::HasPlan(plan); ++hop)
+    {
+        const FSOLLaneRoutePlanHop& planHop = plan.Hops[hop];
+        const int32 fromBody = nodes.IsValidIndex(planHop.FromNode) ? nodes[planHop.FromNode].BodyIndex : INDEX_NONE;
+        const int32 toBody = nodes.IsValidIndex(planHop.ToNode) ? nodes[planHop.ToNode].BodyIndex : INDEX_NONE;
+        const int32 entry = (fromBody >= 0 && toBody >= 0) ? ShipLaneEntryOf(inputs.Lanes, fromBody, toBody)
+            : INDEX_NONE;
+        if (entry == INDEX_NONE)
+        {
+            SOLLaneRoutePlan::ClearPlan(plan);
+            break;
+        }
+        inputs.PlanHopEntries[hop] = entry;
+        inputs.PlanHopEndBodies[hop] = toBody;
+    }
+    mLanePlanHop = SOLLaneRoutePlan::HasPlan(plan) ? plan.CurrentHop : INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Decides the finish-if-safe of a held lane that closes before the hop ends (SDD 53 6.5): the rest of the hop (the
+// ship -> the leg's end body where it will be, sampled at each epoch until the estimated arrival) must keep beyond
+// k_on from the Sun, else the flight run leaves the lane at once
+void USOLShipSubsystem::UpdateHeldLaneFinish(FSOLShipFrameInputs& inputs) const
+{
+    inputs.HeldLaneEntry = INDEX_NONE;
+    inputs.bHeldLaneLeave = false;
+    const FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+    const FSOLLaneAutoLeg& leg = state.LaneLeg;
+    if (state.LaneMode != ESOLLaneAutoMode::Hold || !leg.bFound || !inputs.Lanes.IsValidIndex(leg.Lane)
+        || LaneTraffic == nullptr || !inputs.bSunSafety)
+    {
+        return;
+    }
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const int32 endBody = leg.DirectionSign > 0 ? leg.BodyB : leg.BodyA;
+    if (endBody < 0 || endBody >= registry.Num())
+    {
+        return;
+    }
+
+    // The lane's close: now when it is closed already, its slot window's end while open (NaN when unknown: fail safe),
+    // never without a slot
+    const FSOLLaneTrafficEntry& lane = inputs.Lanes[leg.Lane];
+    const double nowS = SimClock->GetClock().GetSecondsSinceJ2000();
+    double openS = 0.0;
+    double closeS = std::numeric_limits<double>::infinity();
+    if (!lane.bOpenNow)
+    {
+        closeS = nowS;
+    }
+    else if (lane.Slot != INDEX_NONE)
+    {
+        LaneTraffic->GetNetwork().GetSlotWindow(lane.Slot, openS, closeS);
+    }
+
+    // The rest of the hop at the ship's speed (the traffic speed while holding), in registry axes (the flight state's
+    // mirror; distances to the Sun at the origin are the same)
+    const FVector3d shipM = SOLRender::EclipticToUnreal(state.State.PositionM);
+    const double remainingS = FVector3d::Dist(shipM, registry.ComputePositionAtM(endBody, nowS))
+        / FMath::Max(state.State.VelocityMps.Size(), 1.0);
+    const bool bCloses = SOLLaneRoutePlan::HopClosesBeforeEnd(nowS, remainingS, closeS);
+    bool bSafe = true;
+    if (bCloses)
+    {
+        // The end body at each epoch until the arrival (at most MAX_SAMPLES samples, evenly spread)
+        constexpr int32 MAX_SAMPLES = 64;
+        const int32 samples = FMath::Clamp(FMath::CeilToInt32(remainingS / SOL::NPC_LANE_NETWORK_EPOCH_S), 1,
+            MAX_SAMPLES - 1);
+        TArray<FVector3d, TInlineAllocator<MAX_SAMPLES>> fromM;
+        TArray<FVector3d, TInlineAllocator<MAX_SAMPLES>> toM;
+        for (int32 sample = 0; sample <= samples; ++sample)
+        {
+            fromM.Add(shipM);
+            toM.Add(registry.ComputePositionAtM(endBody, nowS + remainingS * sample / samples));
+        }
+        bSafe = SOLLaneRoutePlan::HopFinishSafe(fromM, toM, SOL::NPC_LANE_SUN_REOPEN_RADII * SOL::SUN_RADIUS_M);
+    }
+    inputs.HeldLaneEntry = leg.Lane;
+    inputs.bHeldLaneLeave = !SOLLaneRoutePlan::FinishClosingHop(bCloses, bSafe, mIsSunSafetyOverridden);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the fastest network route between two nodes now and fills the slot-indexed edges (mLanePlanEdges)
+FSOLLaneRoute USOLShipSubsystem::FindLaneRoute(const int32 sourceNode, const int32 targetNode, const double nowS)
+{
+    // Only slots whose lane is in the flight's lane table between two registry bodies are routable (an asteroid-end
+    // lane has no AUTO lane view yet)
+    const FSOLLaneNetworkSchedule& network = LaneTraffic->GetNetwork();
+    const TConstArrayView<FSOLLaneNode> nodes = network.GetConfig().Nodes;
+    const int32 slotCount = network.GetSlots().Num();
+    mLanePlanSlotProfiles.Reset();
+    mLanePlanSlotProfiles.SetNum(slotCount);
+    for (const FSOLLaneTrafficEntry& lane : LaneTraffic->GetLanes())
+    {
+        if (mLanePlanSlotProfiles.IsValidIndex(lane.Slot) && lane.BodyA >= 0 && lane.BodyB >= 0
+            && lane.BodyA < BodyRegistry->GetRegistry().Num() && lane.BodyB < BodyRegistry->GetRegistry().Num())
+        {
+            mLanePlanSlotProfiles[lane.Slot] = lane.Profile;
+        }
+    }
+    const FSOLLaneRoute route = LaneTraffic->FindNetworkRoute(sourceNode, targetNode, nowS, mLanePlanSlotProfiles,
+        SOL::NPC_LANE_WALL_SPEED_MPS);
+
+    // The router's edges by slot, so a plan hop (Lane = slot) reads its own edge's time and end rings
+    mLanePlanEdges.Reset();
+    mLanePlanEdges.SetNum(slotCount);
+    const TConstArrayView<FSOLLaneEdge> edges = network.GetLastRouteEdges();
+    const TConstArrayView<int32> edgeSlots = network.GetLastRouteEdgeSlots();
+    for (int32 edge = 0; edge < edges.Num() && edge < edgeSlots.Num(); ++edge)
+    {
+        if (mLanePlanEdges.IsValidIndex(edgeSlots[edge]))
+        {
+            mLanePlanEdges[edgeSlots[edge]] = edges[edge];
+        }
+    }
+    return route;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes a fresh plan from a route over the network's open slot lanes between two nodes; false (empty) if none
+bool USOLShipSubsystem::PlanLaneRoute(const int32 sourceNode, const int32 targetNode, const double nowS,
+    const int64 epoch, const uint32 serial)
+{
+    FSOLLaneRoutePlan& plan = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).LanePlan;
+    const FSOLLaneRoute route = FindLaneRoute(sourceNode, targetNode, nowS);
+    const bool bPlanned = SOLLaneRoutePlan::MakePlan(route, mLanePlanEdges, sourceNode,
+        SOL::NPC_LANE_TRANSFER_PENALTY_S, SOL::NPC_LANE_WALL_SPEED_MPS, epoch, serial, plan);
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: AUTO lane plan %d -> %d: %s, %d hops, %.0f s"), *GetName(), sourceNode,
+        targetNode, bPlanned ? TEXT("planned") : TEXT("none"), plan.HopCount, route.TimeS);
+    return bPlanned;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the AUTO order flies the Sun detour as of the last step (SDD 53 6.5)
+bool USOLShipSubsystem::IsAutopilotSunDetour() const
+{
+    return HasPlayerShip() && mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bSunDetour;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the AUTO order's target lies inside the Sun danger zone, so it stops at the edge (last step)
+bool USOLShipSubsystem::IsAutopilotSunStoppedAtZone() const
+{
+    return HasPlayerShip()
+        && mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bSunStoppedAtZone;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the registry body the HUD's VIA line names, else INDEX_NONE (SDD 53 6.4, Q16)
+int32 USOLShipSubsystem::GetAutopilotViaBodyIndex() const
+{
+    if (!HasPlayerShip() || LaneTraffic == nullptr)
+    {
+        return INDEX_NONE;
+    }
+    const int32 node = SOLLaneRoutePlan::ViaNode(
+        mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).LanePlan);
+    const TConstArrayView<FSOLLaneNode> nodes = LaneTraffic->GetNetwork().GetConfig().Nodes;
+    return nodes.IsValidIndex(node) ? nodes[node].BodyIndex : INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the AUTO lane plan's system map polyline (the ship, then the remaining hops' end nodes where they are now)
+int32 USOLShipSubsystem::GetAutopilotLaneRoutePolylineM(TArrayView<FVector3d> outPointsM) const
+{
+    if (!HasPlayerShip() || LaneTraffic == nullptr)
+    {
+        return 0;
+    }
+    const FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+    if (!SOLLaneRoutePlan::HasPlan(state.LanePlan))
+    {
+        return 0;
+    }
+
+    // The nodes at their bodies' positions of this frame (the flight state's axes, as the ship); a node without a body
+    // is never in a plan, so it stays at the origin
+    const TConstArrayView<FSOLLaneNode> nodes = LaneTraffic->GetNetwork().GetConfig().Nodes;
+    TArray<FVector3d, TInlineAllocator<32>> nodePositionsM;
+    nodePositionsM.SetNumZeroed(nodes.Num());
+    for (int32 node = 0; node < nodes.Num(); ++node)
+    {
+        const int32 body = nodes[node].BodyIndex;
+        nodePositionsM[node] = mPrevBodyPositionsM.IsValidIndex(body) ? mPrevBodyPositionsM[body]
+            : FVector3d::ZeroVector;
+    }
+    // The last point is the order's own body (a moon of the last node, say) where it is now; the overlay draws in the
+    // registry's axes, the flight state's mirror (as GetUniversePositionM)
+    const int32 targetBody = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip)
+        .AutopilotBodyIndex;
+    const FVector3d* const orderTargetM = mPrevBodyPositionsM.IsValidIndex(targetBody)
+        ? &mPrevBodyPositionsM[targetBody] : nullptr;
+    const int32 count = SOLLaneRoutePlan::PlanPolylineM(state.LanePlan, nodePositionsM, state.State.PositionM,
+        outPointsM, orderTargetM);
+    for (int32 point = 0; point < count; ++point)
+    {
+        outPointsM[point] = SOLRender::EclipticToUnreal(outPointsM[point]);
+    }
+    return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the player's AUTO lane plan as of the last step, empty without a ship (verification)
+FSOLLaneRoutePlan USOLShipSubsystem::GetAutopilotLanePlan() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).LanePlan
+        : FSOLLaneRoutePlan();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the AUTO lane leg latched as of the last step (bFound false without one; verification)
+FSOLLaneAutoLeg USOLShipSubsystem::GetAutopilotLaneLeg() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).LaneLeg
+        : FSOLLaneAutoLeg();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether AUTO left a held lane that closes before the hop ends for the Sun safety (the HUD notice)
+bool USOLShipSubsystem::IsAutopilotLaneLeftForSun() const
+{
+    return HasPlayerShip()
+        && mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bLaneLeftForSun;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the AUTO order's closest approach to the Sun over the last step's substep segments, 0 without an order
+double USOLShipSubsystem::GetAutopilotSunMinDistanceM() const
+{
+    return HasPlayerShip()
+        ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).SunMinDistanceM : 0.0;
 }
 
 //////////////////////////////////////////////////////////////////////////

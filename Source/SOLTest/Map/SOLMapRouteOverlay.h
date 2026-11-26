@@ -31,6 +31,8 @@ struct FSOLRouteOverlayInputs
     FVector3d PlanePointM = FVector3d::ZeroVector;              // The ecliptic plane runs through here (ship / focus)
     bool bHasCursorPoint = false;                               // Draw the draft's segment to the cursor
     bool bHasShip = false;                                      // Draw the leg from the ship to the route's target
+    TConstArrayView<FVector3d> LanePlanPointsM;                 // AUTO lane plan polyline: the ship, then the hops'
+                                                                // end nodes (SDD 53 6.4; empty: none)
     float GlowScale = 1.0f;                                     // HUD glow scale g of the halo (SDD 37; 1 = the
                                                                 // issue #31 halo, 0 = core only)
 };

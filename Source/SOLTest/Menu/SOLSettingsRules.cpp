@@ -208,6 +208,7 @@ bool SOLSettingsRules::IsSmokeSlotRun(const TCHAR* commandLine)
         SOL::CommandLine::SMOKE_OVERLAY, SOL::CommandLine::SMOKE_INTERACT, SOL::CommandLine::SMOKE_CHASE,
         SOL::CommandLine::SMOKE_DUST, SOL::CommandLine::SMOKE_HOLO_MENU_PROFILE, SOL::CommandLine::SMOKE_HOLO_MENU,
         SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE, SOL::CommandLine::SMOKE_SOLID_MENU,
+        SOL::CommandLine::SMOKE_LANE_ROUTE,
 #if !UE_BUILD_SHIPPING
         SOL::CommandLine::WRITE_PLAYER_GUIDE, SOL::CommandLine::WRITE_GLOSSARY_CROPS,
 #endif

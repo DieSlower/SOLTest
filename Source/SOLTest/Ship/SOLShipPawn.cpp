@@ -341,6 +341,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeAutoLanes = MakeUnique<FSOLAutoLanesSmoke>();
         mSmokeAutoLanes->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_ROUTE))
+    {
+        mSmokeLaneRoute = MakeUnique<FSOLLaneRouteSmoke>();
+        mSmokeLaneRoute->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_MAP))
     {
         mSmokeMap = MakeUnique<FSOLMapSmoke>();
@@ -425,7 +430,7 @@ void ASOLShipPawn::BeginPlay()
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
         || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid() || mSmokeRibbonParity.IsValid()
-        || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
+        || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid() || mSmokeLaneRoute.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
         || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid() || mSmokeHoloMenuProfile.IsValid()
@@ -497,6 +502,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeRibbonParity.Reset();
     mSmokeLaneMerge.Reset();
     mSmokeAutoLanes.Reset();
+    mSmokeLaneRoute.Reset();
     mSmokeMap.Reset();
     mSmokeMapPick.Reset();
     mSmokeMapAlign.Reset();
@@ -571,6 +577,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeAutoLanes.IsValid() && mSmokeAutoLanes->Update(*this, deltaSeconds))
     {
         mSmokeAutoLanes.Reset();
+    }
+    if (mSmokeLaneRoute.IsValid() && mSmokeLaneRoute->Update(*this, deltaSeconds))
+    {
+        mSmokeLaneRoute.Reset();
     }
     if (mSmokeMap.IsValid() && mSmokeMap->Update(*this, deltaSeconds))
     {
@@ -1087,7 +1097,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
         || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid() || mSmokeRibbonParity.IsValid()
-        || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid()
+        || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid() || mSmokeLaneRoute.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
         || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid() || mSmokeHoloMenuProfile.IsValid()

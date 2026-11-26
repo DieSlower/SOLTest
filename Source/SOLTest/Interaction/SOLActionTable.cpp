@@ -30,6 +30,7 @@ namespace
         { ESOLAction::Info, false },
         { ESOLAction::MoveTo, false },
         { ESOLAction::MoveToWarPower, false },
+        { ESOLAction::SunSafetyOverride, false },
         { ESOLAction::Follow, false },
         { ESOLAction::ChaseDown, false },
         { ESOLAction::JumpTo, false },
@@ -229,6 +230,9 @@ ESOLActionBlock SOLActionTable::Evaluate(const ESOLObjectType type, const ESOLAc
     case ESOLAction::JumpTo:
         return !context.bHasShip ? ESOLActionBlock::NoShip
             : context.bJumpWarping ? ESOLActionBlock::JumpWarping : ESOLActionBlock::None;
+    case ESOLAction::SunSafetyOverride:
+        // A session flag on the ship: needs a ship only (SDD 53 6.5, O4)
+        return !context.bHasShip ? ESOLActionBlock::NoShip : ESOLActionBlock::None;
     default:
         // Communicate and Trade are placeholder rows only in v1
         return ESOLActionBlock::NotYetAvailable;

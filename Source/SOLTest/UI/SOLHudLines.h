@@ -58,9 +58,11 @@ enum class ESOLHudLine : uint8
     RadialItem7,
     RadialItem8,
     RadialItem9,
+    RadialItem10,
+    SunSafety,
     Count
 };
-static_assert(static_cast<int32>(ESOLHudLine::RadialItem9) - static_cast<int32>(ESOLHudLine::RadialItem0) + 1
+static_assert(static_cast<int32>(ESOLHudLine::RadialItem10) - static_cast<int32>(ESOLHudLine::RadialItem0) + 1
     == SOL::Interact::MAX_ACTIONS, "One radial label line per action");
 
 // The flight HUD's four frameless hologram cards (SDD 42 D15), all drawn on the menu layer. Namespace scope like
