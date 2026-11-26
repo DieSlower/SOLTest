@@ -69,7 +69,8 @@ struct FSOLNpcTunnelMaterialVectors
     FVector4f Layout1 = FVector4f(0.0f);    // (end fade spacings, radius fade solid px, knee px, knee alpha)
     FVector4f Layout2 = FVector4f(0.0f);    // (near fade start, near fade full, radial full, radial none; radii)
     FVector4f Layout3 = FVector4f(0.0f);    // (detail gap gone px, detail gap full px, dots per gap, dot rows)
-    FVector4f Layout4 = FVector4f(0.0f);    // (end ring min drawn px, ribbon inner max radius fraction, 0, 0)
+    FVector4f Layout4 = FVector4f(0.0f);    // (end ring min drawn px, ribbon inner max radius fraction, 0, 0); .z is
+                                            // the QualityPreset scale the component pushes (53d; 0 reads as 1)
 };
 
 // The viewpoint's foot on a lane's axis line (SDD 49 sections 4.3 and 4.4), not clamped to the segment
@@ -93,6 +94,33 @@ namespace SOLNpcTunnel
     // NPC_TUNNEL_FADE_FULL_RADII x R (also d <= 0), linear in log d between; 0 for a NaN distance or a NaN,
     // non-positive or infinite lane radius (no tunnel). Since SDD 52 D7 the label strength only, no draw alpha
     SOLTEST_API double TunnelFade(double distanceM, double laneRadiusM);
+
+    // Returns the label strength restated in reference px of the lane radius with the live focal (SDD 53 Q20, section
+    // 7.2): r = f R / d; 0 at and below 9.6 px, 1 at and above 19.2 px, linear in log r between (the same as TunnelFade
+    // at f = 960); d <= 0 gives 1; NaN distance, bad radius or a non-positive focal give 0. The QualityPreset scale is
+    // applied by passing FadeFocalRefPx
+    SOLTEST_API double TunnelFade(double distanceM, double laneRadiusM, double focalRefPx);
+
+    // Returns the focal every pixel fade and band reads (SDD 53 7.1, 7.2, user decision: one QualityPreset factor for
+    // all thresholds): the live focal over SOLLaneNetwork::LaneTunnelQualityScale, so each pixel threshold is
+    // multiplied by the scale; a scale below 1, NaN or infinite reads as 1 (the shader's max(Layout4.z, 1))
+    SOLTEST_API double FadeFocalRefPx(double focalRefPx, double qualityScale);
+
+    // Returns a lane's tunnel open fade after realDeltaS real seconds (SDD 53 Q9, section 5.4): toward 0 while closed,
+    // toward 1 while open, a whole 1 -> 0 or 0 -> 1 taking SOL::NPC_LANE_OPEN_FADE_REAL_S, kept in [0, 1]; written
+    // into row 3 .z with the draw fade; linear in real time; a NaN fade starts from the far end, a NaN or
+    // non-positive step leaves it unchanged (clamped)
+    SOLTEST_API double StepLaneOpenFade(double fade, bool bOpen, double realDeltaS);
+
+    // Steps every group column's tunnel open fade (SDD 53 Q9, 4.5, 5.4): a column whose end points differ from the ones
+    // its fade belongs to (reused for another lane) restarts from 0 and takes the new ones; the target is the column's
+    // open state (an empty columnOpen reads every column as open: no lane network); bSnap (the first update, a time
+    // jump) jumps every fade to its target, else StepLaneOpenFade; writes per column whether its fade is above 0 and it
+    // has an end point (the slot hold). Runs over inOutFades' length; the other outputs must be as long, end points
+    // past laneBodyA / B read as none
+    SOLTEST_API void StepColumnOpenFades(TConstArrayView<int32> laneBodyA, TConstArrayView<int32> laneBodyB,
+        TConstArrayView<uint8> columnOpen, double realDeltaS, bool bSnap, TArrayView<double> inOutFades,
+        TArrayView<int32> inOutFadeBodyA, TArrayView<int32> inOutFadeBodyB, TArrayView<uint8> outVisible);
 
     // Returns the tunnel radius R x lerp(NPC_TUNNEL_RADIUS_MIN_SCALE, NPC_TUNNEL_RADIUS_MAX_SCALE,
     // SOLNpcLane::LaneTrafficWeight(n)): R x MIN for an empty lane (never 0, D8); 0 for a bad lane radius
@@ -295,10 +323,6 @@ namespace SOLNpcTunnel
     // (nothing drawn, strength 0), so an empty list writes all zeros; a buffer shorter than 4 rows is left alone
     SOLTEST_API void WriteTunnelTexels(TConstArrayView<FSOLNpcTunnelLaneData> lanes, TArrayView<FVector4f> texels);
 
-    // Rewrites inOutLanes to the lanes with a (draw) fade above 0, in index order, and returns true only when that set
-    // changed; the array's allocation is kept when the count does not grow
-    SOLTEST_API bool CollectTunnelLanes(TConstArrayView<double> fades, TArray<int32>& inOutLanes);
-
     // Returns whether the tunnels show: the lanes shown, sol.NpcTunnel on and the jump map closed (Q6)
     SOLTEST_API bool AreTunnelsShown(bool bLanesShown, bool bCvarOn, bool bMapOpen);
 
@@ -347,12 +371,18 @@ namespace SOLNpcTunnel
     // bad tunnel radius
     SOLTEST_API bool IsDotRowInReach(double segmentDistanceM, double tunnelRadiusM);
 
+    // Returns a lane's tunnel radius Rt: the frozen wall radius of its profile when there is one (SDD 50 D13), else
+    // TunnelRadiusM of its lane radius and ship count (the class step reads it before any frame is built, SDD 53 7.1)
+    SOLTEST_API double LaneTunnelRadiusM(const FSOLNpcLaneEntry& lane);
+
     // Fills a lane's renderer feed (phase 0, left to the caller: RingLatticePhase of the foot arc; the segment distance
     // that gave the label strength kept in SegmentDistanceM) and its foot;
-    // returns whether the lane can have a tunnel (both bodies resolved, a valid basis, drawable end rings), whatever its
-    // fade (0 when it cannot)
+    // returns whether the lane can have a tunnel (both bodies resolved, a valid basis, drawable end rings), whatever
+    // its fade (0 when it cannot). The label strength is TunnelFade at labelFocalRefPx (the live focal over the quality
+    // scale, FadeFocalRefPx; the reference focal reproduces the old lane-radii band)
     SOLTEST_API bool BuildTunnelLaneData(int32 laneIndex, const FSOLNpcLaneEntry& lane, const FVector3d& viewpointM,
-        double bodyRadiusAM, double bodyRadiusBM, FSOLNpcTunnelLaneData& outData, FSOLNpcTunnelFoot& outFoot);
+        double bodyRadiusAM, double bodyRadiusBM, FSOLNpcTunnelLaneData& outData, FSOLNpcTunnelFoot& outFoot,
+        double labelFocalRefPx = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX);
 
     // Returns whether the tunnels show: the verification override's choice under sol.NpcTunnel and the map when it is
     // active, else AreTunnelsShown
@@ -362,9 +392,6 @@ namespace SOLNpcTunnel
     // Returns the fade the renderer uses: 0 while hidden, 1 when forced (the all-lanes budget case), else the fade
     // clamped to [0, 1] (NaN as 0)
     SOLTEST_API double EffectiveTunnelFade(double fade, bool bShown, bool bForceAllLanes);
-
-    // Returns whether the tunnel component draws: shown and at least one draw fade above 0
-    SOLTEST_API bool ShouldDrawTunnels(bool bShown, TConstArrayView<double> fades);
 
     // Returns whether the lane overlay counts as drawn for the shared occluders: lane lines or tunnels drawn
     SOLTEST_API bool IsLaneOverlayDrawn(bool bLaneLinesDrawn, bool bTunnelsDrawn);
@@ -379,6 +406,10 @@ namespace SOLNpcTunnel
     // Returns the slot mesh's vertex count: ring ribbons ((N + 1) samples x 2 sides), two end rings at the nearest
     // count, a quad per dot (rows x dots per gap x gap slots) and per chevron (2 walls x chevrons per gap x gap slots)
     SOLTEST_API int32 TunnelSlotMeshVertexCount();
+
+    // Returns the Reduced class mesh's vertex count (SDD 53 section 7.1): the ring ribbons and the two end rings of
+    // the slot mesh, no dot or chevron quads (its first vertices, in the same order)
+    SOLTEST_API int32 TunnelReducedMeshVertexCount();
 
     // Returns a lane's label strength where the lane and point materials read it (row 1 .w of its column); 0 out of
     // range or for a buffer shorter than two rows

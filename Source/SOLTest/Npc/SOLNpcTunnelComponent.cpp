@@ -24,6 +24,13 @@
 DECLARE_STATS_GROUP(TEXT("SOLNpcTunnel"), STATGROUP_SOLNpcTunnel, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("SOL_NpcTunnel"), STAT_SOL_NpcTunnel, STATGROUP_SOLNpcTunnel);
 
+// The tunnel classes and the 24-instance pool (SDD 53 7.1, 7.3): instances per class, the drawn lanes the pool left out
+// (a fixed-pool limitation, never the level-of-detail rule) and the slot-mesh vertices drawn (stat SOLNpcTunnel)
+DECLARE_DWORD_COUNTER_STAT(TEXT("SOL_NpcTunnelFull"), STAT_SOL_NpcTunnelFull, STATGROUP_SOLNpcTunnel);
+DECLARE_DWORD_COUNTER_STAT(TEXT("SOL_NpcTunnelReduced"), STAT_SOL_NpcTunnelReduced, STATGROUP_SOLNpcTunnel);
+DECLARE_DWORD_COUNTER_STAT(TEXT("SOL_NpcTunnelPoolOverflow"), STAT_SOL_NpcTunnelPoolOverflow, STATGROUP_SOLNpcTunnel);
+DECLARE_DWORD_COUNTER_STAT(TEXT("SOL_NpcTunnelVertices"), STAT_SOL_NpcTunnelVertices, STATGROUP_SOLNpcTunnel);
+
 namespace
 {
     // Developer A/B switch for GPU measurements (SDD 49 section 4.2); the player's switch is the Lanes overlay row
@@ -177,28 +184,43 @@ bool USOLNpcTunnelComponent::InitializeTunnels()
         TunnelLinear(SOL::NPC_TUNNEL_CHEVRON_INBOUND_COLOR));
     TunnelMaterial->SetScalarParameterValue(FName(GLOW_SCALE), mGlowScale);
 
-    // The slot mesh and its instanced component (never culled, hidden until a tunnel draws)
+    // The Full and Reduced meshes and one instanced component per class (never culled, hidden until a tunnel draws);
+    // the per-lane state sized once
     BuildSlotMesh();
-    Instances = NewObject<USOLNpcHullInstances>(GetOwner(), TEXT("NpcTunnelInstances"));
-    Instances->SetupAttachment(this);
-    Instances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    Instances->SetCanEverAffectNavigation(false);
-    Instances->SetCastShadow(false);
-    Instances->SetUsingAbsoluteLocation(true);
-    Instances->SetUsingAbsoluteRotation(true);
-    Instances->SetUsingAbsoluteScale(true);
-    Instances->SetMobility(EComponentMobility::Movable);
-    Instances->NumCustomDataFloats = 1;
-    Instances->TranslucencySortPriority = SOL::NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY;
-    Instances->SetStaticMesh(SlotMesh);
-    Instances->SetMaterial(0, TunnelMaterial);
-    Instances->SetVisibility(false);
-    Instances->RegisterComponent();
+    Instances = CreateInstances(TEXT("NpcTunnelInstances"), SlotMesh);
+    ReducedInstances = CreateInstances(TEXT("NpcTunnelReducedInstances"), ReducedMesh);
+    for (TArray<int32>* lanes : { &mFullLanes, &mReducedLanes, &mNewFullLanes, &mNewReducedLanes, &mPoolLanes })
+    {
+        lanes->Reserve(LANE_CAPACITY);
+    }
+    PushQualityScale(1.0);
     return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the slot mesh once: ring ribbons, end rings, dot and chevron quads
+// Creates one class's instanced component: no collision or shadow, absolute transform, the lane in custom data 0
+USOLNpcHullInstances* USOLNpcTunnelComponent::CreateInstances(const TCHAR* name, UStaticMesh* mesh)
+{
+    USOLNpcHullInstances* instances = NewObject<USOLNpcHullInstances>(GetOwner(), name);
+    instances->SetupAttachment(this);
+    instances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    instances->SetCanEverAffectNavigation(false);
+    instances->SetCastShadow(false);
+    instances->SetUsingAbsoluteLocation(true);
+    instances->SetUsingAbsoluteRotation(true);
+    instances->SetUsingAbsoluteScale(true);
+    instances->SetMobility(EComponentMobility::Movable);
+    instances->NumCustomDataFloats = 1;
+    instances->TranslucencySortPriority = SOL::NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY;
+    instances->SetStaticMesh(mesh);
+    instances->SetMaterial(0, TunnelMaterial);
+    instances->SetVisibility(false);
+    instances->RegisterComponent();
+    return instances;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the slot meshes once: ring ribbons and end rings (the Reduced mesh), then dot and chevron quads (Full)
 void USOLNpcTunnelComponent::BuildSlotMesh()
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(USOLNpcTunnelComponent::BuildSlotMesh);
@@ -207,7 +229,7 @@ void USOLNpcTunnelComponent::BuildSlotMesh()
     vertices.Reserve(SOLNpcTunnel::TunnelSlotMeshVertexCount());
 
     // Rings by slot (level of detail by slot), the two end rings, then per gap slot its dots and its chevrons on the
-    // two walls (UV2 = (wall, chevron index))
+    // two walls (UV2 = (wall, chevron index)); the rings and end rings come first, so the Reduced mesh is the prefix
     for (int32 slot = 0; slot < SOLNpcTunnel::RingSlotCount(); ++slot)
     {
         TunnelAddRing(vertices, indices, TUNNEL_KIND_RING, slot, SOLNpcTunnel::RingSegmentsForSlot(slot));
@@ -216,6 +238,9 @@ void USOLNpcTunnelComponent::BuildSlotMesh()
     {
         TunnelAddRing(vertices, indices, TUNNEL_KIND_END_RING, end, SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST);
     }
+    const TArray<FStaticMeshBuildVertex> reducedVertices(vertices.GetData(), vertices.Num());
+    const TArray<uint32> reducedIndices(indices.GetData(), indices.Num());
+    mReducedMeshVertexCount = reducedVertices.Num();
     for (int32 slot = 0; slot < SOLNpcTunnel::DetailSlotCount(); ++slot)
     {
         for (int32 row = 0; row < SOL::NPC_TUNNEL_DOT_ROWS; ++row)
@@ -239,33 +264,65 @@ void USOLNpcTunnelComponent::BuildSlotMesh()
 
     // Every vertex is placed by the material anywhere in render space, so the bounds (also each instance's culling
     // bounds) cover all of it; never ray traced
-    SlotMesh = NewObject<UStaticMesh>(this, NAME_None, RF_Transient);
-    SlotMesh->SetStaticMaterials({ FStaticMaterial(TunnelMaterial) });
-    SlotMesh->bSupportRayTracing = false;
-    SlotMesh->SetPositiveBoundsExtension(FVector(SOL::NPC_RENDER_SPACE_BOUNDS_CM));
-    SlotMesh->SetNegativeBoundsExtension(FVector(SOL::NPC_RENDER_SPACE_BOUNDS_CM));
-    SOLOrbitLineMesh::ApplyRibbonToMesh(*SlotMesh, vertices, indices);
+    auto makeMesh = [this](const TArray<FStaticMeshBuildVertex>& meshVertices, const TArray<uint32>& meshIndices)
+    {
+        UStaticMesh* mesh = NewObject<UStaticMesh>(this, NAME_None, RF_Transient);
+        mesh->SetStaticMaterials({ FStaticMaterial(TunnelMaterial) });
+        mesh->bSupportRayTracing = false;
+        mesh->SetPositiveBoundsExtension(FVector(SOL::NPC_RENDER_SPACE_BOUNDS_CM));
+        mesh->SetNegativeBoundsExtension(FVector(SOL::NPC_RENDER_SPACE_BOUNDS_CM));
+        SOLOrbitLineMesh::ApplyRibbonToMesh(*mesh, meshVertices, meshIndices);
+        return mesh;
+    };
+    SlotMesh = makeMesh(vertices, indices);
+    ReducedMesh = makeMesh(reducedVertices, reducedIndices);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Rewrites the instances to one per lane in mInstanceLanes
-void USOLNpcTunnelComponent::WriteInstances()
+// Rewrites a component's instances to one per lane in lanes
+void USOLNpcTunnelComponent::WriteInstances(USOLNpcHullInstances& instances, const TConstArrayView<int32> lanes,
+    TArray<FTransform>& scratchTransforms)
 {
-    Instances->ClearInstances();
-    mIdentityTransforms.Init(FTransform::Identity, mInstanceLanes.Num());
-    Instances->AddInstances(mIdentityTransforms, false, false, false);
-    for (int32 index = 0; index < mInstanceLanes.Num(); ++index)
+    instances.ClearInstances();
+    scratchTransforms.Init(FTransform::Identity, lanes.Num());
+    instances.AddInstances(scratchTransforms, false, false, false);
+    for (int32 index = 0; index < lanes.Num(); ++index)
     {
-        Instances->SetCustomDataValue(index, 0, static_cast<float>(mInstanceLanes[index]), false);
+        instances.SetCustomDataValue(index, 0, static_cast<float>(lanes[index]), false);
     }
-    Instances->MarkRenderStateDirty();
+    instances.MarkRenderStateDirty();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Steps every column's open fade toward its open state; a column taken by another lane starts at 0, a jump snaps
+void USOLNpcTunnelComponent::StepOpenFades(const FSOLNpcGroupTable& groups, const FSOLNpcTunnelView& view)
+{
+    SOLNpcTunnel::StepColumnOpenFades(groups.LaneBodyA, groups.LaneBodyB, view.ColumnOpen, view.RealDeltaS,
+        view.bSnapOpenFades || !mHasOpenFades, TArrayView<double>(mOpenFades), TArrayView<int32>(mFadeBodyA),
+        TArrayView<int32>(mFadeBodyB), TArrayView<uint8>(mOpenFadeVisible));
+    mHasOpenFades = true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Pushes the QualityPreset scale to the material's Layout4.z when it changed
+void USOLNpcTunnelComponent::PushQualityScale(const double qualityScale)
+{
+    const double scale = FMath::IsFinite(qualityScale) && qualityScale > 1.0 ? qualityScale : 1.0;
+    if (TunnelMaterial == nullptr || scale == mPushedQualityScale)
+    {
+        return;
+    }
+    mPushedQualityScale = scale;
+    const FVector4f layout4 = SOLNpcTunnel::TunnelMaterialVectors().Layout4;
+    TunnelMaterial->SetVectorParameterValue(FName(SOL::NpcTunnelMaterialParams::LAYOUT4), FLinearColor(layout4.X,
+        layout4.Y, static_cast<float>(scale), layout4.W));
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Per redraw: shown rule, lane frames, fades and phases, instances on a change, texels, frame and labels
 void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, const FSOLNpcGroupTable& groups,
     const FVector3d& viewpointM, const FVector3d& cameraForward, const bool bLanesShown, const bool bMapOpen,
-    const FLinearColor& frameParams, const uint64 frameNumber)
+    const FLinearColor& frameParams, const uint64 frameNumber, const FSOLNpcTunnelView& view)
 {
     SCOPE_CYCLE_COUNTER(STAT_SOL_NpcTunnel);
     if (TunnelTexture == nullptr)
@@ -275,8 +332,15 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
     mAreTunnelsShown = TunnelMaterial != nullptr && BodyRegistry != nullptr && SOLNpcTunnel::ResolveTunnelsShown(
         mIsOverride, mIsOverrideShown, bLanesShown, CVarSOLNpcTunnel.GetValueOnGameThread() != 0, bMapOpen);
 
-    // Each lane: its feed, draw fade, label strength and ring phase; every drawable lane is drawn at every distance
-    // (SDD 52 D1, D7), the old 100 -> 50 lane radii band survives only as its label strength
+    // The open fades step whether shown or not (a closing lane's slot is held until its fade is over, SDD 53 4.5)
+    StepOpenFades(groups, view);
+
+    // Each lane: its pixel class first, from the segment distance and the tunnel radius alone, so an Off lane builds
+    // nothing (SDD 53 7.1); a Reduced or Full lane its feed, draw fade (x the open fade), label strength (Full only,
+    // the 9.6 -> 19.2 px band at the fade focal, Q20) and ring phase
+    const double labelFocalRefPx = SOLNpcTunnel::FadeFocalRefPx(view.FocalRefPx, view.QualityScale);
+    mFadeFocalRefPx = labelFocalRefPx;
+    mQualityScale = view.QualityScale;
     const int32 laneCount = FMath::Min(laneFrame.Lanes.Num(), static_cast<int32>(LANE_CAPACITY));
     mShownLanes.Reset();
     for (int32 lane = 0; lane < LANE_CAPACITY; ++lane)
@@ -284,9 +348,12 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
         mFades[lane] = 0.0;
         mDrawFades[lane] = 0.0;
         mDistanceRadii[lane] = 0.0;
-        if (lane >= laneCount || !mAreTunnelsShown)
+        mMaxRadiusPx[lane] = 0.0;
+        mPoolDrawn[lane] = 0;
+        if (lane >= laneCount || !mAreTunnelsShown || !(mOpenFades[lane] > 0.0))
         {
             mLabelSigns[lane] = 0;
+            mClasses[lane] = ESOLTunnelClass::Off;
             continue;
         }
         const FSOLNpcLaneEntry& entry = laneFrame.Lanes[lane];
@@ -296,53 +363,118 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
         const bool bBodies = bodyA >= 0 && bodyA < registry.Num() && bodyB >= 0 && bodyB < registry.Num();
         if (bodyA != mLabelBodyA[lane] || bodyB != mLabelBodyB[lane])
         {
-            // A column reused for another lane (53c2b slots) starts without a label side
+            // A column reused for another lane (53c2b slots) starts without a label side, from Off and out of the pool
             mLabelSigns[lane] = 0;
             mLabelBodyA[lane] = bodyA;
             mLabelBodyB[lane] = bodyB;
+            mClasses[lane] = ESOLTunnelClass::Off;
+            mInPool[lane] = 0;
         }
-        FSOLNpcTunnelLaneData data;
-        const bool bTunnel = bBodies && SOLNpcTunnel::BuildTunnelLaneData(lane, entry, viewpointM,
-            registry.GetRadiusM(bodyA), registry.GetRadiusM(bodyB), data, mFeet[lane]);
-        if (!bTunnel)
+        if (!bBodies || !entry.bResolved)
         {
             mLabelSigns[lane] = 0;
+            mClasses[lane] = ESOLTunnelClass::Off;
+            continue;
+        }
+        const double segmentM = SOLNpcTunnel::LaneSegmentDistanceM(entry.A - viewpointM, entry.B - viewpointM);
+        mMaxRadiusPx[lane] = SOLLaneNetwork::LaneTunnelMaxRadiusPx(segmentM, SOLNpcTunnel::LaneTunnelRadiusM(entry),
+            view.FocalRefPx);
+        mClasses[lane] = SOLLaneNetwork::StepTunnelClass(mClasses[lane], mMaxRadiusPx[lane], view.QualityScale);
+        FSOLNpcTunnelLaneData data;
+        if (mClasses[lane] == ESOLTunnelClass::Off || !SOLNpcTunnel::BuildTunnelLaneData(lane, entry, viewpointM,
+            registry.GetRadiusM(bodyA), registry.GetRadiusM(bodyB), data, mFeet[lane], labelFocalRefPx))
+        {
+            mLabelSigns[lane] = 0;
+            mClasses[lane] = ESOLTunnelClass::Off;
             continue;
         }
 
         // The phase straight from the foot arc on the flat lattice (fixed to the lane, SDD 52 D2); the label side held
         // only while the lane has a label strength
         const FSOLNpcTunnelFoot& foot = mFeet[lane];
-        const double strength = SOLNpcTunnel::EffectiveTunnelFade(data.Fade, true, mIsForceAllLanes);
+        const double labelFade = mClasses[lane] == ESOLTunnelClass::Full ? data.Fade : 0.0;
+        const double strength = SOLNpcTunnel::EffectiveTunnelFade(labelFade, true, mIsForceAllLanes);
         mLabelSigns[lane] = strength > 0.0 ? SOLNpcTunnel::LabelAheadSign(FVector3d::DotProduct(cameraForward,
             data.Axis), mLabelSigns[lane]) : 0;
         data.Fade = strength;
-        data.DrawFade = SOLNpcTunnel::TunnelDrawFade(true);
+        data.DrawFade = SOLNpcTunnel::TunnelDrawFade(true) * mOpenFades[lane];
         data.Phase = SOLNpcTunnel::RingLatticePhase(foot.ArcM, data.TunnelRadiusM);
         mFades[lane] = strength;
         mDrawFades[lane] = data.DrawFade;
         mDistanceRadii[lane] = entry.RadiusM > 0.0 ? data.SegmentDistanceM / entry.RadiusM : 0.0;
+        mPoolDrawn[lane] = 1;
         mShownLanes.Add(data);
     }
 
-    // Instances only when the set of drawn lanes changes (then also the vertex budget check, D15 interim); the
-    // component visible while one draws
-    const bool bDraw = SOLNpcTunnel::ShouldDrawTunnels(mAreTunnelsShown,
-        TConstArrayView<double>(mDrawFades, laneCount));
-    if (SOLNpcTunnel::CollectTunnelLanes(TConstArrayView<double>(mDrawFades, laneCount), mInstanceLanes)
-        && Instances != nullptr)
+    // The pool (SDD 53 7.3): the built lanes of both classes ranked by their largest on-screen radius, last update's
+    // members kept unless a newcomer is NPC_TUNNEL_POOL_KEEP_RATIO times larger (no swapping at near-equal sizes), the
+    // smallest beyond NPC_TUNNEL_INSTANCE_POOL left out (no label, no texels); the overflow logged once per change
+    const int32 overflow = SOLLaneNetwork::SelectTunnelPool(TConstArrayView<double>(mMaxRadiusPx, LANE_CAPACITY),
+        TConstArrayView<uint8>(mPoolDrawn, LANE_CAPACITY), SOL::NPC_TUNNEL_INSTANCE_POOL, mPoolLanes,
+        TConstArrayView<uint8>(mInPool, LANE_CAPACITY), SOL::NPC_TUNNEL_POOL_KEEP_RATIO);
+    FMemory::Memzero(mInPool, sizeof(mInPool));
+    for (const int32 lane : mPoolLanes)
     {
-        WriteInstances();
-        UE_CLOG(mInstanceLanes.Num() > SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES, LogSOL, Warning,
-            TEXT("NpcTunnel: %d lanes drawn, over the %d-lane vertex budget (%d slot-mesh vertices each, budget %d; "
-                "SDD 52 D15, issue #53 revisits)"), mInstanceLanes.Num(), SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES,
-            mSlotMeshVertexCount, SOL::NPC_TUNNEL_VERTEX_BUDGET);
+        mInPool[lane] = 1;
     }
-    if (bDraw != mAreTunnelsDrawn && Instances != nullptr)
+    if (overflow > 0)
     {
-        Instances->SetVisibility(bDraw);
+        for (int32 lane = 0; lane < LANE_CAPACITY; ++lane)
+        {
+            mFades[lane] = mInPool[lane] != 0 ? mFades[lane] : 0.0;
+            mDrawFades[lane] = mInPool[lane] != 0 ? mDrawFades[lane] : 0.0;
+        }
+        mShownLanes.RemoveAll([this](const FSOLNpcTunnelLaneData& data) { return mInPool[data.Lane] == 0; });
     }
+    if (SOLLaneNetwork::StepOverflowReport(mPoolOverflow, overflow))
+    {
+        UE_CLOG(overflow > 0, LogSOL, Warning, TEXT("NpcTunnel: %d drawn lanes beyond the %d-instance pool have no "
+            "tunnel (the smallest on screen; a fixed-pool limitation, SDD 53 7.3)"), overflow,
+            SOL::NPC_TUNNEL_INSTANCE_POOL);
+        UE_CLOG(overflow == 0, LogSOL, Log, TEXT("NpcTunnel: the instance pool has room again (overflow %d -> 0)"),
+            mPoolOverflow);
+    }
+    mPoolOverflow = overflow;
+
+    // Instances per class only when that class's lane set changes; each component visible while one of its lanes draws
+    SOLLaneNetwork::SplitTunnelPoolByClass(TConstArrayView<uint8>(mInPool, LANE_CAPACITY),
+        TConstArrayView<ESOLTunnelClass>(mClasses, LANE_CAPACITY), laneCount, mNewFullLanes, mNewReducedLanes);
+    mInstanceLanes.Reset();
+    for (int32 lane = 0; lane < laneCount; ++lane)
+    {
+        if (mInPool[lane] != 0)
+        {
+            mInstanceLanes.Add(lane);
+        }
+    }
+
+    // Rewrites one class's instances when its lane set changed and returns whether that class draws (shown, has lanes)
+    auto syncClass = [this](USOLNpcHullInstances* instances, TArray<int32>& current, const TArray<int32>& next)
+    {
+        if (SOLLaneNetwork::SyncTunnelClassLanes(current, next) && instances != nullptr)
+        {
+            WriteInstances(*instances, current, mIdentityTransforms);
+        }
+        const bool bClassDraw = mAreTunnelsShown && !current.IsEmpty();
+        if (instances != nullptr && instances->IsVisible() != bClassDraw)
+        {
+            instances->SetVisibility(bClassDraw);
+        }
+        return bClassDraw;
+    };
+    const bool bFullDraw = syncClass(Instances, mFullLanes, mNewFullLanes);
+    const bool bReducedDraw = syncClass(ReducedInstances, mReducedLanes, mNewReducedLanes);
+    const bool bDraw = bFullDraw || bReducedDraw;
     mAreTunnelsDrawn = bDraw;
+    SET_DWORD_STAT(STAT_SOL_NpcTunnelFull, mFullLanes.Num());
+    SET_DWORD_STAT(STAT_SOL_NpcTunnelReduced, mReducedLanes.Num());
+    SET_DWORD_STAT(STAT_SOL_NpcTunnelPoolOverflow, mPoolOverflow);
+    SET_DWORD_STAT(STAT_SOL_NpcTunnelVertices, mFullLanes.Num() * mSlotMeshVertexCount
+        + mReducedLanes.Num() * mReducedMeshVertexCount);
+    if (bDraw)
+    {
+        PushQualityScale(view.QualityScale);
+    }
 
     // The texture every frame a tunnel draws and once more (all zeros) after the last one goes, so no stale fade
     // remains
@@ -395,7 +527,8 @@ void USOLNpcTunnelComponent::PublishLabels(const TConstArrayView<FSOLNpcLaneEntr
         {
             return shown.Lane == lane;
         });
-        const double alpha = SOLNpcTunnel::LaneLabelAlpha(mFades[lane], index == 0);
+        // The label fades with its tunnel at a close or reopen (the open fade); row 1 .w keeps the strength alone
+        const double alpha = SOLNpcTunnel::LaneLabelAlpha(mFades[lane], index == 0) * mOpenFades[lane];
         if (data == nullptr || !SOLNpcTunnel::IsLabelPlaced(alpha))
         {
             continue;
@@ -486,17 +619,33 @@ bool USOLNpcTunnelComponent::GetPushedGlowScale(float& outGlowScale) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the instanced component's instance count
+// Returns the instance count of both classes' instanced components
 int32 USOLNpcTunnelComponent::GetInstanceCount() const
 {
-    return Instances != nullptr ? Instances->GetInstanceCount() : 0;
+    return (Instances != nullptr ? Instances->GetInstanceCount() : 0)
+        + (ReducedInstances != nullptr ? ReducedInstances->GetInstanceCount() : 0);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the instanced component is visible
+// Returns whether either class's instanced component is visible
 bool USOLNpcTunnelComponent::IsInstanceComponentVisible() const
 {
-    return Instances != nullptr && Instances->IsVisible();
+    return (Instances != nullptr && Instances->IsVisible())
+        || (ReducedInstances != nullptr && ReducedInstances->IsVisible());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane's pixel class of the last update (Off out of range)
+ESOLTunnelClass USOLNpcTunnelComponent::GetTunnelClass(const int32 lane) const
+{
+    return lane >= 0 && lane < LANE_CAPACITY ? mClasses[lane] : ESOLTunnelClass::Off;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane's open fade of the last update (0 out of range)
+double USOLNpcTunnelComponent::GetOpenFade(const int32 lane) const
+{
+    return lane >= 0 && lane < LANE_CAPACITY ? mOpenFades[lane] : 0.0;
 }
 
 //////////////////////////////////////////////////////////////////////////

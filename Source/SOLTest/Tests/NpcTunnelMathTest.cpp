@@ -1458,70 +1458,6 @@ bool FSOLNpcTunnelMathTexelsTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathCollectTest, "SOLTest.NpcTunnelMath.CollectTunnelLanes",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Case 16: the instance list is the lanes with a fade above 0 in index order; the call reports a change only when that
-// set changes (not when a fade value moves), and keeps the array's allocation when the count does not grow
-bool FSOLNpcTunnelMathCollectTest::RunTest(const FString& /*parameters*/)
-{
-    using SOLNpcTunnel::CollectTunnelLanes;
-    TArray<int32> lanes;
-
-    // Returns whether the lane list equals the expected one
-    const auto equals = [&lanes](std::initializer_list<int32> expected)
-    {
-        if (lanes.Num() != static_cast<int32>(expected.size()))
-        {
-            return false;
-        }
-        int32 index = 0;
-        for (const int32 lane : expected)
-        {
-            if (lanes[index++] != lane)
-            {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    const double none[] = { 0.0, 0.0, 0.0 };
-    TestFalse(TEXT("nothing shown, empty list: no change"), CollectTunnelLanes(none, lanes));
-    TestEqual(TEXT("nothing shown: empty"), lanes.Num(), 0);
-
-    const double first[] = { 0.0, 0.3, 0.0, 1.0, NPCTUNNEL_NAN, 0.01 };
-    TestTrue(TEXT("first set: changed"), CollectTunnelLanes(first, lanes));
-    TestTrue(TEXT("first set: lanes 1, 3, 5 in order"), equals({ 1, 3, 5 }));
-
-    TestFalse(TEXT("same fades: no change"), CollectTunnelLanes(first, lanes));
-    TestTrue(TEXT("same fades: same lanes"), equals({ 1, 3, 5 }));
-
-    const double moved[] = { 0.0, 0.9, 0.0, 0.5, NPCTUNNEL_NAN, 0.2 };
-    TestFalse(TEXT("moved fades, same set: no change"), CollectTunnelLanes(moved, lanes));
-    TestTrue(TEXT("moved fades: same lanes"), equals({ 1, 3, 5 }));
-
-    // Shrinking keeps the allocation
-    const int32 capacity = lanes.Max();
-    const double shrunk[] = { 0.0, 0.9, 0.0, 0.0, 0.0, 0.2 };
-    TestTrue(TEXT("lane 3 left: changed"), CollectTunnelLanes(shrunk, lanes));
-    TestTrue(TEXT("lane 3 left: lanes 1, 5"), equals({ 1, 5 }));
-    TestEqual(TEXT("lane 3 left: allocation kept"), lanes.Max(), capacity);
-
-    const double swapped[] = { 0.4, 0.0, 0.0, 0.0, 0.0, 0.2 };
-    TestTrue(TEXT("same count, other lane: changed"), CollectTunnelLanes(swapped, lanes));
-    TestTrue(TEXT("same count, other lane: lanes 0, 5"), equals({ 0, 5 }));
-    TestEqual(TEXT("same count: allocation kept"), lanes.Max(), capacity);
-
-    const double zero[] = { 0.0, 0.0, 0.0, 0.0, -0.5, 0.0 };
-    TestTrue(TEXT("all gone: changed"), CollectTunnelLanes(zero, lanes));
-    TestEqual(TEXT("all gone: empty"), lanes.Num(), 0);
-    TestEqual(TEXT("all gone: allocation kept"), lanes.Max(), capacity);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathShownTest, "SOLTest.NpcTunnelMath.TunnelsShown",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -2088,11 +2024,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathVisibilityTest, "SOLTest.NpcTu
 // SDD 49 sections 4.2 and 4.7 (Q5, Q6, D12): ResolveTunnelsShown follows AreTunnelsShown without the verification
 // override, and with it the override's choice (the player's settings ignored) still under sol.NpcTunnel and the map;
 // EffectiveTunnelFade is 0 while hidden, 1 for every lane when forced (the all-lanes budget case), else the fade
-// clamped (NaN as 0); ShouldDrawTunnels needs the tunnels shown and a fade above 0; the lanes report "drawn" to the
+// clamped (NaN as 0); the lanes report "drawn" to the
 // shared occluders when lane lines or tunnels draw (IsLaneOverlayDrawn); the texture uploads while a tunnel shows and
 // once more (all zeros) on the frame the last one goes away (ShouldUploadTunnelTexels). SDD 52 D7: the effective fade
-// is the label strength only; drawing reads TunnelDrawFade (1 while shown, no distance input), so ShouldDrawTunnels
-// and CollectTunnelLanes see every drawable lane at every distance, and the upload runs every frame they draw
+// is the label strength only; drawing reads TunnelDrawFade (1 while shown, no distance input), so every drawable lane
+// draws at every distance (the pool and classes of SDD 53 7.1-7.3 are in LaneTunnelClassTest.cpp), and the upload
+// runs every frame they draw
 bool FSOLNpcTunnelMathVisibilityTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -2126,11 +2063,7 @@ bool FSOLNpcTunnelMathVisibilityTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("draw fade hidden: 0"), TunnelDrawFade(false), 0.0);
     const double farStrength = EffectiveTunnelFade(TunnelFade(1.0e3 * 3.0e6, 3.0e6), true, false);
     TestEqual(TEXT("a lane at 1,000 lane radii: label strength 0"), farStrength, 0.0);
-    const double drawFades[] = { TunnelDrawFade(true), TunnelDrawFade(true) };
-    TestTrue(TEXT("lanes beyond the label band still draw (D7)"), ShouldDrawTunnels(true, drawFades));
-    TArray<int32> drawnLanes;
-    TestTrue(TEXT("every drawable lane gets an instance"), CollectTunnelLanes(drawFades, drawnLanes)
-        && drawnLanes.Num() == 2);
+    TestTrue(TEXT("lanes beyond the label band still draw (D7)"), TunnelDrawFade(true) > 0.0);
     const bool drawnByFrame[] = { true, true, true };
     bool bWasDrawn = false;
     int32 uploads = 0;
@@ -2155,16 +2088,6 @@ bool FSOLNpcTunnelMathVisibilityTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("labels: only the lanes inside the old band (D7)"), pickedCount, 2);
     TestTrue(TEXT("labels: the nearer lane first, then the 75 lane radii one"), pickedCount == 2 && picked[0] == 1
         && picked[1] == 3);
-
-    // Drawing the tunnel component
-    const double none[] = { 0.0, 0.0, 0.0 };
-    const double one[] = { 0.0, 0.2, 0.0 };
-    const double nanOnly[] = { NPCTUNNEL_NAN, 0.0 };
-    TestFalse(TEXT("hidden: not drawn"), ShouldDrawTunnels(false, one));
-    TestFalse(TEXT("no fade above 0: not drawn"), ShouldDrawTunnels(true, none));
-    TestTrue(TEXT("one fade above 0: drawn"), ShouldDrawTunnels(true, one));
-    TestFalse(TEXT("NaN only: not drawn"), ShouldDrawTunnels(true, nanOnly));
-    TestFalse(TEXT("no lanes: not drawn"), ShouldDrawTunnels(true, TConstArrayView<double>()));
 
     // The shared occluders' "lanes drawn" flag
     TestFalse(TEXT("neither: not drawn"), IsLaneOverlayDrawn(false, false));
@@ -2196,7 +2119,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathSlotMeshTest, "SOLTest.NpcTunn
 // FARTHEST beyond (behind slots like the ahead slot of the same index; the bands ordered within PER_SIDE), 0 out of
 // range; TunnelSlotMeshVertexCount is the rings' ribbons ((N + 1) samples x 2 sides each), two end rings at the
 // nearest segment count, a quad per dot (rows x dots per gap x gap slots) and a quad per chevron (2 walls x chevrons
-// per gap x gap slots). The budget is NPC_TUNNEL_VERTEX_BUDGET (SOLTest.Npc.TunnelFarField.SlotMeshBudget)
+// per gap x gap slots). The bound is the 24-instance pool (SDD 53 Q18, SOLTest.Npc.TunnelFarField.SlotMeshBudget)
 bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;

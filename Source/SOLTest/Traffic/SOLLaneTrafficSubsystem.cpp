@@ -91,10 +91,10 @@ void USOLLaneTrafficSubsystem::SetLaneSlots(const TConstArrayView<int32> slotByE
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Marks a network slot held (its lane keeps the slot after leaving the set)
-void USOLLaneTrafficSubsystem::SetNetworkSlotHeld(const int32 slot, const bool bHeld)
+// Sets a network slot's hold (its lane keeps the slot after leaving the set; a Fade hold is pre-emptible)
+void USOLLaneTrafficSubsystem::SetNetworkSlotHold(const int32 slot, const ESOLLaneSlotHold hold)
 {
-    mNetwork.SetSlotHeld(slot, bHeld);
+    mNetwork.SetSlotHold(slot, hold);
 }
 
 //////////////////////////////////////////////////////////////////////////

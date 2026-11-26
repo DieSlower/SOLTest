@@ -790,14 +790,15 @@ void SOLNpcRail::WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, con
     }
     if (windowBySlot.IsEmpty())
     {
-        // No network (contract case 25): (-FAR, +FAR) on each base lane column, inactive, the rest stays zero
+        // No network (contract case 25): (-FAR, +FAR) on each base lane column, active (since 53d the point shader
+        // hides an inactive lane, and without a network the traffic draws as before it existed), the rest stays zero
         const float farS = static_cast<float>(SOL::NPC_LANE_WINDOW_FAR_S);
         for (int32 slot = 0; slot < groups.LaneCount; ++slot)
         {
             const int32 column = groups.LaneSlotColumn(slot);
             if (column >= 0 && column < width)
             {
-                row[column] = FVector4f(-farS, farS, 0.0f, 0.0f);
+                row[column] = FVector4f(-farS, farS, 1.0f, 0.0f);
             }
         }
         return;

@@ -1379,19 +1379,21 @@ bool FSOLLaneNetworkPixelClassesTest::RunTest(const FString& /*parameters*/)
     LaneNetExact(*this, TEXT("focal 0"), LaneTunnelMaxRadiusPx(1.0e9, 1.0e7, 0.0), 0.0);
     LaneNetExact(*this, TEXT("NaN focal"), LaneTunnelMaxRadiusPx(1.0e9, 1.0e7, LANENET_NAN), 0.0);
 
-    // StepTunnelClass rows (thresholds 0.5 / 0.4 / 1.0 / 10/12)
+    // StepTunnelClass rows (thresholds 0.5 / 0.4 / 10/12 / 0.75; Full on where the dots are alpha 0, 53d review)
     const ESOLTunnelClass off = ESOLTunnelClass::Off;
     const ESOLTunnelClass reduced = ESOLTunnelClass::Reduced;
     const ESOLTunnelClass full = ESOLTunnelClass::Full;
     LaneNetEnumIs(*this, TEXT("(Off, 0.49)"), StepTunnelClass(off, 0.49, 1.0), off);
     LaneNetEnumIs(*this, TEXT("(Off, 0.5)"), StepTunnelClass(off, 0.5, 1.0), reduced);
     LaneNetEnumIs(*this, TEXT("(Off, 1.0)"), StepTunnelClass(off, 1.0, 1.0), full);
+    LaneNetEnumIs(*this, TEXT("(Off, 0.83)"), StepTunnelClass(off, 0.83, 1.0), reduced);
+    LaneNetEnumIs(*this, TEXT("(Off, 0.834)"), StepTunnelClass(off, 0.834, 1.0), full);
     LaneNetEnumIs(*this, TEXT("(Reduced, 0.45)"), StepTunnelClass(reduced, 0.45, 1.0), reduced);
     LaneNetEnumIs(*this, TEXT("(Reduced, 0.39)"), StepTunnelClass(reduced, 0.39, 1.0), off);
-    LaneNetEnumIs(*this, TEXT("(Reduced, 0.99)"), StepTunnelClass(reduced, 0.99, 1.0), reduced);
-    LaneNetEnumIs(*this, TEXT("(Reduced, 1.0)"), StepTunnelClass(reduced, 1.0, 1.0), full);
-    LaneNetEnumIs(*this, TEXT("(Full, 0.84)"), StepTunnelClass(full, 0.84, 1.0), full);
-    LaneNetEnumIs(*this, TEXT("(Full, 0.83)"), StepTunnelClass(full, 0.83, 1.0), reduced);
+    LaneNetEnumIs(*this, TEXT("(Reduced, 0.83)"), StepTunnelClass(reduced, 0.83, 1.0), reduced);
+    LaneNetEnumIs(*this, TEXT("(Reduced, 0.834)"), StepTunnelClass(reduced, 0.834, 1.0), full);
+    LaneNetEnumIs(*this, TEXT("(Full, 0.76)"), StepTunnelClass(full, 0.76, 1.0), full);
+    LaneNetEnumIs(*this, TEXT("(Full, 0.74)"), StepTunnelClass(full, 0.74, 1.0), reduced);
     LaneNetEnumIs(*this, TEXT("(Full, 0.39)"), StepTunnelClass(full, 0.39, 1.0), off);
     LaneNetEnumIs(*this, TEXT("(Off, NaN)"), StepTunnelClass(off, LANENET_NAN, 1.0), off);
     LaneNetEnumIs(*this, TEXT("(Reduced, NaN)"), StepTunnelClass(reduced, LANENET_NAN, 1.0), off);
@@ -1409,8 +1411,8 @@ bool FSOLLaneNetworkPixelClassesTest::RunTest(const FString& /*parameters*/)
     LaneNetNear(*this, TEXT("quality scale preset 7 clamps to Cinematic"), LaneTunnelQualityScale(7), 1.0,
         LANENET_TIGHT);
 
-    // Scaled thresholds (off-boundary values): Low x10 (5 / 4 / 10 / 8.33), Medium x4.6 (2.3 / 1.84 / 4.6 / 3.83),
-    // High x2.2 (1.1 / 0.88 / 2.2 / 1.83)
+    // Scaled thresholds (off-boundary values): Low x10 (5 / 4 / 8.33 / 7.5), Medium x4.6 (2.3 / 1.84 / 3.83 / 3.45),
+    // High x2.2 (1.1 / 0.88 / 1.83 / 1.65)
     const double low = LaneTunnelQualityScale(0);
     const double medium = LaneTunnelQualityScale(1);
     const double high = LaneTunnelQualityScale(2);
@@ -1418,23 +1420,24 @@ bool FSOLLaneNetworkPixelClassesTest::RunTest(const FString& /*parameters*/)
     LaneNetEnumIs(*this, TEXT("Low (Off, 5.0)"), StepTunnelClass(off, 5.0, low), reduced);
     LaneNetEnumIs(*this, TEXT("Low (Off, 10.0)"), StepTunnelClass(off, 10.0, low), full);
     LaneNetEnumIs(*this, TEXT("Low (Reduced, 3.99)"), StepTunnelClass(reduced, 3.99, low), off);
-    LaneNetEnumIs(*this, TEXT("Low (Full, 8.34)"), StepTunnelClass(full, 8.34, low), full);
-    LaneNetEnumIs(*this, TEXT("Low (Full, 8.32)"), StepTunnelClass(full, 8.32, low), reduced);
+    LaneNetEnumIs(*this, TEXT("Low (Full, 7.51)"), StepTunnelClass(full, 7.51, low), full);
+    LaneNetEnumIs(*this, TEXT("Low (Off, 8.34)"), StepTunnelClass(off, 8.34, low), full);
+    LaneNetEnumIs(*this, TEXT("Low (Full, 7.49)"), StepTunnelClass(full, 7.49, low), reduced);
     LaneNetEnumIs(*this, TEXT("Low (Off, 0.5): off at Low"), StepTunnelClass(off, 0.5, low), off);
     LaneNetEnumIs(*this, TEXT("Medium (Off, 2.29)"), StepTunnelClass(off, 2.29, medium), off);
     LaneNetEnumIs(*this, TEXT("Medium (Off, 2.31)"), StepTunnelClass(off, 2.31, medium), reduced);
-    LaneNetEnumIs(*this, TEXT("Medium (Off, 4.59)"), StepTunnelClass(off, 4.59, medium), reduced);
-    LaneNetEnumIs(*this, TEXT("Medium (Off, 4.61)"), StepTunnelClass(off, 4.61, medium), full);
+    LaneNetEnumIs(*this, TEXT("Medium (Off, 3.82)"), StepTunnelClass(off, 3.82, medium), reduced);
+    LaneNetEnumIs(*this, TEXT("Medium (Off, 3.84)"), StepTunnelClass(off, 3.84, medium), full);
     LaneNetEnumIs(*this, TEXT("Medium (Reduced, 1.85)"), StepTunnelClass(reduced, 1.85, medium), reduced);
     LaneNetEnumIs(*this, TEXT("Medium (Reduced, 1.83)"), StepTunnelClass(reduced, 1.83, medium), off);
-    LaneNetEnumIs(*this, TEXT("Medium (Full, 3.84)"), StepTunnelClass(full, 3.84, medium), full);
-    LaneNetEnumIs(*this, TEXT("Medium (Full, 3.82)"), StepTunnelClass(full, 3.82, medium), reduced);
+    LaneNetEnumIs(*this, TEXT("Medium (Full, 3.46)"), StepTunnelClass(full, 3.46, medium), full);
+    LaneNetEnumIs(*this, TEXT("Medium (Full, 3.44)"), StepTunnelClass(full, 3.44, medium), reduced);
     LaneNetEnumIs(*this, TEXT("High (Off, 1.09)"), StepTunnelClass(off, 1.09, high), off);
     LaneNetEnumIs(*this, TEXT("High (Off, 1.11)"), StepTunnelClass(off, 1.11, high), reduced);
-    LaneNetEnumIs(*this, TEXT("High (Reduced, 2.21)"), StepTunnelClass(reduced, 2.21, high), full);
+    LaneNetEnumIs(*this, TEXT("High (Reduced, 1.84)"), StepTunnelClass(reduced, 1.84, high), full);
     LaneNetEnumIs(*this, TEXT("High (Reduced, 0.87)"), StepTunnelClass(reduced, 0.87, high), off);
-    LaneNetEnumIs(*this, TEXT("High (Full, 1.84)"), StepTunnelClass(full, 1.84, high), full);
-    LaneNetEnumIs(*this, TEXT("High (Full, 1.82)"), StepTunnelClass(full, 1.82, high), reduced);
+    LaneNetEnumIs(*this, TEXT("High (Full, 1.66)"), StepTunnelClass(full, 1.66, high), full);
+    LaneNetEnumIs(*this, TEXT("High (Full, 1.64)"), StepTunnelClass(full, 1.64, high), reduced);
 
     // A NaN, infinite or non-positive scale reads as 1
     LaneNetEnumIs(*this, TEXT("scale NaN (Off, 0.5)"), StepTunnelClass(off, 0.5, LANENET_NAN), reduced);
@@ -1443,11 +1446,11 @@ bool FSOLLaneNetworkPixelClassesTest::RunTest(const FString& /*parameters*/)
     LaneNetEnumIs(*this, TEXT("scale -2 (Off, 0.49)"), StepTunnelClass(off, 0.49, -2.0), off);
     LaneNetEnumIs(*this, TEXT("scale NaN (Full, 0.84)"), StepTunnelClass(full, 0.84, LANENET_NAN), full);
 
-    // Invisible switches: on where the radius fade is gone, full-off where the detail gap fade is gone
+    // Invisible switches: on where the radius fade is gone, Full on where the detail gap fade is gone
     LaneNetExact(*this, TEXT("activate == radius fade gone"), SOL::NPC_TUNNEL_ACTIVATE_PX,
         SOL::NPC_TUNNEL_RADIUS_FADE_GONE_PX);
-    LaneNetNear(*this, TEXT("full off x ring spacing == detail gap fade gone"),
-        SOL::NPC_TUNNEL_FULL_OFF_PX * SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII, SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX,
+    LaneNetNear(*this, TEXT("full on x ring spacing == detail gap fade gone"),
+        SOL::NPC_TUNNEL_FULL_ON_PX * SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII, SOL::NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX,
         LANENET_TIGHT);
     return true;
 }

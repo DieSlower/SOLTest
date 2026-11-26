@@ -873,7 +873,10 @@ namespace SOLLaneNetwork
         outSlots.Reset();
         outSlots.SetNum(capacity);
 
-        // Base slots copy through; a partner slot keeps its lane if the lane stays in the set or its tunnel still fades
+        // Base slots copy through; a partner slot keeps its lane if the lane stays in the set or the slot is held (its
+        // blocks or its fading tunnel); one kept only by a Fade hold is pre-emptible (a fixed inline buffer, no heap)
+        TArray<uint8, TInlineAllocator<64>> preemptible;
+        preemptible.SetNumZeroed(capacity);
         for (int32 slot = 0; slot < capacity; ++slot)
         {
             const FSOLLanePair previous = slot < previousSlots.Num() ? previousSlots[slot] : FSOLLanePair();
@@ -886,22 +889,27 @@ namespace SOLLaneNetwork
             {
                 continue;
             }
-            bool bKeep = slot < slotHeld.Num() && slotHeld[slot] == 1;
-            for (int32 index = 0; !bKeep && index < partnerSet.Num(); ++index)
+            const uint8 held = slot < slotHeld.Num() ? slotHeld[slot] : 0;
+            bool bInSet = false;
+            for (int32 index = 0; !bInSet && index < partnerSet.Num(); ++index)
             {
-                bKeep = LaneGraphPairEqual(partnerSet[index], previous);
+                bInSet = LaneGraphPairEqual(partnerSet[index], previous);
             }
-            if (bKeep)
+            const bool bBlocks = held == static_cast<uint8>(ESOLLaneSlotHold::Blocks);
+            const bool bFade = held == static_cast<uint8>(ESOLLaneSlotHold::Fade);
+            if (bInSet || bBlocks || bFade)
             {
                 outSlots[slot] = previous;
+                preemptible[slot] = !bInSet && !bBlocks ? 1 : 0;
             }
         }
 
-        // The remaining new lanes, in set order, take the lowest free partner slot
+        // The remaining new lanes, in set order, take the lowest free partner slot, else the lowest pre-emptible one
         int32 overflow = 0;
         for (const FSOLLanePair& lane : partnerSet)
         {
             int32 freeSlot = INDEX_NONE;
+            int32 fadeSlot = INDEX_NONE;
             bool bPlaced = false;
             for (int32 slot = base; slot < capacity && !bPlaced; ++slot)
             {
@@ -911,17 +919,23 @@ namespace SOLLaneNetwork
                 {
                     freeSlot = slot;
                 }
+                if (fadeSlot == INDEX_NONE && preemptible[slot] != 0)
+                {
+                    fadeSlot = slot;
+                }
             }
             if (bPlaced)
             {
                 continue;
             }
-            if (freeSlot == INDEX_NONE)
+            const int32 slot = freeSlot != INDEX_NONE ? freeSlot : fadeSlot;
+            if (slot == INDEX_NONE)
             {
                 ++overflow;
                 continue;
             }
-            outSlots[freeSlot] = lane;
+            outSlots[slot] = lane;
+            preemptible[slot] = 0;
         }
         return overflow;
     }
@@ -1336,13 +1350,22 @@ namespace SOLLaneNetwork
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Writes the drawn lanes that get a tunnel instance, largest first, and returns the overflow count
+    // Writes the drawn lanes that get a tunnel instance, largest first (a pooled lane's radius x keepRatio), and
+    // returns the overflow count
     int32 SelectTunnelPool(TConstArrayView<double> maxRadiusPx, TConstArrayView<uint8> drawn, const int32 poolSize,
-        TArray<int32>& outLanes)
+        TArray<int32>& outLanes, TConstArrayView<uint8> previousPool, const double keepRatio)
     {
-        // Ties to the lower index, a NaN radius last; a fixed pool, so each pick is the next in (radius desc, index
-        // asc) order after the previous one and no scratch is needed. The quality scale is uniform, so it does not
-        // change the ranking and is not an input
+        // Ties to the lower index, a NaN radius last; a fixed pool, so each pick is the next in (ranked radius desc,
+        // index asc) order after the previous one and no scratch is needed. The quality scale is uniform, so it does
+        // not change the ranking and is not an input; the keep ratio favours last update's pool members
+        const double keep = FMath::IsFinite(keepRatio) && keepRatio > 1.0 ? keepRatio : 1.0;
+
+        // Returns a lane's ranking radius: NaN last, a pooled lane's positive radius times the keep ratio
+        auto rankedPx = [&maxRadiusPx, &previousPool, keep](const int32 lane)
+        {
+            const double px = FMath::IsNaN(maxRadiusPx[lane]) ? -LANEGRAPH_INF : maxRadiusPx[lane];
+            return previousPool.IsValidIndex(lane) && previousPool[lane] != 0 && px > 0.0 ? px * keep : px;
+        };
         outLanes.Reset();
         const int32 laneCount = FMath::Min(maxRadiusPx.Num(), drawn.Num());
         int32 drawnCount = 0;
@@ -1365,7 +1388,7 @@ namespace SOLLaneNetwork
                 {
                     continue;
                 }
-                const double px = FMath::IsNaN(maxRadiusPx[lane]) ? -LANEGRAPH_INF : maxRadiusPx[lane];
+                const double px = rankedPx(lane);
                 const bool bAfterPrevious = pick == 0 || px < previousPx || (px == previousPx && lane > previousLane);
                 if (bAfterPrevious && (bestLane == INDEX_NONE || px > bestPx))
                 {
@@ -1389,6 +1412,56 @@ namespace SOLLaneNetwork
     bool StepOverflowReport(const int32 previousOverflow, const int32 overflow)
     {
         return overflow != previousOverflow;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes the pooled lanes per class, index order; Off lanes take no instance
+    void SplitTunnelPoolByClass(TConstArrayView<uint8> inPool, TConstArrayView<ESOLTunnelClass> classes,
+        const int32 laneCount, TArray<int32>& outFull, TArray<int32>& outReduced)
+    {
+        outFull.Reset();
+        outReduced.Reset();
+        const int32 count = FMath::Min(FMath::Min(inPool.Num(), classes.Num()), laneCount);
+        for (int32 lane = 0; lane < count; ++lane)
+        {
+            if (inPool[lane] == 0 || classes[lane] == ESOLTunnelClass::Off)
+            {
+                continue;
+            }
+            (classes[lane] == ESOLTunnelClass::Full ? outFull : outReduced).Add(lane);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Copies next into current and returns true only when they differ
+    bool SyncTunnelClassLanes(TArray<int32>& current, TConstArrayView<int32> next)
+    {
+        if (current.Num() == next.Num()
+            && (next.IsEmpty() || FMemory::Memcmp(current.GetData(), next.GetData(), sizeof(int32) * next.Num()) == 0))
+        {
+            return false;
+        }
+        current.Reset();
+        current.Append(next.GetData(), next.Num());
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a slot's hold: Blocks while it owns blocks, else Fade while its tunnel still fades, else None
+    ESOLLaneSlotHold LaneSlotHold(const bool bOwnsBlocks, const bool bTunnelFading)
+    {
+        if (bOwnsBlocks)
+        {
+            return ESOLLaneSlotHold::Blocks;
+        }
+        return bTunnelFading ? ESOLLaneSlotHold::Fade : ESOLLaneSlotHold::None;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a slot's block release must be retried next frame: it owns blocks while out of the set
+    bool IsSlotReleasePending(const bool bOwnsBlocks, const bool bInSetNow)
+    {
+        return bOwnsBlocks && !bInSetNow;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -1732,7 +1805,8 @@ namespace SOLLaneNetwork
             const FSOLLanePair& previous = previousSlotLanes.IsValidIndex(slot) ? previousSlotLanes[slot] : freeSlot;
             const bool bPreviousInSet = previousInSet.IsValidIndex(slot) && previousInSet[slot] != 0;
             const bool bInSet = inSetNow.IsValidIndex(slot) && inSetNow[slot] != 0;
-            outStep.SlotEpisodeOpens[slot] = LaneEpisodeOpens(previous, bPreviousInSet, slotLanes[slot], bInSet) ? 1 : 0;
+            outStep.SlotEpisodeOpens[slot] =
+                LaneEpisodeOpens(previous, bPreviousInSet, slotLanes[slot], bInSet) ? 1 : 0;
             bAnyOpen |= outStep.SlotEpisodeOpens[slot] != 0;
         }
         if (bAnyOpen)

@@ -332,3 +332,44 @@ Every assertion in cases 16-26 is pinned; the test author writes all of them.
   hitch every couple of seconds. Not checked: the tunnel component's lane caches for Gone / released columns.
   `sol.SimDate` is a thin developer hook over the tested date parser and `SetJulianDate`, with no test of its own.
   Suite 2136 / 2136.
+- 2026-11-25: 53d done, pending commit and adversarial review. **Steps 1-2:** `USOLNpcTunnelComponent` steps each
+  lane's class (`LaneTunnelMaxRadiusPx` with the live focal, `StepTunnelClass` with `LaneTunnelQualityScale`) before
+  any frame is built, so an Off lane builds no frame, texels or instance; a Reduced mesh (the slot mesh's ring and
+  end-ring prefix, 7,220 vertices) beside the Full mesh (15,380, 160 ring slots per side); `SelectTunnelPool` with the
+  pool of 24 shared by both classes, instances rewritten per class only when that class's lane set changes, the
+  overflow logged once per change and counted (stat group `SOLNpcTunnel`: `SOL_NpcTunnelFull`, `_Reduced`,
+  `_PoolOverflow`, `_Vertices`). `NPC_TUNNEL_VERTEX_BUDGET` / `_LANES` removed, tests re-pinned. **Step 3:** Q20 bands
+  in px (`LaneLineFade` / `TunnelFade` with a focal, `NPC_LANE_FADE_NEAR/FAR_PX`, `NPC_TUNNEL_LABEL_START/FULL_PX`);
+  the point and lane materials keep their radii inputs, fed from the fade focal (`LaneFadeRadiiAtFocal`), and the
+  tunnel shader's fades read the focal over the quality scale (`Layout4.z`, user decision: one factor for every
+  threshold), `NpcTunnelMirrorTest` QualityScale case added; no `.uasset` rebuilt. **Step 4:** the 3 s real-time open
+  fade (`StepLaneOpenFade`, row 3 `.z` = open fade x draw flag, per column from `FSOLNpcLaneSlotWindow::bOpenNow`, a
+  time jump's re-share snaps it, a column taken by a new lane starts at 0); a closing network column is held, and its
+  end points kept, until its fade is 0 (`USOLNpcSubsystem::SetTunnelFadingColumns`, SDD 4.5); the point shader's
+  `SOLNTR_LaneShipDrawn` now reads the active flag (window test renamed `SOLNTR_LaneShipWindowDrawn`, mirror
+  `LaneShipPointDrawn`, also used by the CPU point layer); without a network the base lanes are active. Info text
+  and `GAME_MECHANICS.md` updated. Suite 2145 / 2145 (one unrelated HTTP-timeout warning). Smokes:
+  `-SOLSmokeNpcTunnel` 48 / 48 at 1920x1080 after its oracles were updated (T1 / T5 feed at the fade focal, Full-only
+  label strength; F3000 at 0.32 px is now Off and checked as such); `-SOLSmokeNpcLanes` 35 / 35,
+  `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeNpcTraffic` 19 / 19 at 1280x720, 1920x1080 and 2560x1440; no pool overflow
+  logged. **Deferred:** step 5's new tunnel smoke views (pool-full, class switch, closing lane) and the Earth hub /
+  belt PIE screenshots (unreal-mcp was down; the smoke screenshots T1, F300, F3000 and the Earth hub T5 were viewed
+  and deleted); the tunnel CPU cost was not re-profiled.
+- 2026-11-25: 53d review fixes, pending commit (user decisions: Full switch invisible, fade holds pre-emptible,
+  interim calls accepted). Full on at 10/12 px, off below 0.75 px (constants, SDD 7.1, contract, tests, Info text and
+  `GAME_MECHANICS.md`); `mHasPendingRelease` only for a block owner out of the set (a fade-only hold re-checks once at
+  its fade's end, or once when the fade reports go stale); `ESOLLaneSlotHold` (Blocks / Fade) and fade pre-emption in
+  `AssignLaneSlots`; pool hysteresis `NPC_TUNNEL_POOL_KEEP_RATIO` 1.1; wall label alpha x the open fade; pure
+  `StepColumnOpenFades`, `LaneSlotHold`, `IsSlotReleasePending`, `SplitTunnelPoolByClass`, `SyncTunnelClassLanes`
+  with tests (written by the implementer after the code, said so in `LaneTunnelClassTest.cpp`); the `QualityScale`
+  mirror row now evaluates every dot and chevron with the fade focal (with live-focal and twice-radius controls); a
+  component test checks the real Reduced mesh (7,220); dead `CollectTunnelLanes`, `ShouldDrawTunnels`, one-argument
+  `PointLaneParams` / `LaneMaterialParams` deleted (tests re-pinned); vanish-table `static_assert`; 120-column wraps.
+  Suite 2152 / 2152. Smokes: NpcTunnel 48 / 48 (1920x1080), NpcLanes 35 / 35, LaneMerge 15 / 15, NpcTraffic 19 / 19 at
+  1280x720, 1920x1080, 2560x1440. **Tunnel CPU** (`-SOLSmokeNpcTunnelProfile`, 1080p, tunnel + label scopes, on minus
+  off): T2-all 0.022 ms, T5-all 0.019 ms, T2-own 0.019 ms, within the 0.025 ms gate (tunnel scope alone 0.019-0.023
+  on, 0.007-0.008 off). **Warp run** (1M, 10 d/s, about 140 s): 1,444 block steps in 15,392 frames (about one per
+  epoch, no per-frame re-runs), 65 block moves, no column overflow, no pool overflow; per-block move 0.57-0.90 ms
+  (the known Mass re-bucket debt). Peak column use and pre-emption counts were not instrumented, so the fade
+  pre-emption is covered by unit tests only. Item 10 (a lane opened with 0 blocks) not changed: my reading is that in
+  the set it keeps its slot by membership and after its close by its fade hold; to confirm with the reviewer.

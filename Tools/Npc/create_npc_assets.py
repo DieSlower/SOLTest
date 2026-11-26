@@ -25,6 +25,10 @@
 #       SOL::NPC_LANE_WALL_SPEED_MPS needs no rebuild).
 #       Issue #53 (SDD 53 5.4, part 53c2b): a lane ship outside its slot's window (row 6) or parked (railB.w < 0) is
 #       hidden by SOLNTR_LaneShipDrawn before the position is evaluated (a new call, so the material was rebuilt).
+#       Issue #53 part 53d: SOLNTR_LaneShipDrawn also reads the slot's active flag (row 6 .z), mirrored by
+#       SOLNpcTrafficMirror::LaneShipPointDrawn; the window test alone is SOLNTR_LaneShipWindowDrawn (mirror
+#       LaneShipWindowDrawn). Only the .ush body changed, so no rebuild; the comment inside VERTEX_HLSL below still
+#       names the 53c2b mirror and is left as baked into the asset (changing it would mean a rebuild for a comment).
 #   /Game/SOL/Npc/M_SOLNpcHull
 #       Default-lit placeholder hull (vector parameter Tint), usable on ISMs.
 #   /Game/SOL/Npc/M_SOLNpcLanes

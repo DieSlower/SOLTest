@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "SOLConstants.h"
+
 #include "CoreMinimal.h"
 
 // The C++ float copy of the point shader's lane evaluation, SOLNTR_LaneShipRelM in Shaders/Private/SOLNpcTraffic.ush
@@ -170,14 +172,14 @@ namespace SOLNpcTrafficMirror
         return bSegment1 ? turnB : (bLeg ? legPosition : turnA);
     }
 
-    // Returns whether the point shader draws a lane ship at timeS by its slot's window (SOLNTR_LaneShipDrawn, SDD 53
-    // section 5.4, contract case 25): railA / railB its GPU rail texels, rows the column's NPC_GROUP_TEXTURE_ROWS group
-    // texels as uploaded (row 6 = (open start, close, active, 0) relative to the GPU epoch; the active flag is not read
-    // here). The float form of SOLLaneNetwork::LaneShipInSpace: on a leg that leg decides, in a U-turn the leg after it
-    // (P1); drawn iff the deciding leg departs at or after the open start and arrives by the close. The departure is
-    // built from per-epoch constants only (the epoch parts, tau0 low, T_leg's rounding and the integer wrap count, never
-    // t), so the decision is the same on every frame of a span; a turn's departure is the same float expression as the
-    // leg after it (TurnAtB: the inbound constants, TurnAtA: the outbound constants of the next wrap)
+    // Returns whether the point shader draws a lane ship at timeS by its slot's window (SOLNTR_LaneShipWindowDrawn, SDD
+    // 53 section 5.4, contract case 25): railA / railB its GPU rail texels, rows the column's NPC_GROUP_TEXTURE_ROWS
+    // group texels as uploaded (row 6 = (open start, close, active, 0) relative to the GPU epoch; the active flag is
+    // not read here). The float form of SOLLaneNetwork::LaneShipInSpace: on a leg that leg decides, in a U-turn the leg
+    // after it (P1); drawn iff the deciding leg departs at or after the open start and arrives by the close. The
+    // departure is built from per-epoch constants only (the epoch parts, tau0 low, T_leg's rounding and the integer
+    // wrap count, never t), so the decision is the same on every frame of a span; a turn's departure is the same float
+    // expression as the leg after it (TurnAtB: the inbound constants, TurnAtA: the outbound constants of the next wrap)
     inline bool LaneShipWindowDrawn(const FVector4f& railA, const FVector4f& railB, const FVector4f* rows,
         const float timeS)
     {
@@ -229,5 +231,14 @@ namespace SOLNpcTrafficMirror
             : ((bSegment1 || bSegment2) ? -inboundConstS - inboundLowMovingS : -nextCycleConstS - nextCycleLowS);
         const float arriveS = (departS + legS) + legLowS;
         return departS >= openStartS && arriveS <= closeS;
+    }
+
+    // Returns whether the point vertex shader draws a lane ship at all (SOLNTR_LaneShipDrawn; SDD 53 Q21, Q22, P5; plan
+    // 53d step 4): the slot's active flag (row 6 .z, 1 = active) and LaneShipWindowDrawn; an inactive lane's ships are
+    // hidden always, with the Lanes overlay on or off (no overlay input)
+    inline bool LaneShipPointDrawn(const FVector4f& railA, const FVector4f& railB, const FVector4f* rows,
+        const float timeS)
+    {
+        return rows[SOL::NPC_GROUP_WINDOW_ROW].Z > 0.5f && LaneShipWindowDrawn(railA, railB, rows, timeS);
     }
 }

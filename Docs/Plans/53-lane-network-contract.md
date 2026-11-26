@@ -29,8 +29,8 @@ metres, sim seconds, double. Inputs are plain arrays; nothing reads the registry
 | `NPC_LANE_SHIP_BLOCK_SIZE` | int32 | 100 | pinned (O1, O10); invariant: divides the lane ship count of the default population (400,000) |
 | `NPC_TUNNEL_ACTIVATE_PX` | double | 0.5 | pinned (Q17); invariant: equals `NPC_TUNNEL_RADIUS_FADE_GONE_PX` |
 | `NPC_TUNNEL_DEACTIVATE_PX` | double | 0.4 | pinned (O10); invariant: 0 < it < `NPC_TUNNEL_ACTIVATE_PX` |
-| `NPC_TUNNEL_FULL_ON_PX` | double | 1.0 | pinned (O10); invariant: > `NPC_TUNNEL_FULL_OFF_PX` |
-| `NPC_TUNNEL_FULL_OFF_PX` | double | `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII` = 10 / 12 | pinned (Q17, derived: dots and chevrons are alpha 0 below it); invariant: > `NPC_TUNNEL_ACTIVATE_PX` |
+| `NPC_TUNNEL_FULL_ON_PX` | double | `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII` = 10 / 12 | pinned (user, 53d review: dots and chevrons are alpha 0 at and below it, so the switch is invisible; was 1.0); invariant: > `NPC_TUNNEL_FULL_OFF_PX` |
+| `NPC_TUNNEL_FULL_OFF_PX` | double | 0.75 | pinned (user, 53d review; was 10 / 12); invariant: > `NPC_TUNNEL_ACTIVATE_PX` |
 | `NPC_TUNNEL_RING_SLOTS_PER_SIDE` | int32 | 160 | pinned (Q19; was 80); full slot mesh 15,380 vertices |
 | `NPC_TUNNEL_INSTANCE_POOL` | int32 | 24 | pinned (Q18); invariant: <= `NPC_GROUP_TEXTURE_WIDTH` |
 | `NPC_LANE_ROUTE_MAX_HOPS` | int32 | 12 | implementer; invariant: >= 8 |
@@ -241,8 +241,10 @@ int32 AssignLaneSlots(TConstArrayView<FSOLLanePair> previousSlots, TConstArrayVi
   picks, so the set is not a function of sim time alone; SDD 53 4.3.)
 - `AssignLaneSlots`: `outSlots` has `slotCapacity` entries; slots below `baseCount` are copied from `previousSlots`
   untouched; a partner lane present in `previousSlots` and in `partnerSet` keeps its slot; a slot whose lane left the
-  set is freed unless `slotHeld` is 1 there (its tunnel is still fading); the remaining new lanes, in `partnerSet`
-  order, take the lowest free slot from `baseCount`; a free slot is `{INDEX_NONE, INDEX_NONE}`.
+  set is freed unless `slotHeld` is 1 (Blocks) or 2 (Fade, its tunnel still fading) there (`ESOLLaneSlotHold`, 53d
+  review); the remaining new lanes, in `partnerSet` order, take the lowest free slot from `baseCount`, else the lowest
+  Fade-held slot whose lane left the set (pre-empted, its fade cut short), never a Blocks-held one; a free slot is
+  `{INDEX_NONE, INDEX_NONE}`.
   - Capacity 12, base 8, previous slot 8 = (0, 2), slot 9 = (1, 3), held none, set {(1, 3), (2, 5), (4, 6)}: slot 8 =
     (2, 5), 9 = (1, 3), 10 = (4, 6), 11 free; returns 0.
   - Same with slot 8 held: 8 = (0, 2) (held), 9 = (1, 3), 10 = (2, 5), 11 = (4, 6); returns 0.
@@ -438,26 +440,29 @@ invisible switches below hold only at scale 1; at Low the tunnel switches on at 
 fade (`NPC_TUNNEL_RADIUS_FADE_*_PX`) is nearly solid, so the shader fades must take the same scale for the switch to
 stay invisible. Not changed in 53a/53b.
 - `LaneTunnelQualityScale`: presets 0-4 -> 10, 4.6, 2.2, 1, 1; -1 -> 10; 7 -> 1.
-- Scaled rows (off-boundary): Low (Off, 4.99) Off, (Off, 5.0) Reduced, (Off, 10) Full, (Reduced, 3.99) Off, (Full,
-  8.34) Full, (Full, 8.32) Reduced, (Off, 0.5) Off; Medium (Off, 2.29) Off, (Off, 2.31) Reduced, (Off, 4.59) Reduced,
-  (Off, 4.61) Full, (Reduced, 1.85) Reduced, (Reduced, 1.83) Off, (Full, 3.84) Full, (Full, 3.82) Reduced; High (Off,
-  1.09) Off, (Off, 1.11) Reduced, (Reduced, 2.21) Full, (Reduced, 0.87) Off, (Full, 1.84) Full, (Full, 1.82) Reduced.
+- Scaled rows (off-boundary; re-pinned in the 53d review to Full on 10/12 px, off 0.75 px): Low (Off, 4.99) Off,
+  (Off, 5.0) Reduced, (Off, 10) Full, (Off, 8.34) Full, (Reduced, 3.99) Off, (Full, 7.51) Full, (Full, 7.49) Reduced,
+  (Off, 0.5) Off; Medium (Off, 2.29) Off, (Off, 2.31) Reduced, (Off, 3.82) Reduced, (Off, 3.84) Full, (Reduced, 1.85)
+  Reduced, (Reduced, 1.83) Off, (Full, 3.46) Full, (Full, 3.44) Reduced; High (Off, 1.09) Off, (Off, 1.11) Reduced,
+  (Reduced, 1.84) Full, (Reduced, 0.87) Off, (Full, 1.66) Full, (Full, 1.64) Reduced.
 - Bad scale: NaN, +inf, 0 -> as 1 ((Off, 0.5) Reduced); -2 ((Off, 0.49) Off).
 
 - `LaneTunnelMaxRadiusPx` = f Rt / d: (1.92e10, 1e7, 960) -> 0.5; (9.6e9, 1e7, 960) -> 1.0; d <= 0 -> +inf; NaN,
   Rt <= 0 or f <= 0 -> 0.
-- `StepTunnelClass` at scale 1 (thresholds 0.5 / 0.4 / 1.0 / 10/12, all pinned, O10):
-  (Off, 0.49) -> Off; (Off, 0.5) -> Reduced; (Off, 1.0) -> Full; (Reduced, 0.45) -> Reduced; (Reduced, 0.39) -> Off;
-  (Reduced, 0.99) -> Reduced; (Reduced, 1.0) -> Full; (Full, 0.84) -> Full; (Full, 0.83) -> Reduced; (Full, 0.39) ->
-  Off; any previous with NaN -> Off.
-- **Invisible switches:** `NPC_TUNNEL_ACTIVATE_PX == NPC_TUNNEL_RADIUS_FADE_GONE_PX`, and `NPC_TUNNEL_FULL_OFF_PX x
-  NPC_TUNNEL_RING_BASE_SPACING_RADII == NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX` (relative 1e-12).
+- `StepTunnelClass` at scale 1 (thresholds 0.5 / 0.4 / 10/12 / 0.75, pinned; the Full pair moved by the user in the
+  53d review): (Off, 0.49) -> Off; (Off, 0.5) -> Reduced; (Off, 0.83) -> Reduced; (Off, 0.834) -> Full; (Off, 1.0) ->
+  Full; (Reduced, 0.45) -> Reduced; (Reduced, 0.39) -> Off; (Reduced, 0.83) -> Reduced; (Reduced, 0.834) -> Full;
+  (Full, 0.76) -> Full; (Full, 0.74) -> Reduced; (Full, 0.39) -> Off; any previous with NaN -> Off.
+- **Invisible switches:** `NPC_TUNNEL_ACTIVATE_PX == NPC_TUNNEL_RADIUS_FADE_GONE_PX`, and `NPC_TUNNEL_FULL_ON_PX x
+  NPC_TUNNEL_RING_BASE_SPACING_RADII == NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX` (relative 1e-12; `FULL_OFF` before the 53d
+  review moved the switch).
 
 ### 11. `SelectTunnelPool`, `StepOverflowReport` (case `Pool`)
 
 ```cpp
 int32 SelectTunnelPool(TConstArrayView<double> maxRadiusPx, TConstArrayView<uint8> drawn, int32 poolSize,
-    TArray<int32>& outLanes);   // returns the overflow count
+    TArray<int32>& outLanes, TConstArrayView<uint8> previousPool = {}, double keepRatio = 1.0);   // the overflow
+// count; since the 53d review a previous pool member ranks by radius x keepRatio (NPC_TUNNEL_POOL_KEEP_RATIO 1.1)
 bool StepOverflowReport(int32 previousOverflow, int32 overflow);   // true = log and report now
 ```
 

@@ -105,6 +105,15 @@ enum class ESOLTunnelClass : uint8
     Full
 };
 
+// Why a lane slot is held after its lane leaves the set (SDD 53 4.5, part 53d): Blocks (it owns ship blocks, never
+// taken) or Fade (only its tunnel still fades out: pre-emptible, the first slot a new lane takes when none is free)
+enum class ESOLLaneSlotHold : uint8
+{
+    None = 0,
+    Blocks = 1,
+    Fade = 2
+};
+
 // A range of lane-local ship indices [First, First + Count) (a block move's rail upload, SDD 53 4.5)
 struct FSOLShipRange
 {
@@ -199,7 +208,10 @@ namespace SOLLaneNetwork
     // Returns an epoch's sample time, index x epoch
     SOLTEST_API double LaneEpochSampleTimeS(int64 epochIndex, double epochS);
 
-    // Writes the lane slots for the epoch's partner set and returns the number of partner lanes that found no slot
+    // Writes the lane slots for the epoch's partner set and returns the number of partner lanes that found no slot.
+    // slotHeld holds an ESOLLaneSlotHold per slot: a held slot keeps its lane out of the set; a new lane takes the
+    // lowest free slot, else the lowest Fade-held slot whose lane left the set (its fade is cut short), never a
+    // Blocks-held one
     SOLTEST_API int32 AssignLaneSlots(TConstArrayView<FSOLLanePair> previousSlots, TConstArrayView<uint8> slotHeld,
         TConstArrayView<FSOLLanePair> partnerSet, int32 baseCount, int32 slotCapacity, TArray<FSOLLanePair>& outSlots);
 
@@ -250,9 +262,28 @@ namespace SOLLaneNetwork
     // Returns the tunnel's next pixel class from its largest on-screen radius (hysteresis, thresholds x scale)
     SOLTEST_API ESOLTunnelClass StepTunnelClass(ESOLTunnelClass previous, double maxRadiusPx, double thresholdScale);
 
-    // Writes the drawn lanes that get a tunnel instance, largest first, and returns the overflow count
+    // Writes the drawn lanes that get a tunnel instance, largest first, and returns the overflow count; a lane in
+    // previousPool ranks by its radius x keepRatio (pool hysteresis: a newcomer must be keepRatio times larger to take
+    // its instance; an empty previousPool or a ratio below 1 or NaN ranks by the radius alone)
     SOLTEST_API int32 SelectTunnelPool(TConstArrayView<double> maxRadiusPx, TConstArrayView<uint8> drawn,
-        int32 poolSize, TArray<int32>& outLanes);
+        int32 poolSize, TArray<int32>& outLanes, TConstArrayView<uint8> previousPool = TConstArrayView<uint8>(),
+        double keepRatio = 1.0);
+
+    // Writes the pooled lanes (inPool != 0, below laneCount) per class into outFull and outReduced, index order (Off
+    // lanes take no instance)
+    SOLTEST_API void SplitTunnelPoolByClass(TConstArrayView<uint8> inPool, TConstArrayView<ESOLTunnelClass> classes,
+        int32 laneCount, TArray<int32>& outFull, TArray<int32>& outReduced);
+
+    // Copies next into current and returns true only when they differ (a class's instances are rewritten only then)
+    SOLTEST_API bool SyncTunnelClassLanes(TArray<int32>& current, TConstArrayView<int32> next);
+
+    // Returns a slot's hold from its block ownership and tunnel fade: Blocks while it owns blocks, else Fade while its
+    // tunnel open fade is above 0, else None
+    SOLTEST_API ESOLLaneSlotHold LaneSlotHold(bool bOwnsBlocks, bool bTunnelFading);
+
+    // Returns whether a slot's block release must be retried next frame: it owns blocks while its lane is out of the
+    // set (a Fade-only hold is re-checked once, when its fade ends, not every frame)
+    SOLTEST_API bool IsSlotReleasePending(bool bOwnsBlocks, bool bInSetNow);
 
     // Returns whether an overflow count change must be logged and reported now
     SOLTEST_API bool StepOverflowReport(int32 previousOverflow, int32 overflow);

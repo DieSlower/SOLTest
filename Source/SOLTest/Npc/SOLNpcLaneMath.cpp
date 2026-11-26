@@ -84,6 +84,33 @@ double SOLNpcLane::LaneLineFade(const double distanceM, const double laneRadiusM
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the close-up fade in reference px of the lane radius: 0 from NEAR_PX, 1 to FAR_PX, log-linear; bad input 1
+double SOLNpcLane::LaneLineFade(const double distanceM, const double laneRadiusM, const double focalRefPx)
+{
+    if (FMath::IsNaN(distanceM) || !FMath::IsFinite(laneRadiusM) || laneRadiusM <= 0.0 || !FMath::IsFinite(focalRefPx)
+        || focalRefPx <= 0.0)
+    {
+        return 1.0;
+    }
+    if (distanceM <= 0.0)
+    {
+        return 0.0;
+    }
+    const double radiusPx = focalRefPx * laneRadiusM / distanceM;
+    if (radiusPx >= SOL::NPC_LANE_FADE_NEAR_PX)
+    {
+        return 0.0;
+    }
+    if (radiusPx <= SOL::NPC_LANE_FADE_FAR_PX)
+    {
+        return 1.0;
+    }
+    const double fade = FMath::Loge(SOL::NPC_LANE_FADE_NEAR_PX / radiusPx)
+        / FMath::Loge(SOL::NPC_LANE_FADE_NEAR_PX / SOL::NPC_LANE_FADE_FAR_PX);
+    return FMath::Clamp(fade, 0.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the line alpha with the lane's tunnel fade: the close-up fade times 1 - F (F clamped, NaN as 0)
 double SOLNpcLane::LaneLineFadeWithTunnel(const double distanceM, const double laneRadiusM, const double tunnelFade)
 {
@@ -482,19 +509,31 @@ bool SOLNpcLane::ShouldDrawLaneLines(const bool bLanesShown, const bool bMapOpen
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the far-point material's crossfade vector (lanes shown, fade near and far radii, 0)
-FLinearColor SOLNpcLane::PointLaneParams(const bool bLanesShown)
+// Returns the lane-radii form of the pixel fade band at a fade focal (f / 9.6 px, f / 2.4 px); the reference for bad f
+FVector2D SOLNpcLane::LaneFadeRadiiAtFocal(const double fadeFocalRefPx)
 {
-    return FLinearColor(bLanesShown ? 1.0f : 0.0f, static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII),
-        static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII), 0.0f);
+    if (!FMath::IsFinite(fadeFocalRefPx) || fadeFocalRefPx <= 0.0)
+    {
+        return FVector2D(SOL::NPC_LANE_FADE_NEAR_RADII, SOL::NPC_LANE_FADE_FAR_RADII);
+    }
+    return FVector2D(fadeFocalRefPx / SOL::NPC_LANE_FADE_NEAR_PX, fadeFocalRefPx / SOL::NPC_LANE_FADE_FAR_PX);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the lane material's per-frame vector (flow phase, 0 unused, fade near and far radii)
-FLinearColor SOLNpcLane::LaneMaterialParams(const double flowPhase)
+// Returns the far-point crossfade vector with the fade band restated at the fade focal (Q20)
+FLinearColor SOLNpcLane::PointLaneParams(const bool bLanesShown, const double fadeFocalRefPx)
 {
+    const FVector2D radii = LaneFadeRadiiAtFocal(fadeFocalRefPx);
+    return FLinearColor(bLanesShown ? 1.0f : 0.0f, static_cast<float>(radii.X), static_cast<float>(radii.Y), 0.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lane material's per-frame vector with the fade band restated at the fade focal (Q20)
+FLinearColor SOLNpcLane::LaneMaterialParams(const double flowPhase, const double fadeFocalRefPx)
+{
+    const FVector2D radii = LaneFadeRadiiAtFocal(fadeFocalRefPx);
     return FLinearColor(FMath::IsFinite(flowPhase) ? static_cast<float>(flowPhase) : 0.0f, 0.0f,
-        static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII), static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII));
+        static_cast<float>(radii.X), static_cast<float>(radii.Y));
 }
 
 //////////////////////////////////////////////////////////////////////////

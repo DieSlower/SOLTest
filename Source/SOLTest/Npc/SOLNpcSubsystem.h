@@ -41,6 +41,7 @@ struct FSOLNpcLaneSlotWindow
     double CloseS = 0.0;
     bool bHasWindow = false;
     bool bActive = false;
+    bool bOpenNow = false;      // Open at this frame's sim time (LaneOpenAt): the tunnel open fade's target (Q9, 53d)
 };
 
 // Per-frame NPC statistics (the 10b measurements; the 10e overlay later)
@@ -165,6 +166,11 @@ public:
 
     // Returns this frame's lane slot windows and active flags, per slot (empty without a lane network)
     TConstArrayView<FSOLNpcLaneSlotWindow> GetLaneSlotWindows() const { return mLaneSlotWindows; }
+
+    // Sets the group columns whose tunnel open fade is above 0 (1 = still visible; SDD 53 4.5, contract: a slot whose
+    // tunnel is fading is held): a closed network column keeps its slot and its end points until its 3 s fade is over.
+    // ASOLNpcVisuals writes it after each tunnel update; a column that stops fading re-checks the pending releases
+    void SetTunnelFadingColumns(TConstArrayView<uint8> fadingColumns);
 
     // Block moves (SDD 53 4.5, 53c2b). A revision bumped by every per-step move, with that move's lane-local ship
     // ranges (the partial rail upload); a revision bumped by a time jump's full re-share (one full rail upload); the
@@ -340,6 +346,9 @@ private:
     TArray<double> mGroupCloseRailS;                        // = none); empty without a network
     TArray<FSOLNpcLaneSlotWindow> mLaneSlotWindows;         // Per slot: this frame's window and active flag (row 6)
     TArray<int32> mColumnCpuShips;                          // Per column: this frame's CPU-tier ships (scratch)
+    TArray<uint8> mColumnTunnelFading;                      // Per column: tunnel open fade above 0 (SetTunnelFading...)
+    uint64 mTunnelFadingFrame = 0;                          // Frame of the last SetTunnelFadingColumns
+    static constexpr uint64 NPC_TUNNEL_FADING_MAX_AGE_FRAMES = 2; // Older fading reports hold no slot
 
     // Block moves (53c2b)
     SOLNpcBlockMoves::FLaneSpawnInputs mLaneSpawn;          // The spawn inputs lane rails are rebuilt from
@@ -362,6 +371,8 @@ private:
     bool mIsBlockStepPending = false;                       // The network stepped while a spawn was pending
     bool mIsBlockReshareRequested = false;                  // A time jump's exact re-share is due
     bool mHasPendingRelease = false;                        // A slot owns blocks while its lane is out of the set
+    bool mHasFadeHolds = false;                             // A slot out of the set is held only by its tunnel fade
+    int32 mBlockStepRuns = 0;                               // Block steps run past the early-out (logged at despawn)
 
     // Runs the block step after the network's advance (releases, episode opens and takes, holds; a time jump's
     // exact re-share); deferred while a spawn is pending

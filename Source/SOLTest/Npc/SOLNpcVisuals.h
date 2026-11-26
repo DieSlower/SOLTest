@@ -306,6 +306,10 @@ private:
     FSOLNpcLaneFrame mLaneFrame;                      // This frame's lanes (sized once per population)
     FSOLGlowScaleFeed mLaneGlowFeed;                  // HUD glow scale last pushed to the lane material (SDD 37)
     double mLaneFlowClockS = 0.0;                     // Real seconds of dash flow (no warp, never held)
+    double mLaneFadeFocalRefPx = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX; // Live focal over the quality scale (Q20)
+    double mPushedPointFadeFocalRefPx = 0.0;          // ...as last pushed in NpcParams4
+    uint32 mTunnelRailRevision = MAX_uint32;          // Rail revision of the last tunnel update (a jump snaps fades)
+    uint8 mTunnelColumnOpen[SOL::NPC_GROUP_TEXTURE_WIDTH] = {}; // Per group column: open now (scratch, Q9)
     int32 mLaneMeshVertexCount = 0;                   // Lane ribbon vertices of the current population
     bool mAreLanesShown = false;                      // Last frame's lanes shown
     bool mIsPointCrossfadeOn = false;                 // NpcParams4.x last pushed to the far points

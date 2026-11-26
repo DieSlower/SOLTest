@@ -581,10 +581,16 @@ void USOLNpcSubsystem::Despawn()
     mBlockSlotInSet.Reset();
     mBlockMoveRanges.Reset();
     mColumnLaneShips.Reset();
+
+    // The block step frequency of the population being cleared (a measure of the release retries, SDD 53 4.5)
+    UE_CLOG(mHasLaneNetwork, LogSOL, Log, TEXT("NpcLaneBlocks: %d block steps ran past their early-out by frame %llu"),
+        mBlockStepRuns, static_cast<uint64>(GFrameCounter));
     mHasLaneNetwork = false;
     mIsBlockStepPending = false;
     mIsBlockReshareRequested = false;
     mHasPendingRelease = false;
+    mHasFadeHolds = false;
+    mBlockStepRuns = 0;
     mGroupOpenStartRailS.Reset();
     mGroupCloseRailS.Reset();
     mLaneSlotWindows.Reset();
@@ -789,6 +795,7 @@ void USOLNpcSubsystem::UpdateLaneWindows(const double railTimeS, const FVector3d
     const double thresholdScale = SOLLaneNetwork::LaneTunnelQualityScale(settings != nullptr
         ? settings->GetSavedValues().QualityPreset : SOL::NPC_TUNNEL_QUALITY_REFERENCE_PRESET);
     const double nanS = std::numeric_limits<double>::quiet_NaN();
+    const double nowS = SimClock->GetClock().GetSecondsSinceJ2000();
     mGroupOpenStartRailS.Init(nanS, columnEnd);
     mGroupCloseRailS.Init(nanS, columnEnd);
     mLaneSlotWindows.SetNum(slotCount, EAllowShrinking::No);
@@ -798,6 +805,7 @@ void USOLNpcSubsystem::UpdateLaneWindows(const double railTimeS, const FVector3d
         window.bHasWindow = network.GetSlotWindow(slot, window.OpenStartS, window.CloseS);
         const int32 column = mGroups.LaneSlotColumn(slot);
         window.bActive = false;
+        window.bOpenNow = false;
         if (!mGroupOpenStartRailS.IsValidIndex(column))
         {
             continue;
@@ -807,9 +815,27 @@ void USOLNpcSubsystem::UpdateLaneWindows(const double railTimeS, const FVector3d
             SOLNpcRail::SetSlotWindowRailS(mGroups, slot, window.OpenStartS, window.CloseS, mEpochSecondsSinceJ2000,
                 mGroupOpenStartRailS, mGroupCloseRailS);
         }
+        window.bOpenNow = window.bHasWindow && SOLLaneNetwork::LaneOpenAt(nowS, window.OpenStartS, window.CloseS);
         const double radiusPx = SOLLaneNetwork::LaneTrafficRadiusPx(viewpointM, mRailFrame.GroupPointAM[column],
             mRailFrame.GroupPointBM[column], mGroups.LaneRadiusM[column], focalRefPx);
         window.bActive = SOLLaneNetwork::LaneTrafficActive(radiusPx, mColumnCpuShips[column], thresholdScale);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Stores the columns whose tunnel is still fading; a column that stopped fading re-checks the pending releases
+void USOLNpcSubsystem::SetTunnelFadingColumns(const TConstArrayView<uint8> fadingColumns)
+{
+    mTunnelFadingFrame = GFrameCounter;
+    if (mColumnTunnelFading.Num() != fadingColumns.Num())
+    {
+        mColumnTunnelFading.SetNumZeroed(fadingColumns.Num());
+    }
+    for (int32 column = 0; column < fadingColumns.Num(); ++column)
+    {
+        const uint8 fading = fadingColumns[column] != 0 ? 1 : 0;
+        mHasPendingRelease |= mColumnTunnelFading[column] != 0 && fading == 0;
+        mColumnTunnelFading[column] = fading;
     }
 }
 
@@ -876,6 +902,13 @@ void USOLNpcSubsystem::StepLaneBlocks(const ESOLLaneNetworkAdvance advance)
     {
         return;
     }
+
+    // A Fade-only hold whose reports went stale (the tunnel redraw stopped) is re-checked once, so it cannot hold its
+    // slot forever
+    if (mHasFadeHolds && GFrameCounter - mTunnelFadingFrame > NPC_TUNNEL_FADING_MAX_AGE_FRAMES)
+    {
+        mHasPendingRelease = true;
+    }
     if (!mIsBlockReshareRequested && !mIsBlockStepPending && !mHasPendingRelease)
     {
         return;
@@ -887,6 +920,7 @@ void USOLNpcSubsystem::StepLaneBlocks(const ESOLLaneNetworkAdvance advance)
         return;
     }
     const double startS = FPlatformTime::Seconds();
+    ++mBlockStepRuns;
     const bool bReshare = mIsBlockReshareRequested;
     mIsBlockReshareRequested = false;
     mIsBlockStepPending = false;
@@ -934,17 +968,31 @@ void USOLNpcSubsystem::StepLaneBlocks(const ESOLLaneNetworkAdvance advance)
     mBlockSlotLanes = mSlotLanesNow;
     mBlockSlotInSet = mSlotInSetNow;
     mHasPendingRelease = false;
+    mHasFadeHolds = false;
     bool bEndsCleared = false;
+
+    // The tunnel's fading columns count only while the tunnels keep reporting them (a stopped redraw cannot hold a
+    // slot forever)
+    const bool bFadingFresh = GFrameCounter - mTunnelFadingFrame <= NPC_TUNNEL_FADING_MAX_AGE_FRAMES;
     for (int32 slot = 0; slot < slotCount; ++slot)
     {
+        // A slot owning blocks, or whose tunnel is still fading out (SDD 53 4.5: the column is freed after the close
+        // and the 3 s tunnel fade; a Fade-only hold yields to a new lane when no column is free), is held. Only a
+        // block owner out of the set retries every frame; a Fade-only hold is re-checked once at its fade's end
+        // (SetTunnelFadingColumns) or when the fade reports go stale
         const bool bOwns = mBlockStep.SlotOwnsBlocks[slot] != 0;
-        laneTraffic->SetNetworkSlotHeld(slot, bOwns);
-        mHasPendingRelease |= bOwns && mSlotInSetNow[slot] == 0;
+        const bool bInSet = mSlotInSetNow[slot] != 0;
+        const int32 column = mGroups.LaneSlotColumn(slot);
+        const bool bFading = bFadingFresh && mColumnTunnelFading.IsValidIndex(column)
+            && mColumnTunnelFading[column] != 0;
+        const ESOLLaneSlotHold hold = SOLLaneNetwork::LaneSlotHold(bOwns, bFading);
+        laneTraffic->SetNetworkSlotHold(slot, hold);
+        mHasPendingRelease |= SOLLaneNetwork::IsSlotReleasePending(bOwns, bInSet);
+        mHasFadeHolds |= hold == ESOLLaneSlotHold::Fade && !bInSet;
 
         // A released network column outside the set (Gone) has no end points, so its tunnel and lane table entry go;
         // it gets them again when it opens (RefreshSlotColumn). Base lane columns keep the layout's bodies
-        const int32 column = mGroups.LaneSlotColumn(slot);
-        if (!bOwns && mSlotInSetNow[slot] == 0 && slot >= mGroups.LaneCount
+        if (!bOwns && !bFading && mSlotInSetNow[slot] == 0 && slot >= mGroups.LaneCount
             && mGroups.LaneBodyA.IsValidIndex(column) && mGroups.LaneBodyB.IsValidIndex(column)
             && (mGroups.LaneBodyA[column] != INDEX_NONE || mGroups.LaneBodyB[column] != INDEX_NONE))
         {
@@ -1222,7 +1270,7 @@ void USOLNpcSubsystem::Spawn(const int32 count)
             SOLLaneNetwork::SumBlockCounts(mBlockSlot, mBlockShips, slotsNow, slotShips);
             for (int32 slot = 0; slot < slotsNow; ++slot)
             {
-                laneTraffic->SetNetworkSlotHeld(slot, slotShips[slot] > 0);
+                laneTraffic->SetNetworkSlotHold(slot, SOLLaneNetwork::LaneSlotHold(slotShips[slot] > 0, false));
             }
         }
     }

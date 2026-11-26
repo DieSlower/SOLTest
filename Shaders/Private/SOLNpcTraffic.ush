@@ -26,8 +26,9 @@
 // g2 = (Up; wall speed w m/s), g3 = (Right; D_U), g4 = (pi / T_U; e_A; l0; Z), g5 = (e_B; T_U; (l - l0) / (l0 - Z);
 // 1 / Z), rows 2-5 written by SOLNpcRail::WriteLaneTrafficTexels (l0 = 0 marks a lane that is not drivable), g6 =
 // (open start s, close s, active flag, 0) relative to the GPU epoch (SOLNpcRail::WriteLaneWindowRow, SDD 53 5.4),
-// read by SOLNTR_LaneShipDrawn (a new call in M_SOLNpcPoints's vertex node since issue #53, part 53c2b). A parked
-// lane ship (free-pool block) has railB.w < 0 and is never drawn.
+// read by SOLNTR_LaneShipDrawn (a new call in M_SOLNpcPoints's vertex node since issue #53, part 53c2b; since 53d it
+// also reads the active flag, the window test itself is SOLNTR_LaneShipWindowDrawn). A parked lane ship (free-pool
+// block) has railB.w < 0 and is never drawn.
 
 #pragma once
 
@@ -168,7 +169,7 @@ float3 SOLNTR_LaneShipRelM(float4 railA, float4 railB, float4 g0, float4 g1, flo
 // deciding leg departs at or after the open start and arrives by the close. The departure is built from per-epoch
 // constants only (the epoch parts, tau0 low, T_leg's rounding and the integer wrap count, never t), so the decision
 // cannot flicker from frame to frame; a turn's departure is the same float expression as the leg after it
-bool SOLNTR_LaneShipDrawn(float4 railA, float4 railB, float4 g4, float4 g5, float4 g6, float t)
+bool SOLNTR_LaneShipWindowDrawn(float4 railA, float4 railB, float4 g4, float4 g5, float4 g6, float t)
 {
     const float nominalLegM = g4.z;
     const float turnS = g5.y;
@@ -218,4 +219,13 @@ bool SOLNTR_LaneShipDrawn(float4 railA, float4 railB, float4 g4, float4 g5, floa
         : ((bSegment1 || bSegment2) ? -inboundConstS - inboundLowMovingS : -nextCycleConstS - nextCycleLowS);
     precise const float arriveS = (departS + legS) + legLowS;
     return departS >= openStartS && arriveS <= closeS;
+}
+
+// Whether the point vertex stage draws a lane ship at all (SDD 53 Q21, Q22, P5; part 53d): the slot's active flag
+// (g6.z, 1 = active) and SOLNTR_LaneShipWindowDrawn. The early-out of M_SOLNpcPoints's vertex node: an inactive lane's
+// ships are hidden always (the Lanes overlay on or off) and skip the rail evaluation, as do docked and parked ships.
+// Mirrored by SOLNpcTrafficMirror::LaneShipPointDrawn
+bool SOLNTR_LaneShipDrawn(float4 railA, float4 railB, float4 g4, float4 g5, float4 g6, float t)
+{
+    return g6.z > 0.5 && SOLNTR_LaneShipWindowDrawn(railA, railB, g4, g5, g6, t);
 }

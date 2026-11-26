@@ -318,12 +318,13 @@ bool FSOLLaneNetworkSchedule::GetSlotWindow(const int32 slot, double& outOpenSta
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Marks a slot held (fading) or not
-void FSOLLaneNetworkSchedule::SetSlotHeld(const int32 slot, const bool bHeld)
+// Sets a slot's hold (blocks, a fading tunnel, or none)
+void FSOLLaneNetworkSchedule::SetSlotHold(const int32 slot, const ESOLLaneSlotHold hold)
 {
-    if (mSlotHeld.IsValidIndex(slot) && mSlotHeld[slot] != (bHeld ? 1 : 0))
+    const uint8 value = static_cast<uint8>(hold);
+    if (mSlotHeld.IsValidIndex(slot) && mSlotHeld[slot] != value)
     {
-        mSlotHeld[slot] = bHeld ? 1 : 0;
+        mSlotHeld[slot] = value;
         mHasSlotHoldChange = true;
     }
 }

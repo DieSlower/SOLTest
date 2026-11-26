@@ -8,6 +8,7 @@
 #include "Npc/SOLNpcTunnelMath.h"
 #include "Npc/SOLNpcTunnelMirror.h"
 #include "SOLConstants.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 
 // Part 52b (SDD 52 sections 4.2-4.5): the tunnel shader's float path (Shaders/Private/SOLNpcTunnel.ush, copied
 // statement for statement in Npc/SOLNpcTunnelMirror.h) against the double SOLNpcTunnel functions it mirrors, on the
@@ -295,5 +296,90 @@ bool FSOLNpcTunnelMirrorRibbonInnerTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("zero radius"), RingRibbonInnerExtentPx(12.5, 0.0), 0.0);
     TestEqual(TEXT("negative half extent"), RingRibbonInnerExtentPx(-1.0, 5.0), 0.0);
     TestEqual(TEXT("float: NaN radius"), SOLNpcTunnelMirror::RingRibbonInnerExtentPx(12.5f, NAN, v.Layout4.Y), 0.0f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMirrorQualityScaleTest, "SOLTest.Npc.TunnelMirror.QualityScale",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Part 53d (SDD 53 7.1, user decision: one QualityPreset factor for every threshold): the shader's fades read the focal
+// over the quality scale (Layout4.z, SOLNT_FadeFocalRefPx), the float copy of SOLNpcTunnel::FadeFocalRefPx, so every
+// pixel fade threshold is multiplied by the scale; a scale of 0 (the asset default), below 1 or NaN reads as 1. At
+// every preset the class switches stay invisible: a ring at the scaled 0.5 px switch-on radius is alpha 0, and every
+// dot and chevron is alpha 0 at the scaled 10/12 px Full-on radius (ring gap f S0 / d at most 10 x scale px; 53d
+// review)
+bool FSOLNpcTunnelMirrorQualityScaleTest::RunTest(const FString& /*parameters*/)
+{
+    const FSOLNpcTunnelMaterialVectors v = SOLNpcTunnel::TunnelMaterialVectors();
+    const float focal = static_cast<float>(SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX);
+    TestEqual(TEXT("Layout4.z 0 by default: scale 1"), SOLNpcTunnelMirror::FadeFocalRefPx(focal, v.Layout4.Z), focal);
+    TestEqual(TEXT("scale 0.5 reads 1"), SOLNpcTunnelMirror::FadeFocalRefPx(focal, 0.5f), focal);
+    TestEqual(TEXT("NaN scale reads 1"), SOLNpcTunnelMirror::FadeFocalRefPx(focal, NAN), focal);
+    TestEqual(TEXT("double: NaN scale reads 1"), SOLNpcTunnel::FadeFocalRefPx(960.0, NAN), 960.0);
+    TestEqual(TEXT("double: scale 0 reads 1"), SOLNpcTunnel::FadeFocalRefPx(960.0, 0.0), 960.0);
+    int32 mismatches = 0;
+    int32 visibleAtSwitch = 0;
+    for (const int32 preset : { 0, 1, 2, 3, 4 })
+    {
+        const double scale = SOLLaneNetwork::LaneTunnelQualityScale(preset);
+        const double fadeFocal = SOLNpcTunnel::FadeFocalRefPx(960.0, scale);
+        const float fadeFocalF = SOLNpcTunnelMirror::FadeFocalRefPx(focal, static_cast<float>(scale));
+        mismatches += FMath::Abs(static_cast<double>(fadeFocalF) - fadeFocal) <= 1.0e-4 * fadeFocal ? 0 : 1;
+
+        // A ring whose radius on screen is just below the scaled switch-on size (0.5 x scale px live): alpha 0
+        const float rt = 1.0e7f;
+        const float d = focal * rt / static_cast<float>(SOL::NPC_TUNNEL_ACTIVATE_PX * scale);
+        const float ringFade = SOLNpcTunnelMirror::RadiusFade(SOLNpcTunnelMirror::SizePx(d * 1.0001f, rt, fadeFocalF,
+            1.0f), v.Shape, v.Layout1);
+        visibleAtSwitch += ringFade <= 0.0f ? 0 : 1;
+
+        // Every dot and chevron as SOLNT_Vertex evaluates it (ElementAlpha with the fade focal, the size focal only for
+        // drawn sizes), for a camera h off a long lane's axis just below the scaled Full-on radius (f Rt / h = 0.999 x
+        // 10/12 x scale px live): all alpha 0, so the Reduced -> Full switch adds nothing visible (and Full -> Reduced
+        // at 0.75 x scale px is below it). Controls: at twice that radius some dot shows (the gate is live), and with
+        // the live focal in the fades a scale above 1 would show dots at the switch (the focal choice matters)
+        const FVector2f endArcs(-1.2e4f * rt, 1.2e4f * rt);
+        const float hOn = focal * rt / static_cast<float>(SOL::NPC_TUNNEL_FULL_ON_PX * scale * 0.999);
+        float maxAtSwitch = 0.0f;
+        float maxAtTwice = 0.0f;
+        float maxLiveFocal = 0.0f;
+        for (const float phase : { 0.0f, 0.25f, 0.5f, 0.75f })
+        {
+            for (int32 slot = 0; slot < 2 * SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE; ++slot)
+            {
+                for (int32 index = 0; index < SOL::NPC_TUNNEL_DOTS_PER_GAP + SOL::NPC_TUNNEL_CHEVRONS_PER_GAP; ++index)
+                {
+                    const bool bDot = index < SOL::NPC_TUNNEL_DOTS_PER_GAP;
+                    const int32 element = bDot ? index : index - SOL::NPC_TUNNEL_DOTS_PER_GAP;
+                    float x = 0.0f;
+                    maxAtSwitch = FMath::Max(maxAtSwitch, SOLNpcTunnelMirror::DetailSlotAlpha(slot, element, bDot,
+                        phase, hOn, rt, fadeFocalF, endArcs, v, x));
+                    maxAtTwice = FMath::Max(maxAtTwice, SOLNpcTunnelMirror::DetailSlotAlpha(slot, element, bDot,
+                        phase, 0.5f * hOn, rt, fadeFocalF, endArcs, v, x));
+                    maxLiveFocal = FMath::Max(maxLiveFocal, SOLNpcTunnelMirror::DetailSlotAlpha(slot, element, bDot,
+                        phase, hOn, rt, focal, endArcs, v, x));
+                }
+            }
+        }
+        visibleAtSwitch += maxAtSwitch <= 0.0f ? 0 : 1;
+        TestTrue(FString::Printf(TEXT("preset %d: a dot shows at twice the Full-on radius"), preset),
+            maxAtTwice > 0.0f);
+        if (scale > 1.0)
+        {
+            TestTrue(FString::Printf(TEXT("preset %d: the live focal would show dots at the switch"), preset),
+                maxLiveFocal > 0.0f);
+        }
+
+        // At 3 x scale px live the ring fades as a 3 px ring at Epic (the whole band moves with the scale)
+        const float dMid = focal * rt / static_cast<float>(3.0 * scale);
+        const float midFade = SOLNpcTunnelMirror::RadiusFade(SOLNpcTunnelMirror::SizePx(dMid, rt, fadeFocalF, 1.0f),
+            v.Shape, v.Layout1);
+        const float epicMid = SOLNpcTunnelMirror::RadiusFade(3.0f, v.Shape, v.Layout1);
+        mismatches += FMath::Abs(midFade - epicMid) <= 1.0e-4f ? 0 : 1;
+    }
+    TestEqual(TEXT("float fade focal and scaled band match the double scale at every preset"), mismatches, 0);
+    TestEqual(TEXT("nothing visible at the scaled class switches (every preset)"), visibleAtSwitch, 0);
     return true;
 }

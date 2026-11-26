@@ -110,8 +110,9 @@ public:
     // Returns a slot's current open window; false (NaN outputs) when the slot is free or its lane is closed now
     bool GetSlotWindow(int32 slot, double& outOpenStartS, double& outCloseS) const;
 
-    // Marks a slot held (its tunnel still fading, 53d) so AssignLaneSlots keeps it after its lane leaves the set
-    void SetSlotHeld(int32 slot, bool bHeld);
+    // Sets a slot's hold (it owns blocks, or only its tunnel still fades, 53d) so AssignLaneSlots keeps it after its
+    // lane leaves the set; a Fade hold is pre-emptible by a new lane when no slot is free
+    void SetSlotHold(int32 slot, ESOLLaneSlotHold hold);
 
     // Returns the partner lanes and island links of the current epoch that found no slot (0 = none)
     int32 GetSlotOverflow() const { return mSlotOverflow; }

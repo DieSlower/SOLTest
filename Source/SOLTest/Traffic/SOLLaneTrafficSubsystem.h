@@ -66,8 +66,9 @@ public:
     // AdvanceNetwork then refreshes each slotted entry's bOpenNow
     void SetLaneSlots(TConstArrayView<int32> slotByEntry);
 
-    // Marks a network slot held (SDD 53 4.5: a slot whose ships still fly keeps its column after its lane leaves)
-    void SetNetworkSlotHeld(int32 slot, bool bHeld);
+    // Sets a network slot's hold (SDD 53 4.5: a slot whose ships still fly, or whose tunnel still fades, keeps its
+    // column after its lane leaves; a Fade hold yields to a new lane when no column is free)
+    void SetNetworkSlotHold(int32 slot, ESOLLaneSlotHold hold);
 
     // Returns the lane network's schedule (the daily set, slots, windows and the route query)
     const FSOLLaneNetworkSchedule& GetNetwork() const { return mNetwork; }

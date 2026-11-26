@@ -2039,25 +2039,66 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathPointParamsTest, "SOLTest.NpcLan
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 27 (38b; D9, D10, section 4.8): PointLaneParams(bLanesShown) is the far-point material's NpcParams4 = (lanes
-// shown 0 / 1, fade near radii, fade far radii, 0), the inputs of the kind-1 crossfade LaneShipPointAlpha
+// Case 27 (38b; D9, D10, section 4.8; re-pinned in the 53d review when the one-argument form was deleted):
+// PointLaneParams(bLanesShown, fadeFocal) is the far-point material's NpcParams4 = (lanes shown 0 / 1, fade near radii,
+// fade far radii, 0), the inputs of the kind-1 crossfade LaneShipPointAlpha; at the reference focal the band is the
+// 100 / 400 lane radii constants, at another focal LaneFadeRadiiAtFocal's
 bool FSOLNpcLaneMathPointParamsTest::RunTest(const FString& /*parameters*/)
 {
     using SOLNpcLane::PointLaneParams;
+    const double refFocal = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX;
     const float nearRadii = static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII);
     const float farRadii = static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII);
 
-    const FLinearColor shown = PointLaneParams(true);
+    const FLinearColor shown = PointLaneParams(true, refFocal);
     TestTrue(TEXT("shown: x = 1"), shown.R == 1.0f);
-    TestTrue(TEXT("shown: y = fade near radii"), shown.G == nearRadii);
-    TestTrue(TEXT("shown: z = fade far radii"), shown.B == farRadii);
+    TestEqual(TEXT("shown: y = fade near radii"), shown.G, nearRadii, 1.0e-4f);
+    TestEqual(TEXT("shown: z = fade far radii"), shown.B, farRadii, 1.0e-4f);
     TestTrue(TEXT("shown: w = 0"), shown.A == 0.0f);
 
-    const FLinearColor hidden = PointLaneParams(false);
+    const FLinearColor hidden = PointLaneParams(false, refFocal);
     TestTrue(TEXT("hidden: x = 0 (every lane ship point as before)"), hidden.R == 0.0f);
-    TestTrue(TEXT("hidden: y = fade near radii"), hidden.G == nearRadii);
-    TestTrue(TEXT("hidden: z = fade far radii"), hidden.B == farRadii);
+    TestEqual(TEXT("hidden: y = fade near radii"), hidden.G, nearRadii, 1.0e-4f);
+    TestEqual(TEXT("hidden: z = fade far radii"), hidden.B, farRadii, 1.0e-4f);
     TestTrue(TEXT("hidden: w = 0"), hidden.A == 0.0f);
+
+    // Another fade focal (High's 960 / 2.2): the band of LaneFadeRadiiAtFocal, 9.6 / 2.4 px of the lane radius
+    const FVector2D radii = SOLNpcLane::LaneFadeRadiiAtFocal(refFocal / 2.2);
+    const FLinearColor high = PointLaneParams(true, refFocal / 2.2);
+    TestEqual(TEXT("High: y = f / 9.6"), high.G, static_cast<float>(radii.X), 1.0e-4f);
+    TestEqual(TEXT("High: z = f / 2.4"), high.B, static_cast<float>(radii.Y), 1.0e-4f);
+    TestEqual(TEXT("High: y = 45.45 lane radii"), high.G, static_cast<float>(refFocal / 2.2 / 9.6), 1.0e-4f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathFadeRadiiAtFocalTest, "SOLTest.NpcLaneMath.LaneFadeRadiiAtFocal",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 53 Q20 (53d review): LaneFadeRadiiAtFocal(f) = (f / 9.6, f / 2.4) lane radii, the 9.6 / 2.4 reference px band in
+// the shaders' lane-radii form: 100 / 400 at the reference 960, doubled at twice the focal (zoomed), smaller at a
+// quality-scaled fade focal; a non-finite or non-positive focal gives the reference radii
+bool FSOLNpcLaneMathFadeRadiiAtFocalTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneFadeRadiiAtFocal;
+    TestEqual(TEXT("near px 9.6"), static_cast<double>(SOL::NPC_LANE_FADE_NEAR_PX), 9.6, 1.0e-12);
+    TestEqual(TEXT("far px 2.4"), static_cast<double>(SOL::NPC_LANE_FADE_FAR_PX), 2.4, 1.0e-12);
+    const FVector2D reference = LaneFadeRadiiAtFocal(960.0);
+    TestEqual(TEXT("960: near 100"), reference.X, 100.0, 1.0e-9);
+    TestEqual(TEXT("960: far 400"), reference.Y, 400.0, 1.0e-9);
+    const FVector2D zoomed = LaneFadeRadiiAtFocal(1920.0);
+    TestEqual(TEXT("1920: near 200"), zoomed.X, 200.0, 1.0e-9);
+    TestEqual(TEXT("1920: far 800"), zoomed.Y, 800.0, 1.0e-9);
+    const FVector2D low = LaneFadeRadiiAtFocal(96.0);
+    TestEqual(TEXT("96 (Low's fade focal): near 10"), low.X, 10.0, 1.0e-9);
+    TestEqual(TEXT("96: far 40"), low.Y, 40.0, 1.0e-9);
+    for (const double bad : { 0.0, -960.0, NPCLANE_NAN, NPCLANE_INF })
+    {
+        const FVector2D radii = LaneFadeRadiiAtFocal(bad);
+        TestTrue(FString::Printf(TEXT("bad focal %f: the reference radii"), bad),
+            radii.X == SOL::NPC_LANE_FADE_NEAR_RADII && radii.Y == SOL::NPC_LANE_FADE_FAR_RADII);
+    }
     return true;
 }
 
@@ -2066,37 +2107,44 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLaneParamsTest, "SOLTest.NpcLane
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 28 (38b; D15, section 4.8): LaneMaterialParams(flowPhase) is the lane material's NpcLaneParams0 = (flow phase
-// f, 0 unused, fade near radii, fade far radii); a non-finite flow phase reads as 0. The y slot once carried a viewport
-// scale the shader never read (it scales by its own view height, section 4.12), so it is pinned at 0
+// Case 28 (38b; D15, section 4.8; re-pinned in the 53d review when the one-argument form was deleted):
+// LaneMaterialParams(flowPhase, fadeFocal) is the lane material's NpcLaneParams0 = (flow phase f, 0 unused, fade near
+// radii, fade far radii); a non-finite flow phase reads as 0. The y slot once carried a viewport scale the shader never
+// read (it scales by its own view height, section 4.12), so it is pinned at 0
 bool FSOLNpcLaneMathLaneParamsTest::RunTest(const FString& /*parameters*/)
 {
     using SOLNpcLane::LaneMaterialParams;
+    const double refFocal = SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX;
     const float nearRadii = static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII);
     const float farRadii = static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII);
 
-    // The flow phase passes through, y is unused (0), the fade band is the constants'
+    // The flow phase passes through, y is unused (0), the fade band at the reference focal is the constants'
     for (const double phase : { 0.0, 0.25, 0.5, 0.999 })
     {
-        const FLinearColor params = LaneMaterialParams(phase);
+        const FLinearColor params = LaneMaterialParams(phase, refFocal);
         const FString label = FString::Printf(TEXT("f %.3f"), phase);
         TestEqual(label + TEXT(": x = f"), params.R, static_cast<float>(phase), 1.0e-7f);
         TestTrue(label + TEXT(": y unused, 0"), params.G == 0.0f);
-        TestTrue(label + TEXT(": z = fade near radii"), params.B == nearRadii);
-        TestTrue(label + TEXT(": w = fade far radii"), params.A == farRadii);
+        TestEqual(label + TEXT(": z = fade near radii"), params.B, nearRadii, 1.0e-4f);
+        TestEqual(label + TEXT(": w = fade far radii"), params.A, farRadii, 1.0e-4f);
     }
+
+    // Twice the focal (zoomed): the band doubles in lane radii (the same 9.6 / 2.4 px)
+    const FLinearColor zoomed = LaneMaterialParams(0.5, 2.0 * refFocal);
+    TestEqual(TEXT("zoomed: z = 200"), zoomed.B, 2.0f * nearRadii, 1.0e-3f);
+    TestEqual(TEXT("zoomed: w = 800"), zoomed.A, 2.0f * farRadii, 1.0e-3f);
 
     // A non-finite phase is 0, never NaN in the material
     for (const double badPhase : { NPCLANE_NAN, NPCLANE_INF, -NPCLANE_INF })
     {
         TestTrue(FString::Printf(TEXT("bad phase %f -> 0"), badPhase),
-            LaneMaterialParams(badPhase).R == 0.0f);
+            LaneMaterialParams(badPhase, refFocal).R == 0.0f);
     }
 
     // Fed from the flow phase, x stays in [0, 1) at any time
     for (const double t : { 0.0, 1.7, 1.0e6 + 0.3, 1.0e9 })
     {
-        const float x = LaneMaterialParams(SOLNpcLane::LaneDashFlowPhase(t)).R;
+        const float x = LaneMaterialParams(SOLNpcLane::LaneDashFlowPhase(t), refFocal).R;
         TestTrue(FString::Printf(TEXT("t %.1f: x in [0, 1]"), t), x >= 0.0f && x <= 1.0f);
     }
     return true;

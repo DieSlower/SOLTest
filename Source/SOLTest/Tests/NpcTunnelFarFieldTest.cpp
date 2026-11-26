@@ -16,12 +16,12 @@
 
 // Tests for the issue #52 lane tunnel far field (SDD 52 D1-D19, contract Docs/Plans/52a-tunnel-far-field-contract.md),
 // written against that contract before the production code existed (part 52a, test first). The ring lattice is flat
-// (S0 = 12 Rt everywhere, D2), drawn by a fixed window of 80 ring slots per side around the camera's foot point, every
-// ring faded by its on-screen radius in 1080p-reference pixels (D8, D9: solid at 6 px, 0.1 at 1 px, gone at 0.5 px,
-// log-linear) and by its on-screen gap to the next ring (D11: 3 -> 2 px, tuned in 52c to 6 -> 4 px); dots and chevrons
-// only where the gap is about 20 px or more (D4, D11, D12; tuned in 52c to 12.6 px, band 10 -> 16 px); end rings on
-// the pixel curve with a 1 px drawn floor (D14); the label strength keeps the old 100 -> 50 lane radii band while
-// drawing is not gated by it (D7). Rings are identified by their lattice index
+// (S0 = 12 Rt everywhere, D2), drawn by a fixed window of ring slots (160 per side since SDD 53 Q19) around the
+// camera's foot point, every ring faded by its on-screen radius in 1080p-reference pixels (D8, D9: solid at 6 px, 0.1
+// at 1 px, gone at 0.5 px, log-linear) and by its on-screen gap to the next ring (D11: 3 -> 2 px, tuned in 52c to 6 ->
+// 4 px); dots and chevrons only where the gap is about 20 px or more (D4, D11, D12; tuned in 52c to 12.6 px, band 10 ->
+// 16 px); end rings on the pixel curve with a 1 px drawn floor (D14); the label strength keeps the old 100 -> 50 lane
+// radii band while drawing is not gated by it (D7). Rings are identified by their lattice index
 // round((foot arc + x) / S0), never by slot index. Only the numbers the user gave are pinned; the rest is referenced by
 // constant name under invariants.
 
@@ -396,10 +396,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldConstantsTest, "SOLTest.Np
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 52 case 11: the user's numbers pinned (flat 12 Rt spacing tied to the guide thinning, 80 ring slots per side,
-// the D9 curve 6 / 1 / 0.1 / 0.5 px, the D11 gaps as tuned in 52c: rings 6 -> 4 px, details 10 -> 16 px round
-// 12.6 px with 51 detail slots, the D14 1 px floor, the interim 100,000 budget, the 1080p reference and its 90-degree
-// focal of 960 px); the ring window covers every ring above the 1 px knee at the reference focal
+// SDD 52 case 11: the user's numbers pinned (flat 12 Rt spacing tied to the guide thinning, 160 ring slots per side
+// (Q19), the D9 curve 6 / 1 / 0.1 / 0.5 px, the D11 gaps as tuned in 52c: rings 6 -> 4 px, details 10 -> 16 px round
+// 12.6 px with 51 detail slots, the D14 1 px floor, the 24-instance pool (SDD 53 Q18), the 1080p reference and its
+// 90-degree focal of 960 px); the ring window covers every ring above the 1 px knee at the reference focal
 bool FSOLNpcTunnelFarFieldConstantsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -411,8 +411,9 @@ bool FSOLNpcTunnelFarFieldConstantsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("spacing = keep x 2 Rt"), static_cast<double>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII),
         SOL::NPC_TUNNEL_RING_KEEP_EVERY * 2.0, NPCFF_TOL);
 
-    // The window: 80 ring slots per side (SDD 52 section 4.3); the detail slots within it
-    TestEqual(TEXT("80 ring slots per side"), static_cast<int32>(SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE), 80);
+    // The window: 160 ring slots per side (SDD 53 Q19 knee fix, was 80 in SDD 52 section 4.3); the detail slots
+    // within it
+    TestEqual(TEXT("160 ring slots per side"), static_cast<int32>(SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE), 160);
     TestTrue(TEXT("detail slots per side in [2, ring slots per side]"), SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE >= 2
         && SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE <= SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE);
 
@@ -453,14 +454,13 @@ bool FSOLNpcTunnelFarFieldConstantsTest::RunTest(const FString& /*parameters*/)
     // D14 and D15
     TestEqual(TEXT("end ring drawn floor 1 px"), static_cast<double>(SOL::NPC_TUNNEL_END_RING_MIN_DRAWN_PX), 1.0,
         NPCFF_TOL);
-    // Raised by the user in 52c (2026-11-19, D15 amended, still interim): 51 detail slots = 12,500 vertices per lane
-    TestEqual(TEXT("vertex budget 100,000 (interim)"), static_cast<int32>(SOL::NPC_TUNNEL_VERTEX_BUDGET), 100000);
-    TestEqual(TEXT("budget for 8 lanes"), static_cast<int32>(SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES), 8);
+    // The D15 interim budget (100,000 vertices for 8 lanes) is replaced by the 24-instance pool (SDD 53 Q18)
+    TestEqual(TEXT("instance pool of 24"), static_cast<int32>(SOL::NPC_TUNNEL_INSTANCE_POOL), 24);
 
-    // The window reaches every ring above the knee at the reference focal: 80 x 12 Rt >= 960 Rt
-    TestTrue(TEXT("window covers f Rt / knee"), SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE
+    // The window reaches the radius fade's gone point at the reference focal: 160 x 12 Rt >= 960 Rt / 0.5 (Q19)
+    TestTrue(TEXT("window covers f Rt / gone"), SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE
         * SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII >= SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX
-        / SOL::NPC_TUNNEL_RADIUS_FADE_KNEE_PX);
+        / SOL::NPC_TUNNEL_RADIUS_FADE_GONE_PX);
     TestTrue(TEXT("the max FOV's focal is below the reference"),
         NpcFarFieldFocal(SOL::SHIP_CAMERA_MAX_FOV_DEG) < SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX);
     return true;
@@ -909,8 +909,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldWindowTest, "SOLTest.Npc.T
 // SDD 52 case 3 at the D2 lane lengths (1,920 to 757,000 Rt): for cameras before node A, near it, mid-lane, near B and
 // past B, on the axis, inside, beside and far from the tube, at the base and max FOV, every ring a slot draws is a
 // lattice ring at the contract's alpha (cap x end x near x radius x gap), drawn once, and every lattice ring with an
-// alpha above 0 is drawn; outside the 80-slot window a ring's uncapped alpha is at most the 1 px knee (the window cuts
-// only rings already below 1 px, through the cap fade)
+// alpha above 0 is drawn; outside the 160-slot window a ring's uncapped alpha is at most the 1 px knee (since the Q19
+// knee fix the window reaches the 0.5 px gone point, so it cuts only rings already at alpha 0, through the cap fade)
 bool FSOLNpcTunnelFarFieldWindowTest::RunTest(const FString& /*parameters*/)
 {
     FNpcFarFieldFailures failures;
@@ -1390,8 +1390,9 @@ bool FSOLNpcTunnelFarFieldFloatTest::RunTest(const FString& /*parameters*/)
     int32 checked = 0;
 
     // The D2 lanes plus the longest lane the lane network can form (SDD 53 4.7, O8): an island link Eris - Makemake
-    // of 150.38 AU, pinned at 151 AU (the design bound; the longest lane observed over 250 years is Haumea-Eris at 149.08 AU) and at the minimum tunnel radius (lane radius 1e7 m x
-    // NPC_TUNNEL_RADIUS_MIN_SCALE), so the most lane radii any lane can span (about 2.26e6 Rt)
+    // of 150.38 AU, pinned at 151 AU (the design bound; the longest lane observed over 250 years is Haumea-Eris at
+    // 149.08 AU) and at the minimum tunnel radius (lane radius 1e7 m x NPC_TUNNEL_RADIUS_MIN_SCALE), so the most lane
+    // radii any lane can span (about 2.26e6 Rt)
     TArray<FNpcFarFieldLane, TInlineAllocator<8>> lanes(NPCFF_LANES, UE_ARRAY_COUNT(NPCFF_LANES));
     const double longestRt = 1.0e7 * SOL::NPC_TUNNEL_RADIUS_MIN_SCALE;
     lanes.Add({ TEXT("Eris-Makemake 151 AU"), 151.0 * SOL::AU_M / longestRt, longestRt, 1.163e6, 7.15e5 });
@@ -1689,19 +1690,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelFarFieldBudgetTest, "SOLTest.Npc.T
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 52 case 10 (D15): the vertex budget is an int32 constant in SOLConstants.h (100,000 for 8 lanes, interim,
-// raised from 80,000 in 52c for the 51 detail slots: 12,500 vertices per lane); the
-// slot mesh count follows the formula (ring ribbons, two end rings at the nearest count, dot and chevron quads) and 8
-// lanes fit the budget; 160 ring slots; segments by slot from the nearest count down, the same ahead and behind
+// SDD 52 case 10 (D15), re-pinned by SDD 53 Q18 / Q19 (part 53d): the slot mesh count follows the formula (ring
+// ribbons, two end rings at the nearest count, dot and chevron quads), 15,380 vertices per Full lane with 160 ring
+// slots per side; the fixed 8-lane budget is gone, the bound is the 24-instance pool (an int32 constant) at most all
+// Full; segments by slot from the nearest count down, the same ahead and behind
 bool FSOLNpcTunnelFarFieldBudgetTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
-    static_assert(std::is_same_v<std::remove_cv_t<decltype(SOL::NPC_TUNNEL_VERTEX_BUDGET)>, int32>,
-        "the vertex budget is an int32 constant in SOLConstants.h");
-    static_assert(std::is_same_v<std::remove_cv_t<decltype(SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES)>, int32>,
-        "the budget's lane count is an int32 constant in SOLConstants.h");
+    static_assert(std::is_same_v<std::remove_cv_t<decltype(SOL::NPC_TUNNEL_INSTANCE_POOL)>, int32>,
+        "the instance pool is an int32 constant in SOLConstants.h");
     const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
-    TestEqual(TEXT("ring slots: 2 x 80"), RingSlotCount(), 2 * perSide);
+    TestEqual(TEXT("ring slots: 2 x 160"), RingSlotCount(), 2 * perSide);
     TestEqual(TEXT("detail slots: 2 x per side"), DetailSlotCount(), 2 * SOL::NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE);
 
     // Level of detail by slot
@@ -1729,11 +1728,12 @@ bool FSOLNpcTunnelFarFieldBudgetTest::RunTest(const FString& /*parameters*/)
     const int32 chevronVertices = 4 * DetailSlotCount() * SOL::NPC_TUNNEL_CHEVRONS_PER_GAP * 2;
     TestEqual(TEXT("vertex count: the formula"), TunnelSlotMeshVertexCount(),
         ringVertices + endRingVertices + dotVertices + chevronVertices);
-    AddInfo(FString::Printf(TEXT("vertex count %d per lane, %d for %d lanes (budget %d)"),
-        TunnelSlotMeshVertexCount(), SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES * TunnelSlotMeshVertexCount(),
-        SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES, SOL::NPC_TUNNEL_VERTEX_BUDGET));
-    TestTrue(TEXT("8 lanes within NPC_TUNNEL_VERTEX_BUDGET"),
-        SOL::NPC_TUNNEL_VERTEX_BUDGET_LANES * TunnelSlotMeshVertexCount() <= SOL::NPC_TUNNEL_VERTEX_BUDGET);
+    TestEqual(TEXT("15,380 vertices per Full lane"), TunnelSlotMeshVertexCount(), 15380);
+    AddInfo(FString::Printf(TEXT("vertex count %d per Full lane, %d per Reduced lane, at most %d for the pool of %d"),
+        TunnelSlotMeshVertexCount(), TunnelReducedMeshVertexCount(),
+        SOL::NPC_TUNNEL_INSTANCE_POOL * TunnelSlotMeshVertexCount(), SOL::NPC_TUNNEL_INSTANCE_POOL));
+    TestEqual(TEXT("the pool's bound 24 x 15,380 = 369,120"), SOL::NPC_TUNNEL_INSTANCE_POOL
+        * TunnelSlotMeshVertexCount(), 369120);
     return true;
 }
 

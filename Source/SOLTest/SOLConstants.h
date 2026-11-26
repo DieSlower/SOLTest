@@ -2420,7 +2420,8 @@ namespace SOL
                                                                                   //  full px, dots per gap, dot rows)
         inline constexpr const TCHAR* LAYOUT4 = TEXT("NpcTunnelLayout4");        // (end ring min drawn px, ribbon
                                                                                   //  inner max fraction of the ring
-                                                                                  //  radius, 0, 0; SDD 52 D16)
+                                                                                  //  radius, quality scale (53d,
+                                                                                  //  0 reads 1), 0; SDD 52 D16)
         inline constexpr const TCHAR* GLOW0 = TEXT("NpcTunnelGlow0");            // As NpcLaneMaterialParams::GLOW0
         inline constexpr const TCHAR* GLOW1 = TEXT("NpcTunnelGlow1");            // As NpcLaneMaterialParams::GLOW1
         inline constexpr const TCHAR* RING_COLOR = TEXT("NpcTunnelRingColor");   // Linear colours
@@ -3033,9 +3034,10 @@ namespace SOL
                                                                        // ring of the first-built 2 Rt lattice is kept
     inline constexpr double NPC_TUNNEL_RING_BASE_SPACING_RADII = 12.0; // Flat ring spacing S0 everywhere, tunnel radii
                                                                        // (SDD 52 D2: KEEP_EVERY x 2 Rt)
-    inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 80;        // Ring slots ahead and behind the foot point:
-                                                                       // the window covers every ring of 1 px or more
-                                                                       // at the reference focal (SDD 52 section 4.3)
+    inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 160;       // Ring slots ahead and behind the foot point:
+                                                                       // the window reaches the 0.5 px gone point of
+                                                                       // the radius fade at the reference focal (SDD
+                                                                       // 53 Q19 knee fix; 80 stopped at the 1 px knee)
     inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 51;      // Dot and chevron gap slots per side: the gap
                                                                        // gate is shut beyond DETAIL_SLOTS - 3 spacings
                                                                        // at the reference focal (assert below; 51 is
@@ -3061,11 +3063,6 @@ namespace SOL
                                                                        // at most this fraction of the ring's on-screen
                                                                        // radius, so a ring smaller than its glow never
                                                                        // folds its quads over the centre
-    inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET = 100000;          // Slot-mesh vertices for VERTEX_BUDGET_LANES
-                                                                       // tunnels (D15, interim: issue #53 revisits;
-                                                                       // raised from 80,000 in 52c for the 51 detail
-                                                                       // slots, 12,500 per lane)
-    inline constexpr int32 NPC_TUNNEL_VERTEX_BUDGET_LANES = 8;         // The lane count the budget is for
     inline constexpr double NPC_TUNNEL_END_FADE_SPACINGS = 0.5;        // A ring fades to 0 over this many spacings
                                                                        // before an end ring
     inline constexpr double NPC_TUNNEL_NEAR_FADE_START_RADII = 0.5;    // A ring this close to the foot point is 0...
@@ -3152,8 +3149,8 @@ namespace SOL
         && NPC_TUNNEL_RING_SEGMENTS_FAR >= NPC_TUNNEL_RING_SEGMENTS_FARTHEST && NPC_TUNNEL_RING_SEGMENTS_FARTHEST > 0,
         "ring segments fall with the slot");
     static_assert(NPC_TUNNEL_RING_SLOTS_PER_SIDE * NPC_TUNNEL_RING_BASE_SPACING_RADII
-        >= NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_TUNNEL_RADIUS_FADE_KNEE_PX,
-        "the ring window reaches every ring of at least the knee radius at the reference focal (SDD 52 section 4.3)");
+        >= NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_TUNNEL_RADIUS_FADE_GONE_PX,
+        "the ring window reaches the radius fade's gone point at the reference focal (SDD 53 Q19 knee fix)");
     static_assert(NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE >= 4
         && NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE <= NPC_TUNNEL_RING_SLOTS_PER_SIDE
         && (NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE - 3) * NPC_TUNNEL_RING_BASE_SPACING_RADII
@@ -3290,10 +3287,12 @@ namespace SOL
                                                                        // thresholds are the values below (scale 1)
     inline constexpr double NPC_TUNNEL_ACTIVATE_PX = 0.5;              // Tunnel on at this largest radius (px)...
     inline constexpr double NPC_TUNNEL_DEACTIVATE_PX = 0.4;            // ...and off below this one (O10)
-    inline constexpr double NPC_TUNNEL_FULL_ON_PX = 1.0;               // Full detail from this radius (px)...
-    inline constexpr double NPC_TUNNEL_FULL_OFF_PX =                   // ...back to reduced below this one, where the
-        NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII;   // dots and chevrons are alpha 0
+    inline constexpr double NPC_TUNNEL_FULL_ON_PX =                    // Full detail from this radius (px), where the
+        NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII;   // dots and chevrons are alpha 0...
+    inline constexpr double NPC_TUNNEL_FULL_OFF_PX = 0.75;             // ...back to reduced below this one (user 53d)
     inline constexpr int32 NPC_TUNNEL_INSTANCE_POOL = 24;              // Tunnel instances drawn at once (fixed pool)
+    inline constexpr double NPC_TUNNEL_POOL_KEEP_RATIO = 1.1;          // A pooled lane keeps its instance unless a new
+                                                                       // one is this many times larger on screen
     inline constexpr int32 NPC_LANE_ROUTE_MAX_HOPS = 12;               // Longest route the router returns
     inline constexpr int32 NPC_LANE_NETWORK_CATCH_UP_EPOCHS = 16;      // A forward move of up to this many epochs is
                                                                        // stepped one by one; more, or back, is a jump
@@ -3320,12 +3319,40 @@ namespace SOL
         < static_cast<int32>(UE_ARRAY_COUNT(Thruster::RIBBON_VANISH_PX_BY_QUALITY))
         && Thruster::RIBBON_VANISH_PX_BY_QUALITY[NPC_TUNNEL_QUALITY_REFERENCE_PRESET] > 0.0,
         "the tunnel quality reference preset has a positive vanish size");
+    // Checks that every QualityPreset's vanish size is at least the reference one (so LaneTunnelQualityScale >= 1)
+    static_assert([]
+    {
+        for (const double vanishPx : Thruster::RIBBON_VANISH_PX_BY_QUALITY)
+        {
+            if (vanishPx < Thruster::RIBBON_VANISH_PX_BY_QUALITY[NPC_TUNNEL_QUALITY_REFERENCE_PRESET])
+            {
+                return false;
+            }
+        }
+        return true;
+    }(), "every preset's tunnel threshold scale is at least 1 (the material and fade focal clamp the scale at 1)");
     static_assert(NPC_TUNNEL_ACTIVATE_PX == NPC_TUNNEL_RADIUS_FADE_GONE_PX, "the tunnel switches on where it is gone");
+    static_assert(NPC_TUNNEL_FULL_ON_PX == NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX / NPC_TUNNEL_RING_BASE_SPACING_RADII,
+        "Full switches on where the dots and chevrons are still alpha 0 (both class switches are invisible)");
     static_assert(NPC_TUNNEL_DEACTIVATE_PX > 0.0 && NPC_TUNNEL_DEACTIVATE_PX < NPC_TUNNEL_ACTIVATE_PX
         && NPC_TUNNEL_FULL_ON_PX > NPC_TUNNEL_FULL_OFF_PX && NPC_TUNNEL_FULL_OFF_PX > NPC_TUNNEL_ACTIVATE_PX,
         "the tunnel class thresholds are ordered");
-    static_assert(NPC_TUNNEL_INSTANCE_POOL <= NPC_GROUP_TEXTURE_WIDTH && NPC_LANE_ROUTE_MAX_HOPS >= 8,
-        "the pool and route limits are valid");
+    static_assert(NPC_TUNNEL_INSTANCE_POOL <= NPC_GROUP_TEXTURE_WIDTH && NPC_LANE_ROUTE_MAX_HOPS >= 8
+        && NPC_TUNNEL_POOL_KEEP_RATIO >= 1.0, "the pool and route limits are valid");
+
+    // The legacy lane controls restated in 1080p-reference px of the lane radius with the live focal (SDD 53 Q20,
+    // section 7.2): the same look as the lane-radii bands at the reference focal, scaled by the QualityPreset
+    // (LaneTunnelQualityScale, applied as the focal over the scale)
+    inline constexpr double NPC_LANE_FADE_NEAR_PX =                    // Lane-ship point fade: point gone (line full)
+        NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_LANE_FADE_NEAR_RADII;      // at and above 9.6 px...
+    inline constexpr double NPC_LANE_FADE_FAR_PX =                     // ...full at and below 2.4 px (log-linear)
+        NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_LANE_FADE_FAR_RADII;
+    inline constexpr double NPC_TUNNEL_LABEL_START_PX =                // Label strength 0 at and below 9.6 px...
+        NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_TUNNEL_FADE_START_RADII;
+    inline constexpr double NPC_TUNNEL_LABEL_FULL_PX =                 // ...1 at and above 19.2 px (log-linear)
+        NPC_TUNNEL_REFERENCE_FOCAL_PX / NPC_TUNNEL_FADE_FULL_RADII;
+    static_assert(NPC_LANE_FADE_NEAR_PX > NPC_LANE_FADE_FAR_PX && NPC_TUNNEL_LABEL_FULL_PX > NPC_TUNNEL_LABEL_START_PX,
+        "the restated pixel bands have a width");
 
     // Lane network ship blocks, open windows and traffic activation (SDD 53 4.5, 5.4, 7.2; part 53c2). The activation
     // threshold is a 1080p-reference pixel size, scaled by the QualityPreset (LaneTunnelQualityScale, P5)

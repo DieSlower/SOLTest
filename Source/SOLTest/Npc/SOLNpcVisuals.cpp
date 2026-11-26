@@ -900,14 +900,29 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
         : Settings != nullptr && Settings->IsOverlayShown(SOLOverlay::EOverlay::Lanes);
     mAreLanesShown = SOLNpcLane::AreLanesShown(bHasSettings, bRowShown, CVarSOLNpcLanes.GetValueOnGameThread() != 0);
 
+    // The live focal and the QualityPreset's threshold scale (SDD 53 7.1, 7.2; the same source as the active flag in
+    // USOLNpcSubsystem): every pixel class threshold, fade and band reads the focal over the scale
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+    const double focalRefPx = SOLThruster::FocalRefPx(fovDeg, viewportPx.Y > 0.0 ? viewportPx.X / viewportPx.Y
+        : SOL::NPC_TUNNEL_REFERENCE_FOCAL_PX / (0.5 * SOL::NPC_LANE_REFERENCE_HEIGHT_PX));
+    const double qualityScale = SOLLaneNetwork::LaneTunnelQualityScale(Settings != nullptr
+        ? Settings->GetSavedValues().QualityPreset : SOL::NPC_TUNNEL_QUALITY_REFERENCE_PRESET);
+    mLaneFadeFocalRefPx = SOLNpcTunnel::FadeFocalRefPx(focalRefPx, qualityScale);
+
     // The far points' crossfade (D9, D10): while the lanes are shown; in the flight view the line is gone (SDD 52 D1)
-    // and the crossfade keeps far lane ships hidden, the rings standing for the lane (D6)
+    // and the crossfade keeps far lane ships hidden, the rings standing for the lane (D6). The fade band is 9.6 / 2.4
+    // px of the lane radius at the fade focal (Q20), pushed again when the focal or the preset moves it
     const bool bCrossfade = mAreLanesShown && LaneMaterial != nullptr && mLaneMeshVertexCount > 0;
-    if (bCrossfade != mIsPointCrossfadeOn || !mHasPushedPointCrossfade)
+    if (bCrossfade != mIsPointCrossfadeOn || !mHasPushedPointCrossfade
+        || !FMath::IsNearlyEqual(mLaneFadeFocalRefPx, mPushedPointFadeFocalRefPx, 1.0e-4 * mLaneFadeFocalRefPx))
     {
         mIsPointCrossfadeOn = bCrossfade;
         mHasPushedPointCrossfade = true;
-        FarMaterial->SetVectorParameterValue(PARAM_POINT_LANES, SOLNpcLane::PointLaneParams(bCrossfade));
+        mPushedPointFadeFocalRefPx = mLaneFadeFocalRefPx;
+        FarMaterial->SetVectorParameterValue(PARAM_POINT_LANES, SOLNpcLane::PointLaneParams(bCrossfade,
+            mLaneFadeFocalRefPx));
     }
 
     // The component: shown with a drawn lane, on the jump map only (SDD 52 D1)
@@ -925,9 +940,30 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
     // the camera for their labels
     const FVector forwardUnreal = controller != nullptr && controller->PlayerCameraManager != nullptr
         ? controller->PlayerCameraManager->GetCameraRotation().Vector() : FVector::ForwardVector;
-    Tunnels->UpdateTunnels(mLaneFrame, Npcs->GetGroups(), Anchor->GetViewpointM(),
+    // Each group column's open state from its slot's window (the tunnel's 3 s open fade, Q9; all open without a
+    // network), a time jump's full re-share snapping the fades; the columns still fading hold their slots (SDD 53 4.5)
+    const FSOLNpcGroupTable& groups = Npcs->GetGroups();
+    const TConstArrayView<FSOLNpcLaneSlotWindow> windows = Npcs->GetLaneSlotWindows();
+    FMemory::Memset(mTunnelColumnOpen, windows.IsEmpty() ? 1 : 0, sizeof(mTunnelColumnOpen));
+    for (int32 slot = 0; slot < windows.Num(); ++slot)
+    {
+        const int32 column = groups.LaneSlotColumn(slot);
+        if (column >= 0 && column < SOL::NPC_GROUP_TEXTURE_WIDTH)
+        {
+            mTunnelColumnOpen[column] = windows[slot].bOpenNow ? 1 : 0;
+        }
+    }
+    FSOLNpcTunnelView tunnelView;
+    tunnelView.FocalRefPx = focalRefPx;
+    tunnelView.QualityScale = qualityScale;
+    tunnelView.ColumnOpen = TConstArrayView<uint8>(mTunnelColumnOpen);
+    tunnelView.RealDeltaS = FMath::Min(FApp::GetDeltaTime(), SOL::MAX_FRAME_DELTA_S);
+    tunnelView.bSnapOpenFades = Npcs->GetRailRevision() != mTunnelRailRevision;
+    mTunnelRailRevision = Npcs->GetRailRevision();
+    Tunnels->UpdateTunnels(mLaneFrame, groups, Anchor->GetViewpointM(),
         FVector3d(forwardUnreal.X, -forwardUnreal.Y, forwardUnreal.Z), mAreLanesShown, bMapOpen, frameParams,
-        GFrameCounter);
+        GFrameCounter, tunnelView);
+    Npcs->SetTunnelFadingColumns(Tunnels->GetOpenFadeVisibleColumns());
 
     // The orbit lines keep the shared occluders current while lane lines or tunnels draw (SDD 38 D24, SDD 49 D12)
     const bool bOverlayDrawn = SOLNpcTunnel::IsLaneOverlayDrawn(bDraw, Tunnels->AreTunnelsDrawn());
@@ -962,7 +998,7 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
     // The lane material: the frame and flow every frame
     LaneMaterial->SetVectorParameterValue(PARAM_LANE_FRAME, frameParams);
     LaneMaterial->SetVectorParameterValue(PARAM_LANE_0,
-        SOLNpcLane::LaneMaterialParams(SOLNpcLane::LaneDashFlowPhase(mLaneFlowClockS)));
+        SOLNpcLane::LaneMaterialParams(SOLNpcLane::LaneDashFlowPhase(mLaneFlowClockS), mLaneFadeFocalRefPx));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1005,7 +1041,8 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const double ribbonVanishPx = ribbons != nullptr ? ribbons->GetVanishPx() : 0.0;
     const double focalRefPx = mPlumeFocalRefPx;
 
-    // The farthest an NPC flame reaches from its ship's centre: the aft nozzle plus the longest flame with a bend margin
+    // The farthest an NPC flame reaches from its ship's centre: the aft nozzle plus the longest flame with a bend
+    // margin
     static constexpr double NPC_FLAME_MAX_REACH_M = -SOL::Thruster::NPC_NOZZLE_X_M
         + SOL::Thruster::FLAME_REACH_BEND_MARGIN * SOL::Thruster::FLAME_LENGTH_FACTOR
         * SOL::Thruster::NPC_HULL_LENGTH_M;
@@ -1109,9 +1146,9 @@ void ASOLNpcVisuals::UpdateCpuShips()
                     rows[row] = groupTexels[row * SOL::NPC_GROUP_TEXTURE_WIDTH + rail->Group];
                 }
 
-                // Outside its slot's window (docked, or a closed lane) the shader hides the ship, so the CPU does too
-                // (SDD 53 R8, the same float test on the same texels)
-                if (!SOLNpcTrafficMirror::LaneShipWindowDrawn(texelA, texelB, rows, shaderTimeS))
+                // Outside its slot's window (docked, or a closed lane) or on an inactive lane the shader hides the
+                // ship, so the CPU does too (SDD 53 R8, Q21; the same float test on the same texels)
+                if (!SOLNpcTrafficMirror::LaneShipPointDrawn(texelA, texelB, rows, shaderTimeS))
                 {
                     mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
                     continue;

@@ -45,6 +45,12 @@ namespace SOLNpcLane
     // returns 1 (no close-up band, the line stays)
     SOLTEST_API double LaneLineFade(double distanceM, double laneRadiusM);
 
+    // Returns the close-up fade restated in reference px of the lane radius with the live focal (SDD 53 Q20, section
+    // 7.2): r = f R / d; 0 at and above 9.6 px, 1 at and below 2.4 px, linear in log r between (the same as
+    // LaneLineFade at f = 960); d <= 0 gives 0; NaN distance, bad radius or a non-positive focal give 1. The
+    // QualityPreset scale is applied by passing the focal over LaneTunnelQualityScale
+    SOLTEST_API double LaneLineFade(double distanceM, double laneRadiusM, double focalRefPx);
+
     // Returns the line alpha with the lane's tunnel fade (SDD 49 Q5): LaneLineFade(d, R) x (1 - F), F clamped to
     // [0, 1] and NaN read as 0 (the line stays)
     SOLTEST_API double LaneLineFadeWithTunnel(double distanceM, double laneRadiusM, double tunnelFade);
@@ -171,13 +177,20 @@ namespace SOLNpcLane
     // tunnels instead, SDD 52 D1) and at least one lane of the frame drawn
     SOLTEST_API bool ShouldDrawLaneLines(bool bLanesShown, bool bMapOpen, const FSOLNpcLaneFrame& frame);
 
-    // Returns the far-point material's NpcParams4: (lanes shown 0 / 1, fade near radii, fade far radii, 0), the inputs
-    // of the lane ships' crossfade (LaneShipPointAlpha)
-    SOLTEST_API FLinearColor PointLaneParams(bool bLanesShown);
+    // Returns the pixel fade band (SDD 53 Q20: 9.6 / 2.4 reference px of the lane radius) as (near, far) lane radii at
+    // a fade focal, f / 9.6 and f / 2.4 (100 / 400 at the reference 960); the fade focal is the live focal over the
+    // QualityPreset scale; a non-finite or non-positive focal gives the reference radii. The shaders keep the radii
+    // form, so this is the only place the pixel band meets them
+    SOLTEST_API FVector2D LaneFadeRadiiAtFocal(double fadeFocalRefPx);
 
-    // Returns the lane material's NpcLaneParams0: (flow phase, 0 unused, fade near radii, fade far radii); a non-finite
-    // phase reads as 0. The shader scales by its own view height (SDD 38 section 4.12), so no viewport scale is sent
-    SOLTEST_API FLinearColor LaneMaterialParams(double flowPhase);
+    // Returns the far-point material's NpcParams4: (lanes shown 0 / 1, fade near radii, fade far radii, 0), the inputs
+    // of the lane ships' crossfade (LaneShipPointAlpha), the band at the fade focal (LaneFadeRadiiAtFocal; 53d, Q20)
+    SOLTEST_API FLinearColor PointLaneParams(bool bLanesShown, double fadeFocalRefPx);
+
+    // Returns the lane material's NpcLaneParams0: (flow phase, 0 unused, fade near radii, fade far radii), the band at
+    // the fade focal (LaneFadeRadiiAtFocal; 53d, Q20); a non-finite phase reads as 0. The shader scales by its own view
+    // height (SDD 38 section 4.12), so no viewport scale is sent
+    SOLTEST_API FLinearColor LaneMaterialParams(double flowPhase, double fadeFocalRefPx);
 
     // Writes the lane data into the group texels' free .w channels (row 0 = the first NPC_GROUP_TEXTURE_WIDTH texels,
     // row 1 the next): for a lane column, row 0 .w = its radius (m) and row 1 .w = its traffic weight, or -1 when it is

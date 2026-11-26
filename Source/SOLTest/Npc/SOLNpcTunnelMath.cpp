@@ -276,6 +276,78 @@ double SOLNpcTunnel::TunnelFade(const double distanceM, const double laneRadiusM
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the label strength in reference px of the lane radius: 0 to START_PX, 1 from FULL_PX, log-linear; bad input 0
+double SOLNpcTunnel::TunnelFade(const double distanceM, const double laneRadiusM, const double focalRefPx)
+{
+    if (FMath::IsNaN(distanceM) || !TunnelIsPositive(laneRadiusM) || !TunnelIsPositive(focalRefPx))
+    {
+        return 0.0;
+    }
+    if (distanceM <= 0.0)
+    {
+        return 1.0;
+    }
+    const double radiusPx = focalRefPx * laneRadiusM / distanceM;
+    if (radiusPx <= SOL::NPC_TUNNEL_LABEL_START_PX)
+    {
+        return 0.0;
+    }
+    if (radiusPx >= SOL::NPC_TUNNEL_LABEL_FULL_PX)
+    {
+        return 1.0;
+    }
+    const double fade = FMath::Loge(radiusPx / SOL::NPC_TUNNEL_LABEL_START_PX)
+        / FMath::Loge(SOL::NPC_TUNNEL_LABEL_FULL_PX / SOL::NPC_TUNNEL_LABEL_START_PX);
+    return FMath::Clamp(fade, 0.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane's tunnel open fade after a real-time step: linear toward the target over NPC_LANE_OPEN_FADE_REAL_S
+double SOLNpcTunnel::StepLaneOpenFade(const double fade, const bool bOpen, const double realDeltaS)
+{
+    const double current = FMath::IsNaN(fade) ? (bOpen ? 0.0 : 1.0) : FMath::Clamp(fade, 0.0, 1.0);
+    if (!(realDeltaS > 0.0))
+    {
+        return current;
+    }
+    const double step = realDeltaS / SOL::NPC_LANE_OPEN_FADE_REAL_S;
+    return bOpen ? FMath::Min(current + step, 1.0) : FMath::Max(current - step, 0.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Steps every column's open fade toward its open state; a reused column restarts at 0, a snap jumps to the target
+void SOLNpcTunnel::StepColumnOpenFades(const TConstArrayView<int32> laneBodyA, const TConstArrayView<int32> laneBodyB,
+    const TConstArrayView<uint8> columnOpen, const double realDeltaS, const bool bSnap,
+    const TArrayView<double> inOutFades, const TArrayView<int32> inOutFadeBodyA,
+    const TArrayView<int32> inOutFadeBodyB, const TArrayView<uint8> outVisible)
+{
+    const int32 columnCount = FMath::Min(FMath::Min(inOutFades.Num(), outVisible.Num()),
+        FMath::Min(inOutFadeBodyA.Num(), inOutFadeBodyB.Num()));
+    for (int32 column = 0; column < columnCount; ++column)
+    {
+        // A column taken by another lane (other end points) starts from 0
+        const int32 bodyA = laneBodyA.IsValidIndex(column) ? laneBodyA[column] : INDEX_NONE;
+        const int32 bodyB = laneBodyB.IsValidIndex(column) ? laneBodyB[column] : INDEX_NONE;
+        if (bodyA != inOutFadeBodyA[column] || bodyB != inOutFadeBodyB[column])
+        {
+            inOutFades[column] = 0.0;
+            inOutFadeBodyA[column] = bodyA;
+            inOutFadeBodyB[column] = bodyB;
+        }
+        const bool bOpen = columnOpen.IsEmpty() || (columnOpen.IsValidIndex(column) && columnOpen[column] != 0);
+        inOutFades[column] = bSnap ? (bOpen ? 1.0 : 0.0) : StepLaneOpenFade(inOutFades[column], bOpen, realDeltaS);
+        outVisible[column] = inOutFades[column] > 0.0 && (bodyA != INDEX_NONE || bodyB != INDEX_NONE) ? 1 : 0;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the focal the pixel fades read: the live focal over the QualityPreset scale (scale below 1 or bad reads 1)
+double SOLNpcTunnel::FadeFocalRefPx(const double focalRefPx, const double qualityScale)
+{
+    return focalRefPx / (FMath::IsFinite(qualityScale) && qualityScale > 1.0 ? qualityScale : 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the tunnel radius from the lane radius and its traffic (the minimum scale for an empty lane)
 double SOLNpcTunnel::TunnelRadiusM(const double laneRadiusM, const int32 shipCount)
 {
@@ -834,39 +906,6 @@ void SOLNpcTunnel::WriteTunnelTexels(const TConstArrayView<FSOLNpcTunnelLaneData
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Rewrites the shown-lane list when its set changed (index order, allocation kept unless it grows)
-bool SOLNpcTunnel::CollectTunnelLanes(const TConstArrayView<double> fades, TArray<int32>& inOutLanes)
-{
-    // Compare the current set against the list without writing
-    int32 matched = 0;
-    bool bChanged = false;
-    for (int32 lane = 0; lane < fades.Num() && !bChanged; ++lane)
-    {
-        if (fades[lane] > 0.0)
-        {
-            bChanged = matched >= inOutLanes.Num() || inOutLanes[matched] != lane;
-            ++matched;
-        }
-    }
-    bChanged = bChanged || matched != inOutLanes.Num();
-    if (!bChanged)
-    {
-        return false;
-    }
-
-    // Rebuild in index order
-    inOutLanes.Reset();
-    for (int32 lane = 0; lane < fades.Num(); ++lane)
-    {
-        if (fades[lane] > 0.0)
-        {
-            inOutLanes.Add(lane);
-        }
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Returns whether the tunnels show: lanes shown, the cvar on and the jump map closed
 bool SOLNpcTunnel::AreTunnelsShown(const bool bLanesShown, const bool bCvarOn, const bool bMapOpen)
 {
@@ -999,10 +1038,18 @@ bool SOLNpcTunnel::IsDotRowInReach(const double segmentDistanceM, const double t
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a lane's tunnel radius: the frozen wall radius of its profile (SDD 50 D13), else the #49 radius of its ships
+double SOLNpcTunnel::LaneTunnelRadiusM(const FSOLNpcLaneEntry& lane)
+{
+    return FMath::IsFinite(lane.WallRadiusM) && lane.WallRadiusM > 0.0 ? lane.WallRadiusM
+        : TunnelRadiusM(lane.RadiusM, lane.ShipCount);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Fills a lane's renderer feed and foot; true when the lane can have a tunnel
 bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneEntry& lane,
     const FVector3d& viewpointM, const double bodyRadiusAM, const double bodyRadiusBM,
-    FSOLNpcTunnelLaneData& outData, FSOLNpcTunnelFoot& outFoot)
+    FSOLNpcTunnelLaneData& outData, FSOLNpcTunnelFoot& outFoot, const double labelFocalRefPx)
 {
     outData = FSOLNpcTunnelLaneData();
     outData.Lane = laneIndex;
@@ -1015,9 +1062,7 @@ bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneE
     const FVector3d bRelM = lane.B - viewpointM;
     const FSOLNpcTunnelBasis basis = TunnelBasis(lane.A, lane.B);
     outFoot = LaneFoot(aRelM, bRelM);
-    // The frozen wall radius of the lane profile (SDD 50, D13) when there is one, else the #49 radius of every ship
-    const double tunnelRadiusM = FMath::IsFinite(lane.WallRadiusM) && lane.WallRadiusM > 0.0 ? lane.WallRadiusM
-        : TunnelRadiusM(lane.RadiusM, lane.ShipCount);
+    const double tunnelRadiusM = LaneTunnelRadiusM(lane);
     const double laneLengthM = (lane.B - lane.A).Size();
     if (!basis.bValid || !outFoot.bValid
         || !IsTunnelDrawable(laneLengthM, bodyRadiusAM, bodyRadiusBM, tunnelRadiusM))
@@ -1032,7 +1077,7 @@ bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneE
     outData.Axis = basis.Axis;
     outData.Up = basis.Up;
     outData.SegmentDistanceM = LaneSegmentDistanceM(aRelM, bRelM);
-    outData.Fade = TunnelFade(outData.SegmentDistanceM, lane.RadiusM);
+    outData.Fade = TunnelFade(outData.SegmentDistanceM, lane.RadiusM, labelFocalRefPx);
     outData.EndArcAM = endArcsM.X - outFoot.ArcM;
     outData.EndArcBM = endArcsM.Y - outFoot.ArcM;
     return true;
@@ -1059,24 +1104,6 @@ double SOLNpcTunnel::EffectiveTunnelFade(const double fade, const bool bShown, c
         return 1.0;
     }
     return FMath::IsNaN(fade) ? 0.0 : FMath::Clamp(fade, 0.0, 1.0);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns whether the tunnel component draws: shown and a fade above 0
-bool SOLNpcTunnel::ShouldDrawTunnels(const bool bShown, const TConstArrayView<double> fades)
-{
-    if (!bShown)
-    {
-        return false;
-    }
-    for (const double fade : fades)
-    {
-        if (fade > 0.0)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1129,6 +1156,18 @@ int32 SOLNpcTunnel::TunnelSlotMeshVertexCount()
     }
     count += 4 * DetailSlotCount() * SOL::NPC_TUNNEL_DOTS_PER_GAP * SOL::NPC_TUNNEL_DOT_ROWS;
     count += 4 * DetailSlotCount() * SOL::NPC_TUNNEL_CHEVRONS_PER_GAP * 2;
+    return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the Reduced class mesh's vertex count: the ring ribbons and the two end rings, no dot or chevron quads
+int32 SOLNpcTunnel::TunnelReducedMeshVertexCount()
+{
+    int32 count = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST + 1);
+    for (int32 slot = 0; slot < RingSlotCount(); ++slot)
+    {
+        count += 2 * (RingSegmentsForSlot(slot) + 1);
+    }
     return count;
 }
 

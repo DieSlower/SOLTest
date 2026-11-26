@@ -60,6 +60,13 @@ namespace SOLNpcTunnelMirror
         return 0.5f * viewSize.X * projectionScaleX * referenceHeightPx / viewSize.Y;
     }
 
+    // Returns the focal the pixel fades read, the focal over the QualityPreset scale, a scale below 1 read as 1
+    // (SOLNT_FadeFocalRefPx; the scale is Layout4.z, part 53d)
+    inline float FadeFocalRefPx(const float focalRefPx, const float qualityScale)
+    {
+        return focalRefPx / FMath::Max(qualityScale, 1.0f);
+    }
+
     // Returns a world size of sizeRadii x Rt on screen in reference px, huge for d <= 0 (SOLNT_SizePx)
     inline float SizePx(const float d, const float rt, const float focalRefPx, const float sizeRadii)
     {

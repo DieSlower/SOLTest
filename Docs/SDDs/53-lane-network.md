@@ -244,7 +244,8 @@ The set of epoch `k` (sample time `t_k = k E_L`, `E_L` = 1 sim day) is built in 
   Europa}, {Haumea, Makemake}, {704 Interamnia, 31 Euphrosyne, 451 Patientia, 3 Juno}), so **3 island links**, 29
   lanes in all; their endpoints need that day's positions and were not recomputed here.
 - **Group columns (Q28):** 64 shared columns stay the hard pool. Lanes hold a column while they are in the set, and a
-  closing lane's column is freed after its 3 s tunnel fade. With the early stop of 5.4 (nothing is in flight at the
+  closing lane's column is freed after its 3 s tunnel fade (or sooner: a column held only by its fade is the first
+  a new lane takes when none is free, 53d review). With the early stop of 5.4 (nothing is in flight at the
   close) the measured worst day is **30 lanes + 10 clusters + 16 battles = 56 of 64** (no overflow day at 38 lane columns, table
   above); the hard bound of 38 lanes gives **exactly 64**. Under high warp the 3 s real fade spans many epochs (about 90 at 30 d/s), so fading lanes can hold
   columns on top of the set (R7). Hitting 64 is logged, counted and reported to the user; a lane that finds no column
@@ -293,7 +294,12 @@ hand row 2e5 m. Island links use the same rule.
   episode (it may get another slot).
 - **Slot:** base lanes own slots 0-7. A partner lane or island link takes the lowest free group column from 8 at its first epoch in
   the set and keeps it while it stays in the set (also while Sun-closed). The column is freed after the close and the
-  3 s tunnel fade, and not before the player's held hop on that lane has ended (R17). The assignment depends on the session's history but is deterministic and only feeds rendering and
+  3 s tunnel fade, and not before the player's held hop on that lane has ended (R17). **Resolved (user, 53d
+  review):** a column held only by its fading tunnel (no ship blocks) is pre-emptible: a new lane that finds no free
+  column takes the lowest such column, cutting the fade short, before any lane overflows; a column whose lane still
+  owns ship blocks is never taken (`ESOLLaneSlotHold` Blocks / Fade, `AssignLaneSlots`). The hold is set by the block
+  step, so a lane that closes in the same epoch a new lane arrives is still Blocks-held then and the new lane waits
+  one epoch. The assignment depends on the session's history but is deterministic and only feeds rendering and
   the AUTO lane views; nothing is saved.
 - **Profile per episode:** `L0` is static per pair (sum of aphelia). The ship count, and with it `Rw` and `Rt` (SDD 50
   D13), is frozen at the episode's open, so a lane's tunnel radius changes only between episodes, never mid-trip.
@@ -654,38 +660,44 @@ Per lane per frame on the CPU (one point-segment distance):
 lies on the segment, so no ring is larger on screen than `r_max_px`.
 
 **Three classes with hysteresis (Q17).** The 0.5 px and 0.833 px thresholds are fixed by the invisible-switch rule
-below; the 0.4 px and 1.0 px ones are the draft's values, accepted by the user (O10) and pinned (a later in-game
-tuning is a new decision):
+below; the 0.4 px one is the draft's value, accepted by the user (O10). **Resolved (user, 53d review):** the
+Reduced -> Full switch moved from the draft's 1.0 px to 0.833 px and Full -> Reduced from 0.833 px to 0.75 px, so both
+switches lie where the dots and chevrons are alpha 0 (at 1.0 px they were already visible, so the old switch-on popped
+them in):
 
 | Class | Draws | Enter | Leave |
 |---|---|---|---|
 | Off | nothing (no frame, no texels, no instance) | below 0.4 px from Reduced | - |
 | Reduced | rings and end rings; no dots, chevrons or labels | `r_max_px >= 0.5` from Off (`NPC_TUNNEL_RADIUS_FADE_GONE_PX`: everything is alpha 0 below it, SDD 52 D9, D12, D14) | below 0.4 px to Off |
-| Full | the whole slot mesh | `r_max_px >= 1.0` from Reduced (`NPC_TUNNEL_FULL_ON_PX`) | below 0.833 px to Reduced (`NPC_TUNNEL_FULL_OFF_PX` = `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX` / `NPC_TUNNEL_RING_BASE_SPACING_RADII` = 10 / 12: the ring gap never exceeds `f S0 / d`, so dots and chevrons are alpha 0 below it) |
+| Full | the whole slot mesh | `r_max_px >= 0.833` from Reduced (`NPC_TUNNEL_FULL_ON_PX` = `NPC_TUNNEL_DETAIL_GAP_FADE_GONE_PX` / `NPC_TUNNEL_RING_BASE_SPACING_RADII` = 10 / 12: the ring gap never exceeds `f S0 / d`, so dots and chevrons are alpha 0 at and below it) | below 0.75 px to Reduced (`NPC_TUNNEL_FULL_OFF_PX`, below the Full-on radius, so the dropped dots are alpha 0 too) |
 
-**Graphics quality (user decision B, 53a/53b review):** the four class thresholds (0.4 / 0.5 / 0.833 / 1.0 px) are
+**Graphics quality (user decision B, 53a/53b review):** the four class thresholds (0.4 / 0.5 / 0.75 / 0.833 px) are
 the Epic values; every one is multiplied by the QualityPreset's scale, the same factor table as the flame vanish size
 V (`SOL::Thruster::RIBBON_VANISH_PX_BY_QUALITY` over its Epic entry, no second table): Low x10, Medium x4.6, High
 x2.2, Epic and Cinematic x1 (`SOLLaneNetwork::LaneTunnelQualityScale`, passed to `StepTunnelClass`). So a lower
 preset turns tunnels off at a larger on-screen size; the rule stays in pixels. The pool ranking (7.3) is unchanged:
-a uniform factor keeps the largest-first order. **Open item (53c/53d):** the invisible-switch argument below holds
-only at scale 1. At Low the tunnel switches on at 5 px, where the shader's ring radius fade (`NPC_TUNNEL_RADIUS_FADE_*`,
-gone at 0.5 px) is nearly solid, so a switch would pop unless the shader's radius and detail-gap fades take the same
-scale; the shader is not changed in 53a/53b.
+a uniform factor keeps the largest-first order. **Resolved (user, 53d):** the same QualityPreset factor scales every
+pixel threshold: the shader's ring radius, ring-gap and detail-gap fades read the live focal over the scale
+(`SOLNpcTunnel::FadeFocalRefPx`, material `NpcTunnelLayout4.z`, `SOLNT_FadeFocalRefPx`), and so do the Q20 bands
+(7.2), so the invisible-switch argument below holds at every preset (`SOLTest.Npc.TunnelMirror.QualityScale`); sizes
+and widths keep the live focal.
 
 Both switches happen where the dropped parts are already invisible (at scale 1), so no class change can pop. Labels need a lane
 radius of 9.6 px or more (7.2), so they only ever show in Full. An Off lane builds no tunnel frame and writes no texels,
 so the CPU cost follows the drawn lanes, not the lane count.
 
 **Knee fix (Q19):** 160 ring slots per side (was 80), so the ring window reaches the 0.5 px gone point: **15,380
-vertices per Full lane** (+2,880). The Reduced mesh is the ring and end-ring part only; its exact vertex count comes
-from the slot-mesh split in 53d. The 21:9 focal debt stays.
+vertices per Full lane** (+2,880). The Reduced mesh is the ring and end-ring part only (the slot mesh's first
+vertices): **7,220 vertices** (built 53d, `SOLNpcTunnel::TunnelReducedMeshVertexCount`). The 21:9 focal debt stays.
 
 ### 7.2 Traffic activation (Q20, Q21, Q22)
 
 - **Restated legacy controls (Q20):** `NPC_LANE_FADE_NEAR/FAR_RADII` (100 / 400 lane radii) become **9.6 / 2.4
   reference px of the lane radius**, and the label band (100 -> 50 lane radii) becomes **9.6 -> 19.2 px**, evaluated
-  with the live focal (the same look at 90 degrees, correct at other fields of view). The 4-label cap
+  with the live focal (the same look at 90 degrees, correct at other fields of view), both times the QualityPreset
+  scale (built 53d: `SOLNpcLane::LaneLineFade` / `SOLNpcTunnel::TunnelFade` with a focal; the point and lane shaders
+  keep their lane-radii inputs, fed `f / 9.6` and `f / 2.4` of the fade focal by `LaneFadeRadiiAtFocal`, so no
+  material rebuild). The 4-label cap
   (`NPC_TUNNEL_LABEL_MAX_COUNT`) stays as a screen-clutter limit and is recorded in `TECH_DEBT.md` as a count control.
 - **Traffic active (Q22):** while the lane radius at the camera's nearest point on the segment is at least 2.4 reference
   px (the restated 400 lane radii, below which the point alpha is 0) times the QualityPreset's
@@ -693,7 +705,10 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
   same scale as the tunnel classes, 7.1), or while a CPU-tier ship of the lane exists. **Inactive lanes are hidden
   always**, with the Lanes overlay on or off (P5); the flag does not depend on the overlay.
 - **Flag (Q21):** a per-lane active flag in the group texel; the point vertex shader skips the rail evaluation of an
-  inactive or docked ship (it saves the evaluation and the pixels, not the vertex invocation). Ships keep their
+  inactive or docked ship (it saves the evaluation and the pixels, not the vertex invocation). Built 53d:
+  `SOLNTR_LaneShipDrawn` (the call the material already holds, so no rebuild) is now active flag and window, the window
+  test itself `SOLNTR_LaneShipWindowDrawn`; mirror `SOLNpcTrafficMirror::LaneShipPointDrawn`, used by the CPU point
+  layer. Without a network the base lanes' full-open window is active (traffic as before the network). Ships keep their
   closed-form rails at every distance (D5).
 
 ### 7.3 Pool and budget (D8, Q18)
@@ -708,7 +723,9 @@ from the slot-mesh split in 53d. The 21:9 focal debt stays.
   So the pool is not expected to fill, but can in principle.
 - **When the pool is full:** the drawn lanes are ranked by `r_max_px` and the smallest on screen lose their instance; a
   warning is logged once per change of the overflow, a stat counter shows it, and the user is told (the limitation,
-  never the LOD rule).
+  never the LOD rule). **Hysteresis (53d review):** a lane that had an instance last update ranks by `r_max_px` x
+  `NPC_TUNNEL_POOL_KEEP_RATIO` (1.1), so a newcomer must be 10 % larger on screen to take it and near-equal lanes do
+  not swap every frame (`SelectTunnelPool`'s previous-pool input).
 
 ## 8. Traffic weights
 
@@ -924,6 +941,18 @@ in SDD 52; 3840x3744 and two-eye not measured.
   drawing their far points) is gone. Open: the in-game per-block gate miss and the opening and time-jump hitches
   (`TECH_DEBT.md`). A developer console command `sol.SimDate <date>` sets the clock for time-jump checks. No
   persistence change.
+- 2026-11-25: 53d built: per-lane tunnel classes (Off builds nothing, Reduced 7,220 vertices, Full 15,380), the
+  24-instance pool shared by both (overflow logged once per change, stat `SOL_NpcTunnelPoolOverflow`), the knee fix
+  (160 ring slots per side), the 3 s real-time open fade on row 3 `.z` with the closing lane's column held until the
+  fade ends (4.5), the Q20 bands in pixels and one QualityPreset factor for every pixel threshold (7.1, 7.2, user
+  decision), the active-flag early-out of the point shader (7.2). `NPC_TUNNEL_VERTEX_BUDGET` / `_LANES` removed. No
+  persistence change.
+- 2026-11-25: 53d review fixes (user decisions): the Full switch moved to 10/12 px on and 0.75 px off, both where the
+  dots and chevrons are alpha 0 (7.1); a column held only by its tunnel fade is pre-emptible by a new lane (4.5,
+  `ESOLLaneSlotHold`); only a block owner out of the set re-runs the block step every frame (a fade hold is re-checked
+  once at its end); pool hysteresis `NPC_TUNNEL_POOL_KEEP_RATIO` 1.1 (7.3); the wall label alpha follows the open fade;
+  the open-fade step, the hold rule and the per-class instance split are pure functions with tests. No persistence
+  change.
 
 ## 16. Resolved decisions (user, 2026-11-24)
 
@@ -961,7 +990,8 @@ The draft's recommendation is marked *superseded* where the answer differs.
 - **Q16 Route display: CHANGED.** "VIA <node>" on the AUTOPILOT marker **and** the planned route drawn on the system
   map, distinct from the player's waypoint routes and following the moving bodies. *Superseded:* no map drawing.
 - **Q17 Tunnel classes: CHANGED.** Three classes (off, reduced, full) with pixel hysteresis; thresholds in 7.1 (the
-  0.4 / 1.0 px values accepted with O10). *Superseded:* two classes.
+  0.4 / 1.0 px values accepted with O10; the Full switch moved to 10/12 px on and 0.75 px off in the 53d review, so
+  it is invisible). *Superseded:* two classes.
 - **Q18 Pool: CHANGED.** 24 instances (369,120 vertices at most). *Superseded:* 16.
 - **Q19 Knee:** fixed now: 160 ring slots per side, 15,380 vertices per lane.
 - **Q20 Legacy controls:** restated in reference px (7.2); the 4-label cap kept and recorded in `TECH_DEBT.md` as a
@@ -1018,7 +1048,8 @@ was itself replaced at the 53a/53b review by "the Moon relays through Earth only
   (4.7); if it fails, 53c stops and the fix is the user's call.
 - **O9 Docking pop: accepted** (R12), no fade.
 - **O10 Constants: accepted.** Sun look-back 64 epochs, horizon 960 epochs (above the 897 d longest leg), ship blocks
-  of 100, tunnel class thresholds 0.4 px (Reduced -> Off) and 1.0 px (Reduced -> Full).
+  of 100, tunnel class thresholds 0.4 px (Reduced -> Off) and 1.0 px (Reduced -> Full; moved to 10/12 px, Full off
+  0.75 px, by the user in the 53d review, 7.1).
 
 ## 18. Resolved 53c2 decisions (user, 2026-11-25)
 

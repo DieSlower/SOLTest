@@ -656,7 +656,7 @@ bool FSOLLaneBlockMoveTimeJumpHoldsTest::RunTest(const FString& /*parameters*/)
     {
         if (network.GetSlots()[slot].NodeA != INDEX_NONE)
         {
-            traffic->SetNetworkSlotHeld(slot, true);
+            traffic->SetNetworkSlotHold(slot, ESOLLaneSlotHold::Blocks);
             ++held;
         }
     }
@@ -830,7 +830,13 @@ bool FSOLLaneBlockMoveNoNetworkWindowTest::RunTest(const FString& /*parameters*/
         parkedDrawn += SOLNpcTrafficMirror::LaneShipWindowDrawn(parkedA, parkedB, rows, timeS) ? 1 : 0;
         zeroDrawn += SOLNpcTrafficMirror::LaneShipWindowDrawn(legA, legB, zeroRows, timeS) ? 1 : 0;
         zeroDrawn += SOLNpcTrafficMirror::LaneShipWindowDrawn(discA, discB, zeroRows, timeS) ? 1 : 0;
+
+        // Since 53d the point shader also reads the active flag: without a network the full-open window is active, so
+        // the point test agrees with the window test (the traffic draws as before the network existed)
+        legHidden += SOLNpcTrafficMirror::LaneShipPointDrawn(legA, legB, rows, timeS) ? 0 : 1;
+        discHidden += SOLNpcTrafficMirror::LaneShipPointDrawn(discA, discB, rows, timeS) ? 0 : 1;
     }
+    TestEqual(TEXT("no network: the full-open window is active (row 6 .z 1)"), texels[rowBase + 3].Z, 1.0f);
     TestEqual(TEXT("no network: samples where a ship on a leg is hidden"), legHidden, 0);
     TestEqual(TEXT("no network: samples where a midpoint disc is hidden"), discHidden, 0);
     TestEqual(TEXT("no network: samples where a parked ship is drawn"), parkedDrawn, 0);

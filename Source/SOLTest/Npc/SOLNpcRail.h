@@ -265,7 +265,8 @@ namespace SOLNpcRail
     SOLTEST_API void GpuParkedRailTexels(int32 faction, FVector4f& outTexelA, FVector4f& outTexelB);
 
     // Writes row NPC_GROUP_WINDOW_ROW of the group texels: each slot's window texel at its column, other columns zero;
-    // with no slot windows (no lane network) every base lane column gets the full-open window (-FAR, +FAR, inactive)
+    // with no slot windows (no lane network) every base lane column gets the full-open window (-FAR, +FAR, active; the
+    // point shader hides inactive lanes since 53d, and without a network the traffic draws as before it existed)
     SOLTEST_API void WriteLaneWindowRow(TConstArrayView<FVector4f> windowBySlot, const FSOLNpcGroupTable& groups,
         TArrayView<FVector4f> groupTexels);
 

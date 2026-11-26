@@ -540,15 +540,20 @@ void FSOLNpcTunnelSmoke::ExitPhase(const ESOLTunnelPhase phase, ASOLShipPawn& pa
     {
         if (mView == 0 && bLane)
         {
-            // T1: the fade equals TunnelFade of the logged distance, about 0.415 at 75 lane radii
+            // T1: the fade equals TunnelFade of the logged distance at the fade focal (SDD 53 Q20: 9.6 -> 19.2 px of
+            // the lane radius at the live focal over the quality scale); at the reference focal and Epic that is
+            // about 0.415 at 75 lane radii (logged, the live view's field of view moves it)
             const FSOLNpcLaneEntry& entry = mVisuals->GetLaneFrame().Lanes[lane];
             const FVector3d viewpointM = mAnchor->GetViewpointM();
             const double distanceM = SOLNpcTunnel::LaneSegmentDistanceM(entry.A - viewpointM, entry.B - viewpointM);
-            const double expected = SOLNpcTunnel::TunnelFade(distanceM, entry.RadiusM);
+            const double fadeFocalPx = tunnels->GetFadeFocalRefPx();
+            const double expected = SOLNpcTunnel::TunnelFade(distanceM, entry.RadiusM, fadeFocalPx);
+            const double atReference = SOLNpcTunnel::TunnelFade(distanceM, entry.RadiusM);
             const double fade = SOLNpcTunnel::ReadTunnelFadeTexel(tunnels->GetLastTexels(), lane);
             Check(TEXT("T1-fade"), FMath::Abs(fade - expected) <= TUNNELSMOKE_FADE_TOLERANCE
-                && FMath::Abs(fade - TUNNELSMOKE_T1_EXPECTED_FADE) <= 0.01, FString::Printf(TEXT("fade %.4f, "
-                "TunnelFade(%.4g m = %.2f R) %.4f"), fade, distanceM, distanceM / entry.RadiusM, expected));
+                && FMath::Abs(atReference - TUNNELSMOKE_T1_EXPECTED_FADE) <= 0.01, FString::Printf(TEXT("fade %.4f, "
+                "TunnelFade(%.4g m = %.2f R, fade focal %.1f px) %.4f (%.4f at the reference focal)"), fade,
+                distanceM, distanceM / entry.RadiusM, fadeFocalPx, expected, atReference));
         }
         if (mView == 1 || mView == 2)
         {
@@ -912,18 +917,28 @@ void FSOLNpcTunnelSmoke::CheckFeed(const TCHAR* label)
     const FSOLBodyRegistry& registry = mRegistry->GetRegistry();
     const FSOLNpcGroupTable& groups = mNpcs->GetGroups();
     const FVector3d viewpointM = mAnchor->GetViewpointM();
-    bool bPure = shown.Num() > 0;
-    FString detail;
+    // No tunnel shown is right only when every lane is Off by pixels (below the switch-on size, SDD 53 7.1)
+    bool bAllOff = true;
+    for (int32 lane = 0; lane < mVisuals->GetLaneFrame().Lanes.Num(); ++lane)
+    {
+        bAllOff &= tunnels->GetTunnelClass(lane) == ESOLTunnelClass::Off
+            && tunnels->GetMaxRadiusPx(lane) < SOL::NPC_TUNNEL_ACTIVATE_PX * tunnels->GetQualityScale();
+    }
+    bool bPure = shown.Num() > 0 || bAllOff;
+    FString detail = shown.Num() == 0 && bAllOff ? FString(TEXT(" every lane Off by pixels")) : FString();
     for (const FSOLNpcTunnelLaneData& data : shown)
     {
         FSOLNpcTunnelLaneData pure;
         FSOLNpcTunnelFoot foot;
         const bool bTunnel = SOLNpcTunnel::BuildTunnelLaneData(data.Lane, mVisuals->GetLaneFrame().Lanes[data.Lane],
             viewpointM, registry.GetRadiusM(groups.LaneBodyA[data.Lane]),
-            registry.GetRadiusM(groups.LaneBodyB[data.Lane]), pure, foot);
+            registry.GetRadiusM(groups.LaneBodyB[data.Lane]), pure, foot, tunnels->GetFadeFocalRefPx());
+
+        // Since SDD 53 (53d) only a Full lane carries a label strength (a Reduced lane has none)
+        const double pureFade = tunnels->GetTunnelClass(data.Lane) == ESOLTunnelClass::Full ? pure.Fade : 0.0;
         const double footToleranceM = 1.0e-3 * data.TunnelRadiusM + 1.0e-6 * data.FootRelM.Size();
         bPure &= bTunnel && pure.TunnelRadiusM == data.TunnelRadiusM && pure.Axis.Equals(data.Axis, 1.0e-9)
-            && pure.Up.Equals(data.Up, 1.0e-9) && FMath::Abs(pure.Fade - data.Fade) <= TUNNELSMOKE_FADE_TOLERANCE
+            && pure.Up.Equals(data.Up, 1.0e-9) && FMath::Abs(pureFade - data.Fade) <= TUNNELSMOKE_FADE_TOLERANCE
             && pure.FootRelM.Equals(data.FootRelM, footToleranceM);
 
         // Q5 with SDD 52 D6 / D7: the label strength the lane and point materials read back from the uploaded texels
@@ -1290,7 +1305,8 @@ void FSOLNpcTunnelSmoke::CheckEarthEnds(const TCHAR* label)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Checks a far view (SDD 52 section 7, D1, D7, D17): the Earth-Mars tunnel is still drawn (draw fade 1) but has no
+// Checks a far view (SDD 52 section 7, D1, D7, D17; since SDD 53 7.1 a tunnel below 0.4 px x the quality scale is Off
+// and nothing is built, checked as such): the Earth-Mars tunnel is still drawn (draw fade 1) but has no
 // label strength and no label; the rings the C++ slots light now (logged, no minimum asserted, D17) never include the
 // window's outermost slots above the knee alpha (the window cuts only rings below 1 px); the end rings' alphas logged
 void FSOLNpcTunnelSmoke::CheckFarView(const TCHAR* label)
@@ -1308,6 +1324,20 @@ void FSOLNpcTunnelSmoke::CheckFarView(const TCHAR* label)
         });
     }
     const USOLHudEventSubsystem* hudEvents = USOLHudEventSubsystem::Get(mVisuals.Get());
+
+    // SDD 53 7.1 (53d): a lane whose largest on-screen tunnel radius fell below 0.4 px (x the quality scale) is Off and
+    // builds nothing (F3000 at the reference focal is about 0.32 px)
+    const USOLNpcTunnelComponent* tunnels = mVisuals->GetTunnels();
+    if (lane != INDEX_NONE && data == nullptr && tunnels->GetTunnelClass(lane) == ESOLTunnelClass::Off)
+    {
+        const double maxPx = tunnels->GetMaxRadiusPx(lane);
+        const double offPx = SOL::NPC_TUNNEL_DEACTIVATE_PX * tunnels->GetQualityScale();
+        Check(label, maxPx < SOL::NPC_TUNNEL_ACTIVATE_PX * tunnels->GetQualityScale()
+            && !tunnels->GetInstanceLanes().Contains(lane),
+            FString::Printf(TEXT("Earth-Mars tunnel Off by pixels: largest radius %.3f px (off below %.3f px at this "
+                "quality and focal), no instance, nothing built (SDD 53 7.1)"), maxPx, offPx));
+        return;
+    }
     if (data == nullptr || hudEvents == nullptr || !mController.IsValid()
         || mController->PlayerCameraManager == nullptr)
     {
