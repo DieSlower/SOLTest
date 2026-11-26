@@ -7,12 +7,13 @@ created for this draft). Plan: [`Plans/53-lane-network-plan.md`](../Plans/53-lan
 contract: [`Plans/53-lane-network-contract.md`](../Plans/53-lane-network-contract.md). Builds on SDD 11 (NPC rails and
 tiers), SDD 38 (lane lines), SDD 49 (guidance tunnel), SDD 50 (lane traffic, AUTO lane rules) and SDD 52 (tunnel far
 field, D15: the vertex budget and active-tunnel cap were left interim for this ticket).
-**Status: DRAFT, amended 2026-11-24 with the user's answers to Q1-Q30** (section 16) **and 2026-11-25 with the
+**Status: BUILT (53a-53f done 2026-11-26, pending the whole-ticket review and commit), amended 2026-11-24 with the user's answers to Q1-Q30** (section 16) **and 2026-11-25 with the
 user's answers to O1-O10** (section 17) **and 2026-11-25 with the user's answers to the 53c2 decisions P1-P6**
 (section 18). **The population tier values (O6), the partner hysteresis values (O3) and the
 Sun-safety override UI (O4) were confirmed by the user on 2026-11-25**. The Moon relays island links **through Earth
 only** (user decision A at the 53a/53b review, replacing the earlier "the Moon can be a relay"). The pure math
-and its tests (53a/53b) are implemented and in review; nothing else is built.
+and its tests (53a/53b), the schedule, the ship blocks, the tunnel classes and the AUTO routing with Sun safety
+(53c-53e) are built; the as-built notes are in 4.5, 6.4, 6.5, 13 and the change log (section 15).
 **Persistence: no schema change is needed by this design** (section 11). `SOL::Settings::SAVE_VERSION` stays 13 and
 `KEY_BINDING_LAYOUT_VERSION` stays 10. The player's Sun safety override (O4, 6.5) is session-only; saving it across
 launches would be a settings schema change and needs the user's approval first.
@@ -957,6 +958,16 @@ The #52 gates (SDD 52 section 8, D18), at 1920x1080, 1M NPCs, plus new CPU gates
   re-share 1.1 s headless, 1.76-2.07 s in game (`TECH_DEBT.md`). Caveat: the 5 ms gate is met at 1.97 ms only with the parallel passes on a 16-core idle machine (serial 8.8 ms; roughly 2.5 ms on 8 free threads, 3.5 ms on 4, 5 ms on 2, up to 8.8 ms when the workers are busy); the rebuild lands at spawn, and VR at 90 Hz may drop a frame at spawn (VR work deferred).
 - **Points draw:** no gate (SDD 52 D19), recorded against SDD 52's interleaved baseline. The flame CPU gate (#51 debt)
   is re-measured and reported, no fix in #53 (Q27).
+- **Flame CPU gate, re-measured in 53f (2026-11-26, lane network active):** `-SOLSmokeThruster -SOLSmokeThrusterRibbons
+  -SOLSmokeThrusterProfile`, 1920x1080, 1M NPCs, 8 interleaved A B B A pairs per view, the ribbon actor tick A minus
+  B. Spawn view **0.0542 ms** (A median 0.0547, range 0.047-0.062; about 26 pool flames of 33 live over 1,000-1,250
+  hulls) against the 0.05 ms gate, **a miss of about 1.08x, the same as #51's 0.054**; lane view 0.0313 ms, passes. The
+  network adds no flames in these views, so the figure did not move; reported to the user, gate not relaxed, no fix
+  (`TECH_DEBT.md`).
+- **53f profile scope:** only the flame gate was re-run in 53f. The figures for the other gates come from their parts
+  (rebuild and epoch step 53c1, block move 53c2b, tunnel CPU 53d); the pool-full tunnel draw GPU against the pre-#53
+  commit, the points draw delta, the route query, class pass and look-ahead rebuild CPU, the 1M ramp and the 2560x1440
+  record were not re-run as one interleaved A/B (`TECH_DEBT.md`, "#53 profile gaps").
 - **1M ramp:** every stage passes as in SDD 52 13.3.
 - Method: interleaved A/B worktree runs (SDD 52 13.3 amendment), `-SOLSmokeNpcTunnelProfile`.
 
@@ -1078,6 +1089,10 @@ in SDD 52; 3840x3744 and two-eye not measured.
 - 2026-11-26: 53e smoke follow-ups (user decisions, 6.5 "Smoke"): a plan hop that never held its lane and ends far
   from its end node is left early and flown to that node, then re-planned (`LeaveHopOnLaneRulesLeft`); the fast
   Sunward entry dip is accepted with a documented bound of 19 Sun radii (never below 15). No persistence change.
+- 2026-11-26: 53f close-out. Flame CPU gate re-measured with the lane network active (spawn 0.0542 ms against 0.05 ms,
+  lane 0.0313 ms, 13), docs synced (`STATUS.md`, `ARCHITECTURE.md`, `GAME_MECHANICS.md`, `TECH_DEBT.md`), three README
+  gallery shots (`Docs/Images/53-*.png`). `-SOLSmokeNpcTunnel` 48 / 48 and `-SOLSmokeLaneRoute` menus and plan-1x
+  8 / 8 re-run at 1920x1080, full suite 2175 / 2175. No persistence change (`SAVE_VERSION` 13, `KEY_BINDING_LAYOUT_VERSION` 10).
 
 ## 16. Resolved decisions (user, 2026-11-24)
 

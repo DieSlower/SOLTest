@@ -35,6 +35,7 @@ Built (see [Docs/Plans/STATUS.md](Docs/Plans/STATUS.md) for tickets and the road
 - A scale demo with up to 1M NPC ships (Mass), with a Full / reduced-detail budget.
 - A hologram HUD on a batched glow-shape renderer with a 3D radar, menus, settings, rebindable keys, and in-game Controls / Info / About screens.
 - Hologram in-flight menus (radial, Ctrl+O Overlay Menu, F3 speed panel, map list menu, info / target / speed / date cards) with draw-in and close animations, hover glow, sound cues and their own effects-strength slider.
+- A lane network for the NPC traffic (issues #38, #49-#53): a guidance tunnel along every lane, keep-right traffic with a merge readout and AUTO lane rules, and since #53 a daily lane set over 24 nodes (planets, the Moon, dwarf planets and ten asteroids) that closes lanes near the Sun, with fastest-route AUTO plans over several lanes (VIA line, map route) and Sun safety on every AUTO order.
 
 Placeholder or not built yet:
 
@@ -282,6 +283,18 @@ On the Earth-Mars axis at the traffic speed: the wall label grows a last line, t
 
 Autopilot to Mars obeying the lane rules: it merged on the right half and now holds the traffic speed down the lane (the LANE tag on the autopilot line, the readout MATCHED), and will leave at Mars's end ring. The round command menu's War Power Move skips the lane rules for one order.
 
+![The Earth hub of the lane network](Docs/Images/53-lane-network-earth-hub.png)
+
+The lane network (issue #53) at Earth, 33,000 km out with the Venus-Earth and Earth-Mars lanes both drawn: each lane has its own tunnel of rings and its own wall label (name, distance, ships) at the hub, and the points are the thousands of lane ships of the day's open lanes (1M NPC ships). Lanes are chosen by their current distances each day, so the hub's lanes change over the year.
+
+![A VIA plan and its route on the hologram map](Docs/Images/53-lane-route-map-via.png)
+
+AUTO to Saturn from Earth (issue #53): the autopilot plans the fastest chain of open lanes (here Earth > Mars > Jupiter > Saturn), the HUD shows the VIA line with the next node and the ETA of the whole plan, and the hologram map draws the plan as a polyline through the nodes' moving positions (orange dashes) over the lane lines.
+
+![The radial menu with the Sun Safety action](Docs/Images/53-sun-safety-radial-menu.png)
+
+The round command menu of a body now has 11 rows (issue #53): the new Toggle Sun Safety row switches the Sun safety override, which lets AUTO orders fly through the danger zone of 20 Sun radii (a SUN SAFETY OFF line shows while it is on). With safety on, every AUTO order detours around the Sun.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -291,9 +304,9 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 |---|---|
 | Work time (wall-clock) | 182.9 h |
 | Time spent answering questions | 13.2 h |
-| Tokens | 9,878.9M |
-| Notional API price | $3,856 |
-| Subagents dispatched | 727 |
+| Tokens | 9,902.3M |
+| Notional API price | $3,862 |
+| Subagents dispatched | 728 |
 <!-- METRICS:END -->
 
 ## Documentation map

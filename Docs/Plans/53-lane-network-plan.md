@@ -224,6 +224,18 @@ tail point), and the case logs the chase state every 120 frames.
 
 ### 53f: profile, docs, gallery
 
+**Status (2026-11-26): done, pending the whole-ticket review and commit.** Step 1 was narrowed by the main session to
+the flame CPU gate: re-measured with the lane network active (spawn view 0.0542 ms against the 0.05 ms gate, a miss of
+about 1.08x unchanged from #51, lane view 0.0313 ms; SDD 53 13), no fix; the other step 1 gates were not re-run in 53f
+(figures from 53c1, 53c2b and 53d; the gaps are in `TECH_DEBT.md`). Step 2 done: `STATUS.md` (#53 in Done, next
+tickets #54 and #55), SDD 53 status, section 13 and change log, this plan, `TECH_DEBT.md` (the 53e entry reworded, the
+flame entry re-measured, two new entries for the leftovers), and `ARCHITECTURE.md` and `GAME_MECHANICS.md` checked
+(already carried the lane network, the epoch step in the frame order, the `Npc -> MinorBodies` edge, the routing, Sun
+safety and the override row). Step 3 done: `Docs/Images/53-lane-network-earth-hub.png`,
+`53-lane-route-map-via.png` and `53-sun-safety-radial-menu.png` in the README gallery, from `-SOLSmokeNpcTunnel` (the T5b
+Earth hub view) and `-SOLSmokeLaneRoute` (the map plan and radial menu shots) at 1920x1080; temporary shots deleted.
+Step 4 (whole-ticket review, commit, push) is the main session's. Final full suite (`ToolsRunTests.ps1 -Build`): 2175 / 2175 passed, one with a warning, 0 failed.
+
 1. Profile per SDD 53 section 13 (interleaved A/B worktrees against the pre-#53 commit): tunnel draw with the pool
    full, CPU on vs off, the new CPU gates (epoch step at 30 d/s, look-ahead rebuild, route query, class pass, block
    move), points draw recorded, flame CPU gate re-measured and reported (Q27, no fix), 1M ramp; 2560x1440 recorded (VR
@@ -408,3 +420,7 @@ tail point), and the case logs the chase state every 120 frames.
   key-layout change); the VIA and Sun HUD lines; the map plan polyline; Info text, glossary and `GAME_MECHANICS.md`
   updated. Not built: finish-if-safe wiring, the lane-closed notice, `-SOLSmokeLaneRoute`, menu screenshots,
   asteroid-end routing, R20.
+- 2026-11-26: 53f done, pending review and commit (see the 53f status above). Smokes at 1920x1080 before the docs:
+  `-SOLSmokeNpcTunnel` 48 / 48, `-SOLSmokeLaneRoute` menus and plan-1x 8 / 8. Flame CPU gate re-measured with the
+  network active: spawn 0.0542 ms (gate 0.05, missed, unchanged), lane 0.0313 ms. #53 is complete; next tickets #54
+  and #55.
