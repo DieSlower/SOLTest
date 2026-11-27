@@ -331,6 +331,11 @@ namespace SOLThruster
     SOLTEST_API double NpcThrustGateM(double hullLengthM, double nozzleRadiusM, double focalRefPx, bool bFlames,
         double vanishPx);
 
+    // Returns whether the Collect pass gives an NPC its flame data (heading, top and plume thrust; SDD 54 section 4.7,
+    // Q7): a live ship strictly inside the thrust gate (squared distance below the squared gate), however its hull is
+    // drawn (mesh, instanced, dot or hidden); false for a dead ship, a gate that is not positive and any NaN input
+    SOLTEST_API bool NpcHasFlameData(double distanceSquaredM2, double plumeGateM, bool bAlive);
+
     // Returns the on-screen ribbon length from which an NPC ribbon is drawn by Niagara (SDD 51 R7),
     // RIBBON_NIAGARA_PX_FACTOR x RibbonVanishPx of the preset
     SOLTEST_API double RibbonNiagaraMinPx(int32 qualityPreset);

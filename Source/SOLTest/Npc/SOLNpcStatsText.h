@@ -27,6 +27,8 @@ namespace SOLNpcStatsText
         int32 Point = 0;
         int32 Instanced = 0;
         int32 Mesh = 0;
+        bool bInstancedBudgetBound = false;   // The fixed hull pool limits the hull tier (marked "(budget)", SDD 54 Q6)
+        bool bMeshBudgetBound = false;        // The fixed mesh pool limits the mesh tier
         int32 Awake = 0;
         int32 TierChanges = 0;
         bool bCombat = true;

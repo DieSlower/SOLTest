@@ -53,22 +53,24 @@ struct FSOLNpcStats
     int32 Far = 0;
     int32 Mesh = 0;
     int32 Instanced = 0;
-    int32 Point = 0;                  // CPU-fed points (Mid or Full beyond the instanced radius)
-    int32 Candidates = 0;             // Ships evaluated this frame
+    int32 Point = 0;                    // CPU-fed points (Mid or Full beyond the instanced radius)
+    int32 Candidates = 0;               // Ships evaluated this frame
     int32 CandidateGroups = 0;
     int32 TierChanges = 0;
     double EvaluateMs = 0.0;
     double BudgetMs = 0.0;
-    double SelectMs = 0.0;            // Select pass plus the command flush
+    double SelectMs = 0.0;              // Select pass plus the command flush
     double MidMs = 0.0;
-    double FullAiMs = 0.0;            // Full AI gather, combat step and scatter
+    double FullAiMs = 0.0;              // Full AI gather, combat step and scatter
     double CollectMs = 0.0;
-    double TotalMs = 0.0;             // Whole NPC update on the game thread
-    double FullRadiusM = 0.0;         // Budgeted radii this frame
+    double TotalMs = 0.0;               // Whole NPC update on the game thread
+    double FullRadiusM = 0.0;           // Budgeted radii this frame
     double MidRadiusM = 0.0;
-    double MeshRadiusM = 0.0;
+    double MeshRadiusM = 0.0;           // Derived from the pixel thresholds (SDD 54 4.5), then budgeted
     double InstancedRadiusM = 0.0;
-    FSOLNpcCombatStats Combat;        // Full AI and NPC combat (Part 10d)
+    bool bMeshBudgetBound = false;      // The fixed mesh pool shrank the mesh radius this frame (a reported limit)
+    bool bInstancedBudgetBound = false; // The fixed hull pool shrank the hull radius this frame
+    FSOLNpcCombatStats Combat;          // Full AI and NPC combat (Part 10d)
 };
 
 /**
@@ -140,6 +142,11 @@ public:
 
     // Returns the NPC count currently requested (0 when stopped)
     int32 GetRequestedCount() const { return mRequestedCount; }
+
+    // Returns the plume gate: live ships nearer than this, however drawn, get their flame data in the Collect pass (SDD
+    // 51 section 4.2, R4; SDD 54 4.7: SOLThruster::NpcThrustGateM of the view, the ribbon reach included while ribbons
+    // are on; public for the traffic smoke's V2 setup)
+    double ViewPlumeGateM() const;
 
     // Returns the Full AI and NPC combat state (bolts and events relative to GetCombatFrameBodyM)
     const FSOLNpcCombat& GetCombat() const { return mCombat; }
@@ -213,10 +220,6 @@ private:
 
     // Returns the angle one screen pixel spans, from the player camera (the Mid-to-Far snap gate)
     double ViewPixelAngleRad() const;
-
-    // Returns the plume gate: hull-drawn ships nearer than this get their plume thrust in the Collect pass (SDD 51
-    // section 4.2, R4: SOLThruster::NpcThrustGateM of the view, the ribbon reach included while ribbons are on)
-    double ViewPlumeGateM() const;
 
     // Writes the player camera's horizontal FOV (degrees) and the viewport size (px), with reference fallbacks
     void ViewCamera(double& outFovDeg, FVector2D& outViewportPx) const;

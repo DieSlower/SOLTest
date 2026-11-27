@@ -1009,8 +1009,8 @@ bool FSOLMenuStateDemoFormatDefaultsTest::RunTest(const FString& /*parameters*/)
         { EDemoOption::FullAiBudget, TEXT("4,000") },
         { EDemoOption::MidAiBudget, TEXT("100,000") },
         { EDemoOption::AiHysteresis, TEXT("0.10") },
-        { EDemoOption::MeshRadiusM, TEXT("2.0 km") },
-        { EDemoOption::InstancedRadiusM, TEXT("200 km") },
+        { EDemoOption::MeshMinPx, TEXT("16") },      // SDD 54 Q6: "Mesh from (px)", the label names the unit
+        { EDemoOption::HullMinPx, TEXT("4") },       // "Hull from (px)"
         { EDemoOption::MeshBudget, TEXT("32") },
         { EDemoOption::InstancedBudget, TEXT("20,000") },
         { EDemoOption::RenderHysteresis, TEXT("0.10") },
@@ -1076,6 +1076,18 @@ bool FSOLMenuStateDemoFormatValuesTest::RunTest(const FString& /*parameters*/)
     page.Options.MeshBudget = 999;
     TestEqual(TEXT("999 meshes"), FormatDemoValue(page, MenuStateTestOptionRow(EDemoOption::MeshBudget)),
         FString(TEXT("999")));
+
+    // Pixel thresholds (issue #54, part 54c, written after the code against SDD 54 Q6): whole px plain, a fraction
+    // with one decimal, no unit (the row label names it)
+    page.Options.HullMinPx = 3.0;
+    TestEqual(TEXT("hull 3 px"), FormatDemoValue(page, MenuStateTestOptionRow(EDemoOption::HullMinPx)),
+        FString(TEXT("3")));
+    page.Options.MeshMinPx = 128.0;
+    TestEqual(TEXT("mesh 128 px"), FormatDemoValue(page, MenuStateTestOptionRow(EDemoOption::MeshMinPx)),
+        FString(TEXT("128")));
+    page.Options.MeshMinPx = 14.5;
+    TestEqual(TEXT("mesh 14.5 px"), FormatDemoValue(page, MenuStateTestOptionRow(EDemoOption::MeshMinPx)),
+        FString(TEXT("14.5")));
 
     // Fractions with two decimals, seconds with none
     page.Options.LaneFraction = 0.333;

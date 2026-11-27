@@ -29,7 +29,14 @@ namespace
         using SOLNpcScale::EDemoOption;
         return id == EDemoOption::BattleRadiusM || id == EDemoOption::BattleMinDistanceM
             || id == EDemoOption::BattleMaxDistanceM || id == EDemoOption::FullAiRadiusM
-            || id == EDemoOption::MidAiRadiusM || id == EDemoOption::MeshRadiusM || id == EDemoOption::InstancedRadiusM;
+            || id == EDemoOption::MidAiRadiusM;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether an option is a size in 1080p reference pixels (the render tier thresholds, SDD 54 Q6)
+    bool DemoIsPixels(const SOLNpcScale::EDemoOption id)
+    {
+        return id == SOLNpcScale::EDemoOption::MeshMinPx || id == SOLNpcScale::EDemoOption::HullMinPx;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -328,6 +335,13 @@ FString SOLMenuState::FormatDemoValue(const FDemoPage& page, const int32 row)
     if (DemoIsSeconds(id))
     {
         return FString::Printf(TEXT("%.0f"), value) + SOLMenuText::DEMO_UNIT_SECONDS;
+    }
+    if (DemoIsPixels(id))
+    {
+        // The label names the unit ("Mesh from (px)"); whole pixels (the stepper's values) without decimals, a
+        // console-set fraction with one
+        return value == FMath::RoundToDouble(value) ? FString::Printf(TEXT("%.0f"), value)
+            : FString::Printf(TEXT("%.1f"), value);
     }
     if (desc.bInteger)
     {

@@ -75,8 +75,10 @@ namespace
         { SOLNpcScale::EDemoOption::FullAiBudget, 0.0, 20000.0, 500.0, 4000.0, true, false },
         { SOLNpcScale::EDemoOption::MidAiBudget, 0.0, 500000.0, 10000.0, 100000.0, true, false },
         { SOLNpcScale::EDemoOption::AiHysteresis, 0.0, 0.5, 0.05, 0.1, false, false },
-        { SOLNpcScale::EDemoOption::MeshRadiusM, 500.0, 20000.0, 500.0, 2000.0, false, false },
-        { SOLNpcScale::EDemoOption::InstancedRadiusM, 1000.0, 2000000.0, 10000.0, 200000.0, false, false },
+        { SOLNpcScale::EDemoOption::MeshMinPx, SOL::NPC_HULL_DOT_PX_MIN, 128.0, 1.0, SOL::NPC_MESH_MIN_PX, false,
+            false },
+        { SOLNpcScale::EDemoOption::HullMinPx, SOL::NPC_HULL_DOT_PX_MIN, 64.0, 1.0, SOL::NPC_HULL_DOT_PX, false,
+            false },
         { SOLNpcScale::EDemoOption::MeshBudget, 0.0, 256.0, 8.0, 32.0, true, false },
         { SOLNpcScale::EDemoOption::InstancedBudget, 0.0, 200000.0, 1000.0, 20000.0, true, false },
         { SOLNpcScale::EDemoOption::RenderHysteresis, 0.0, 0.5, 0.05, 0.1, false, false },
@@ -186,8 +188,8 @@ namespace
         case EDemoOption::FullAiBudget: options.FullAiBudget = asInt; break;
         case EDemoOption::MidAiBudget: options.MidAiBudget = asInt; break;
         case EDemoOption::AiHysteresis: options.AiHysteresis = value; break;
-        case EDemoOption::MeshRadiusM: options.MeshRadiusM = value; break;
-        case EDemoOption::InstancedRadiusM: options.InstancedRadiusM = value; break;
+        case EDemoOption::MeshMinPx: options.MeshMinPx = value; break;
+        case EDemoOption::HullMinPx: options.HullMinPx = value; break;
         case EDemoOption::MeshBudget: options.MeshBudget = asInt; break;
         case EDemoOption::InstancedBudget: options.InstancedBudget = asInt; break;
         case EDemoOption::RenderHysteresis: options.RenderHysteresis = value; break;
@@ -920,8 +922,8 @@ double SOLNpcScale::GetOption(const FDemoOptions& options, EDemoOption id)
     case EDemoOption::FullAiBudget: return options.FullAiBudget;
     case EDemoOption::MidAiBudget: return options.MidAiBudget;
     case EDemoOption::AiHysteresis: return options.AiHysteresis;
-    case EDemoOption::MeshRadiusM: return options.MeshRadiusM;
-    case EDemoOption::InstancedRadiusM: return options.InstancedRadiusM;
+    case EDemoOption::MeshMinPx: return options.MeshMinPx;
+    case EDemoOption::HullMinPx: return options.HullMinPx;
     case EDemoOption::MeshBudget: return options.MeshBudget;
     case EDemoOption::InstancedBudget: return options.InstancedBudget;
     case EDemoOption::RenderHysteresis: return options.RenderHysteresis;
@@ -953,21 +955,18 @@ SOLNpcScale::FSanitizeResult SOLNpcScale::SanitizeOptions(const FDemoOptions& op
         }
     }
 
-    // (2) - (7) Cross-option rules
+    // (2) - (6) Cross-option rules
     if (out.MidAiRadiusM < out.FullAiRadiusM)
     {
         out.MidAiRadiusM = out.FullAiRadiusM;
         result.Issues |= EOptionIssue::MidRadiusRaised;
     }
-    if (out.InstancedRadiusM > out.MidAiRadiusM)
+    // The render tier thresholds are pixel sizes (SDD 54 Q6): the mesh threshold never sits below the hull one (the Mid
+    // radius cap is applied per frame to the derived radii, not here)
+    if (out.MeshMinPx < out.HullMinPx)
     {
-        out.InstancedRadiusM = out.MidAiRadiusM;
-        result.Issues |= EOptionIssue::InstancedRadiusLowered;
-    }
-    if (out.MeshRadiusM > out.InstancedRadiusM)
-    {
-        out.MeshRadiusM = out.InstancedRadiusM;
-        result.Issues |= EOptionIssue::MeshRadiusLowered;
+        out.MeshMinPx = out.HullMinPx;
+        result.Issues |= EOptionIssue::MeshPxRaised;
     }
     if (out.BattleShipCount > out.NpcCount)
     {

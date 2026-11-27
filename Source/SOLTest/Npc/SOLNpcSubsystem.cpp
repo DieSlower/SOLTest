@@ -13,6 +13,7 @@
 #include "Npc/SOLNpcFragments.h"
 #include "Npc/SOLNpcFullAiProcessor.h"
 #include "Npc/SOLNpcMidProcessor.h"
+#include "Npc/SOLNpcPixelMath.h"
 #include "Npc/SOLNpcStatsText.h"
 #include "Npc/SOLNpcStatsWidget.h"
 #include "SOLConstants.h"
@@ -193,7 +194,7 @@ namespace
     {
         TEXT("NpcCount"), TEXT("LaneFraction"), TEXT("BattleShipCount"), TEXT("BattleCount"), TEXT("BattleRadiusM"),
         TEXT("BattleMinDistanceM"), TEXT("BattleMaxDistanceM"), TEXT("FullAiRadiusM"), TEXT("MidAiRadiusM"),
-        TEXT("FullAiBudget"), TEXT("MidAiBudget"), TEXT("AiHysteresis"), TEXT("MeshRadiusM"), TEXT("InstancedRadiusM"),
+        TEXT("FullAiBudget"), TEXT("MidAiBudget"), TEXT("AiHysteresis"), TEXT("MeshMinPx"), TEXT("HullMinPx"),
         TEXT("MeshBudget"), TEXT("InstancedBudget"), TEXT("RenderHysteresis"), TEXT("NpcCombat"), TEXT("ShowStats"),
         TEXT("RampSettleS"), TEXT("RampMeasureS"),
     };
@@ -1669,18 +1670,31 @@ void USOLNpcSubsystem::Update()
     inputs.bMidBudgetForced = inputs.MidRadiusM < mOptions.MidAiRadiusM;
     inputs.PixelAngleRad = ViewPixelAngleRad();
     inputs.PlumeGateM = ViewPlumeGateM();
-    ParallelFor(2, [this, &inputs, budgetDistancesM](const int32 tier)
+
+    // Render tier radii from pixel thresholds (SDD 54 4.5, Q12): the distances at which the placeholder hull's
+    // bounding sphere is the mesh and hull thresholds across at the view's reference focal, the thresholds times the
+    // QualityPreset scale (Epic without settings), capped by the Mid radius; the two fixed pools then shrink them
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+    const double focalRefPx = SOLThruster::FocalRefPx(fovDeg, viewportPx.X / viewportPx.Y);
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
+    const double qualityScale = SOLLaneNetwork::LaneTunnelQualityScale(settings != nullptr
+        ? settings->GetSavedValues().QualityPreset : SOL::NPC_TUNNEL_QUALITY_REFERENCE_PRESET);
+    const double meshNominalM = SOLNpcPixel::TierRadiusM(SOL::NPC_HULL_BOUNDING_DIAMETER_M, focalRefPx,
+        mOptions.MeshMinPx, qualityScale, inputs.MidRadiusM);
+    const double hullNominalM = SOLNpcPixel::TierRadiusM(SOL::NPC_HULL_BOUNDING_DIAMETER_M, focalRefPx,
+        mOptions.HullMinPx, qualityScale, inputs.MidRadiusM);
+    ParallelFor(2, [this, &inputs, budgetDistancesM, meshNominalM, hullNominalM](const int32 tier)
     {
         if (tier == 0)
         {
-            inputs.MeshRadiusM = SOLNpcScale::BudgetedRadiusM(budgetDistancesM,
-                FMath::Min(mOptions.MeshRadiusM, inputs.MidRadiusM), mOptions.RenderHysteresis, mOptions.MeshBudget,
-                mBudgetScratch[0]);
+            inputs.MeshRadiusM = SOLNpcScale::BudgetedRadiusM(budgetDistancesM, meshNominalM,
+                mOptions.RenderHysteresis, mOptions.MeshBudget, mBudgetScratch[0]);
             return;
         }
-        inputs.InstancedRadiusM = SOLNpcScale::BudgetedRadiusM(budgetDistancesM,
-            FMath::Min(mOptions.InstancedRadiusM, inputs.MidRadiusM), mOptions.RenderHysteresis,
-            mOptions.InstancedBudget, mBudgetScratch[1]);
+        inputs.InstancedRadiusM = SOLNpcScale::BudgetedRadiusM(budgetDistancesM, hullNominalM,
+            mOptions.RenderHysteresis, mOptions.InstancedBudget, mBudgetScratch[1]);
     });
     const double budgetedS = FPlatformTime::Seconds();
 
@@ -1721,6 +1735,8 @@ void USOLNpcSubsystem::Update()
     mStats.MidRadiusM = inputs.MidRadiusM;
     mStats.MeshRadiusM = inputs.MeshRadiusM;
     mStats.InstancedRadiusM = inputs.InstancedRadiusM;
+    mStats.bMeshBudgetBound = inputs.MeshRadiusM < meshNominalM;
+    mStats.bInstancedBudgetBound = inputs.InstancedRadiusM < hullNominalM;
     TRACE_COUNTER_SET(NpcFull, mStats.Full);
     TRACE_COUNTER_SET(NpcMid, mStats.Mid);
     TRACE_COUNTER_SET(NpcCandidates, mStats.Candidates);
@@ -1850,7 +1866,7 @@ void USOLNpcSubsystem::LogStats(const double realDeltaS)
     UE_LOG(LogSOL, Log, TEXT("NpcStats total=%d full=%d mid=%d far=%d mesh=%d inst=%d point=%d cand=%d groups=%d ")
         TEXT("changes=%d npcMs=%.3f npcMaxMs=%.3f eval=%.3f budget=%.3f select=%.3f mid=%.3f fullAi=%.3f ")
         TEXT("fullAiMean=%.3f collect=%.3f frameMs=%.2f gameMs=%.2f renderMs=%.2f gpuMs=%.2f gpuMean=%.2f ")
-        TEXT("gameMean=%.2f fullR=%.0f midR=%.0f meshR=%.0f instR=%.0f memMB=%.0f"),
+        TEXT("gameMean=%.2f fullR=%.0f midR=%.0f meshR=%.0f instR=%.0f meshCap=%d instCap=%d memMB=%.0f"),
         mStats.Total, mStats.Full, mStats.Mid, mStats.Far, mStats.Mesh, mStats.Instanced, mStats.Point,
         mStats.Candidates, mStats.CandidateGroups, mStats.TierChanges, mStatsLogNpcMsSum / frames, mStatsLogNpcMsMax,
         mStats.EvaluateMs, mStats.BudgetMs, mStats.SelectMs, mStats.MidMs, mStats.FullAiMs,
@@ -1858,7 +1874,8 @@ void USOLNpcSubsystem::LogStats(const double realDeltaS)
         mStatsLogFrameMsSum / frames, FPlatformTime::ToMilliseconds(GGameThreadTime),
         FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()),
         mStatsLogGpuMsSum / frames, mStatsLogGameMsSum / frames, mStats.FullRadiusM, mStats.MidRadiusM,
-        mStats.MeshRadiusM, mStats.InstancedRadiusM, UsedPhysicalMB());
+        mStats.MeshRadiusM, mStats.InstancedRadiusM, mStats.bMeshBudgetBound ? 1 : 0,
+        mStats.bInstancedBudgetBound ? 1 : 0, UsedPhysicalMB());
     const FSOLNpcCombatStats& combat = mStats.Combat;
     UE_LOG(LogSOL, Log, TEXT("NpcPhaseMax frame=%.2f eval=%.3f budget=%.3f select=%.3f mid=%.3f fullAi=%.3f ")
         TEXT("collect=%.3f combatAi=%.3f"), mStatsLogFrameMsMax, mStatsLogPhaseMaxMs[0], mStatsLogPhaseMaxMs[1],
@@ -1942,6 +1959,8 @@ void USOLNpcSubsystem::UpdateOverlay(const double realDeltaS)
     input.Point = mStats.Point;
     input.Instanced = mStats.Instanced;
     input.Mesh = mStats.Mesh;
+    input.bMeshBudgetBound = mStats.bMeshBudgetBound;
+    input.bInstancedBudgetBound = mStats.bInstancedBudgetBound;
     input.Awake = mStats.Candidates;
     input.TierChanges = mStats.TierChanges;
     input.bCombat = mOptions.bNpcCombat && CVarNpcCombat.GetValueOnGameThread() != 0;

@@ -24,6 +24,7 @@
 #include "Npc/SOLLaneRouteSmoke.h"
 #include "Npc/SOLLaneMergeSmoke.h"
 #include "Npc/SOLNpcLaneSmoke.h"
+#include "Npc/SOLNpcPixelSmoke.h"
 #include "Npc/SOLNpcTrafficSmoke.h"
 #include "Npc/SOLNpcTunnelSmoke.h"
 #include "Npc/SOLThrusterSmoke.h"
@@ -1040,6 +1041,7 @@ private:
     TUniquePtr<FSOLNpcLaneSmoke> mSmokeNpcLanes;            // Verification-only NPC lane-line script (SDD 38)
     TUniquePtr<FSOLNpcTunnelSmoke> mSmokeNpcTunnel;         // Verification-only NPC lane tunnel script (SDD 49)
     TUniquePtr<FSOLNpcTrafficSmoke> mSmokeNpcTraffic;       // Verification-only NPC lane traffic script (SDD 50)
+    TUniquePtr<FSOLNpcPixelSmoke> mSmokeNpcPixel;           // Verification-only NPC sub-pixel ship script (SDD 54)
     TUniquePtr<FSOLThrusterSmoke> mSmokeThruster;           // Verification-only NPC thruster plume script (SDD 51)
     TUniquePtr<FSOLPlayerThrusterSmoke> mSmokePlayerThruster; // Verification-only player plume script (SDD 51 51d)
     TUniquePtr<FSOLThrusterRibbonParitySmoke> mSmokeRibbonParity; // Verification-only ribbon renderer parity (51e)

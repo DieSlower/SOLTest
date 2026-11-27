@@ -316,6 +316,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeNpcTraffic = MakeUnique<FSOLNpcTrafficSmoke>();
         mSmokeNpcTraffic->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_PIXEL))
+    {
+        mSmokeNpcPixel = MakeUnique<FSOLNpcPixelSmoke>();
+        mSmokeNpcPixel->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_THRUSTER))
     {
         mSmokeThruster = MakeUnique<FSOLThrusterSmoke>();
@@ -429,7 +434,8 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
-        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid() || mSmokeRibbonParity.IsValid()
+        || mSmokeNpcPixel.IsValid() || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid()
+        || mSmokeRibbonParity.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid() || mSmokeLaneRoute.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
@@ -497,6 +503,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeNpcLanes.Reset();
     mSmokeNpcTunnel.Reset();
     mSmokeNpcTraffic.Reset();
+    mSmokeNpcPixel.Reset();
     mSmokeThruster.Reset();
     mSmokePlayerThruster.Reset();
     mSmokeRibbonParity.Reset();
@@ -557,6 +564,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeNpcTraffic.IsValid() && mSmokeNpcTraffic->Update(*this, deltaSeconds))
     {
         mSmokeNpcTraffic.Reset();
+    }
+    if (mSmokeNpcPixel.IsValid() && mSmokeNpcPixel->Update(*this, deltaSeconds))
+    {
+        mSmokeNpcPixel.Reset();
     }
     if (mSmokeThruster.IsValid() && mSmokeThruster->Update(*this, deltaSeconds))
     {
@@ -1096,7 +1107,8 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeNpcLanes.IsValid() || mSmokeNpcTunnel.IsValid() || mSmokeNpcTraffic.IsValid()
-        || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid() || mSmokeRibbonParity.IsValid()
+        || mSmokeNpcPixel.IsValid() || mSmokeThruster.IsValid() || mSmokePlayerThruster.IsValid()
+        || mSmokeRibbonParity.IsValid()
         || mSmokeLaneMerge.IsValid() || mSmokeAutoLanes.IsValid() || mSmokeLaneRoute.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()

@@ -887,7 +887,8 @@ namespace SOLMenuText
             "points while their lane is large enough on screen); the rings and lines glow with the HUD glow setting. "
             "Close to a lane "
             "its ships show as points again (from about 2.4 pixels of lane radius on screen, fully from about 9.6 "
-            "pixels, more at lower graphics quality) and you can fly through its tunnel. The "
+            "pixels, more at lower graphics quality), but only the ones that are themselves at least about a pixel "
+            "across, so only the ships fairly near you, and you can fly through its tunnel. The "
             "lane's rule is keep right: the green dots and chevrons on the right wall mark the way out from the inner "
             "body, the red ones on the left the way back; they show where the rings are far enough apart on screen. "
             "The rings stay fixed to the lane, and everything moves with the lane under time warp. A label on the "
@@ -977,8 +978,13 @@ namespace SOLMenuText
         TEXT("The Demo page (main menu, or the Demo tab here) fills the solar system with up to a million NPC ships "
             "on lanes between the planets, in clusters around bodies and the asteroid belt, and in battles a few "
             "kilometres from you. Ships near you fly and fight with full AI; farther ones follow simpler motion and "
-            "are drawn as points, or not at all along a far lane, whose tunnel stands for them (see the overlays). "
-            "An NPC hull drawn near you shows a blue-white engine plume while its main engine burns; it goes dark "
+            "are drawn as points while the ship is at least about a pixel across on screen (fading in from one to "
+            "two pixels), and not drawn at all when smaller, which is every ship beyond about 33 km at a normal "
+            "view, so the distant crowd stays on the radar and can still be selected but is no longer a sea of dots. "
+            "Along a far lane its tunnel stands for the ships (see the overlays). Ships are drawn as full hulls "
+            "from about 4 pixels across and as detailed models from about 16, so their hulls appear only within a "
+            "few kilometres. An NPC ship shows a blue-white engine plume while its main engine burns and the "
+            "plume is long enough to see, even when the ship itself is only a dot; it goes dark "
             "while the ship coasts or flips over mid-lane. "
             "Ctrl+F2 shows or hides the stats overlay. "
             "Ctrl+F1 does the same as Esc, for "
@@ -1086,8 +1092,8 @@ namespace SOLMenuText
         TEXT("Full AI budget"),
         TEXT("Mid AI budget"),
         TEXT("AI hysteresis"),
-        TEXT("Mesh radius"),
-        TEXT("Instanced radius"),
+        TEXT("Mesh from (px)"),
+        TEXT("Hull from (px)"),
         TEXT("Mesh budget"),
         TEXT("Instanced budget"),
         TEXT("Render hysteresis"),

@@ -52,8 +52,10 @@ class USOLSettingsSubsystem;
  * - Plumes (SDD 51, part 51c): both hull layers draw the thruster hull meshes, whose plume, glow and burst sections
  *   read per-ship floats (SOL::ThrusterMaterialParams: c, b, the true plume length; bursts zero until 51g) from the
  *   instance custom data (ISMs) or the custom primitive data (pool), written in the placement pass from each ship's
- *   ThrustLocalG; only instances with a plume this frame or last are rewritten. Dot-drawn ships get none (Q27); the
- *   material fades and collapses a section by its true pixel size. sol.NpcPlumes 0 draws the plain shapes (A/B).
+ *   ThrustLocalG; only instances with a plume this frame or last are rewritten. Dot-drawn ships get no floats (the
+ *   glow is a hull section, SDD 54 4.7); the material fades and collapses a section by its true pixel size.
+ *   sol.NpcPlumes 0 draws the plain shapes (A/B). The thruster flames are fed from the same pass for every ship with
+ *   flame data, dot-drawn and hidden ones included (their own pixel rule, SDD 54 4.7, Q7).
  * - Lane lines (SDD 38): each lane with ships is a pair of flowing dashed hologram lines, one world-space ribbon mesh
  *   built once per population (LaneLines, M_SOLNpcLanes) and placed on the GPU from the group texture, whose free .w
  *   channels carry the lane radius and traffic weight (ship counts from a histogram folded into the rail fill). The
@@ -128,6 +130,9 @@ public:
     // Returns the 1080p-reference focal length the last redraw judged the plumes' pixel size with (verification)
     double GetPlumeFocalRefPx() const { return mPlumeFocalRefPx; }
 
+    // Returns whether the GPU far layer component is shown since the last redraw (SDD 54 4.6; verification)
+    bool IsFarLayerShown() const { return mIsFarLayerShown; }
+
 protected:
 
     // Loads the assets, builds the block mesh and subscribes to NPC updates
@@ -166,12 +171,16 @@ private:
 
     // Per frame: the lanes shown, the far points' crossfade, the lane component's visibility, the flow clock, the
     // tunnels (SDD 49), the shared occluders' flag, the glow and the lane material's frame parameters
-    void UpdateLanes(const FLinearColor& frameParams);
+    void UpdateLanes(const FLinearColor& frameParams, bool bMapOpen);
+
+    // Returns whether the local player's jump map is open
+    bool IsMapOpen() const;
 
     // Updates one faction's hull instances: grows or shrinks the count and writes only the used range
     void UploadHulls(int32 faction);
 
-    // Writes this frame's group points (relative to the viewpoint) and the point parameters
+    // Writes this frame's group points (relative to the viewpoint) and the point parameters, and shows or hides the far
+    // layer (SDD 54 4.6)
     void UpdateFarPoints();
 
     // Places the CPU ships: mesh pool, instanced hulls and CPU points
@@ -185,9 +194,6 @@ private:
 
     // Sizes a points ISM to blockCount instances, the custom data of each being its first ship index
     static void SizePointBlocks(UInstancedStaticMeshComponent* component, int32 blockCount, int32& inOutCurrent);
-
-    // Returns the world size of one pixel at a render distance (cm), from the player camera and the viewport size
-    double PixelWorldCm(double distanceCm) const;
 
     // Writes the player camera's horizontal FOV (degrees) and the viewport size (px), with reference fallbacks
     void ViewCamera(double& outFovDeg, FVector2D& outViewportPx) const;
@@ -287,7 +293,11 @@ private:
     TArray<FTransform> mHullPrevTransforms[2];
     TArray<int32> mShipSlots;                         // Scratch: each CPU ship's slot in its layer this frame
     TArray<FVector4f> mPointRelM;                     // Scratch: each Point-tier CPU ship's drawn position relative to
-                                                      // the viewpoint, w 1 when the CPU draws it (the Mid hand-over)
+                                                      // the viewpoint, w 1 when the CPU draws it (the Mid hand-over),
+                                                      // 0 when the far layer does, -1 when never drawn (parked or
+                                                      // outside its lane window)
+    TArray<int32> mDotFlameSlots;                     // Scratch: each Point-tier CPU ship's ribbon feed ordinal among
+                                                      // this frame's dot flames (SDD 54 4.7), INDEX_NONE for none
     TArray<int32> mMeshPoolOwners;                    // NPC index each pool mesh showed last frame (INDEX_NONE: none)
     TArray<int32> mMeshPoolShips;                     // Scratch: this frame's CPU ship index per used pool mesh, in
                                                       // placement order (their ribbon feeds, SDD 51 R7)
@@ -314,6 +324,9 @@ private:
     bool mAreLanesShown = false;                      // Last frame's lanes shown
     bool mIsPointCrossfadeOn = false;                 // NpcParams4.x last pushed to the far points
     bool mHasPushedPointCrossfade = false;            // ...pushed at least once
+    bool mIsPointMapFlagOn = false;                   // NpcParams5.w last pushed to both point layers (SDD 54 Q9)
+    bool mHasPushedPointMapFlag = false;              // ...pushed at least once
+    bool mIsFarLayerShown = true;                     // Far layer component visibility last applied (SDD 54 4.6)
     bool mAreLaneLinesDrawn = false;                  // Lane component visibility last applied
     bool mIsLaneOverlayDrawn = false;                 // Lane lines or tunnels drawn, as told to the orbit lines
     bool mIsLaneOverride = false;                     // Verification: the Lanes row is not read

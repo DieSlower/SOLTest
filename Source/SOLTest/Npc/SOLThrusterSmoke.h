@@ -24,17 +24,20 @@ class UWorld;
  * one is already requested), turns NPC combat (sol.Npc.Combat; not for the profile), the space dust, the orbit lines,
  * the lane lines and the tunnels off in memory, so no player setting is read or written. The viewpoint then rides
  * along (pinned every frame at a fixed offset, at the ship's own velocity) with the hardest-burning Earth-Mars lane ship
- * that stays in Accelerate or Brake, and later with one that stays in Coast or Flip at a Mid-tier, hull-drawn distance
- * when one exists (at the default radii the Full radius lies beyond the plume gate, so it is a Full ship). Over a window of frames every CPU ship is
+ * that stays in Accelerate or Brake, and later with one that stays in Coast or Flip at a hull-drawn distance inside
+ * the plume gate (at the default radii the 50 km Full radius lies beyond the hull radius and the plume gate, so every
+ * hull checked there is a Full ship and P2 has no Mid half). Over a window of frames every CPU ship is
  * scanned against what the renderer actually pushed (ASOLNpcVisuals::GetPushedPlume): P1 the hull-drawn lane ships in
  * Accelerate or Brake inside the plume gate with a plume of at least 1 reference px have b > 0 and L > 0, b near
  * SOLThruster::PlumeBrightness of the rail G (the worst error per AI tier reported; Full ships add their AI's
- * acceleration); P2 a coasting or flipping one has b = 0 (a Mid-tier one with b > 0 fails; Full ones are reported); P3
- * no dot-drawn ship has a plume or a plume thrust; P4 after sol.NpcPlumes 0 and back to 1 the burning ship's b is
- * nonzero again; P5 every hull-drawn ship's pushed floats (battle ships included, pool and instanced) equal
- * SOLThruster::PlumeInstance of its own plume thrust. The scans also run at the spawn view first (the battles' hulls
- * and the dot-drawn ships). One screenshot (Thruster_<w>x<h>_lane.png) frames the burning ship side-on. Each check
- * logs a LogSOL PASS / FAIL line, then a SUMMARY line, and the game quits.
+ * acceleration); P2 coasting or flipping ones are seen dark (Full ones with b > 0, from their
+ * AI's acceleration, are reported; a Mid one with b > 0 would fail); P3 only a dot with flame data (live, inside the
+ * plume gate, SDD 54 section 4.7) has a plume thrust (its flame is fed; the burning ones are counted; a dot's pushed
+ * plume floats are reported, never written by construction since the glow is a hull section); P4 after sol.NpcPlumes 0
+ * and back to 1 the burning ship's b is nonzero again; P5 every hull-drawn ship's pushed floats (battle ships
+ * included, pool and instanced) equal SOLThruster::PlumeInstance of its own plume thrust. The scans also run at the
+ * spawn view first (the battles' hulls and the dot-drawn ships). One screenshot (Thruster_<w>x<h>_lane.png) frames
+ * the burning ship side-on. Each check logs a LogSOL PASS / FAIL line, then a SUMMARY line, and the game quits.
  *
  * With -SOLSmokeThrusterProfile (-game only) it instead profiles sol.NpcPlumes 1 (A) against 0 (B, the plain hull
  * meshes, no custom floats and no Collect thrust) in interleaved windows (A B B A ...), first at the Earth spawn view
@@ -74,7 +77,7 @@ private:
         PlumesOff,          // sol.NpcPlumes 0 for a few frames
         PlumesOn,           // sol.NpcPlumes 1 again; then P4
         Shot,               // The screenshot is written while still riding along
-        CoastSettle,        // Riding along with a coasting lane ship at a Mid-tier hull distance
+        CoastSettle,        // Riding along with a coasting lane ship at a hull-drawn distance inside the plume gate
         CoastScan,          // P1-P3 scanned every frame; then the verdicts
         ProfileSpawn,       // Interleaved windows at the Earth spawn view
         ProfileLaneSettle,  // Riding along with a braking lane ship; settle
@@ -92,7 +95,10 @@ private:
     {
         int32 Frames = 0;
         int32 Dots = 0;                     // Dot-drawn ship-frames seen
-        int32 DotPlumes = 0;                // ...with pushed floats or a nonzero plume thrust
+        int32 DotGlows = 0;                 // ...with pushed plume floats (reported: none by construction)
+        int32 DotThrustNoData = 0;          // ...with a nonzero plume thrust but no flame data (P3 fails on any)
+        int32 DotBurning = 0;               // ...with flame data and a nonzero main-engine thrust (SDD 54 4.7: their
+                                            // flames are fed)
         int32 Hulls = 0;                    // Hull-drawn ship-frames seen
         int32 BurnSeen[2] = { 0, 0 };       // Per AI tier (0 Full, 1 Mid): Accelerate / Brake ship-frames checked
         int32 BurnLit[2] = { 0, 0 };        // ...with b > 0 and L > 0
@@ -207,7 +213,6 @@ private:
     bool mHasBurnTarget = false;            // The burning ship was a CPU ship when the plumes went back on
     float mOnBrightness = 0.0f;             // ...and its b then
     float mOnLengthM = 0.0f;
-    bool mIsMidBandEmpty = false;           // P2: no Mid-tier hull distance exists (Full radius beyond the hulls')
 
     // The profile
     int32 mProfileWindow = 0;               // Window in the current view

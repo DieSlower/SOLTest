@@ -8,6 +8,7 @@
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Npc/SOLNpcAiMath.h"
 #include "Npc/SOLNpcHullInstances.h"
+#include "Npc/SOLNpcPixelMath.h"
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "Npc/SOLNpcSubsystem.h"
@@ -69,8 +70,12 @@ namespace
     const FName PARAM_0(TEXT("NpcParams0"));          // (rail time since the GPU epoch s, Mid radius m, ship count,
                                                       //  mode 0 rail / 1 CPU)
     const FName PARAM_1(TEXT("NpcParams1"));          // (viewpoint render cm xyz, max render distance cm)
-    const FName PARAM_2(TEXT("NpcParams2"));          // (min pixels, ship radius m, brightness ref m, brightness min)
+    const FName PARAM_2(TEXT("NpcParams2"));          // (raster floor device px, bounding radius m, brightness ref m,
+                                                      //  brightness min; SOLNpcPixel::PointParams2)
     const FName PARAM_3(TEXT("NpcParams3"));          // (brightness exponent, emissive, rail tex width, CPU tex width)
+    const FName PARAM_5(TEXT("NpcParams5"));          // (hide px, full px, reference height px, map flag;
+                                                      //  SOLNpcPixel::PointParams5, SDD 54)
+    const FName PARAM_6(TEXT("NpcParams6"));          // (dot cap px, 0, 0, 0; SOLNpcPixel::PointParams6, SDD 54 Q13)
     const FName PARAM_FACTION_0(TEXT("NpcFaction0Color"));
     const FName PARAM_FACTION_1(TEXT("NpcFaction1Color"));
     const FName PARAM_HULL_TINT(TEXT("Tint"));
@@ -743,7 +748,7 @@ void ASOLNpcVisuals::FillRailTexels(FVector4f* texels, const int32 texelCount, c
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes this frame's group points (relative to the viewpoint) and the point parameters
+// Writes this frame's group points (relative to the viewpoint) and the point parameters; shows or hides the far layer
 void ASOLNpcVisuals::UpdateFarPoints()
 {
     const FSOLNpcRailFrame& frame = Npcs->GetRailFrame();
@@ -793,9 +798,7 @@ void ASOLNpcVisuals::UpdateFarPoints()
     const FVector viewRenderCm = Anchor->UniverseToRenderCm(viewpointM);
     const FLinearColor params1(viewRenderCm.X, viewRenderCm.Y, viewRenderCm.Z,
         static_cast<float>(SOL::DEFAULT_MAX_RENDER_DISTANCE_CM));
-    const FLinearColor params2(static_cast<float>(SOL::NPC_POINT_MIN_PIXELS),
-        static_cast<float>(SOL::NPC_HULL_LENGTH_M * 0.5), static_cast<float>(SOL::NPC_POINT_BRIGHTNESS_REF_M),
-        static_cast<float>(SOL::NPC_POINT_BRIGHTNESS_MIN));
+    const FLinearColor params2 = SOLNpcPixel::PointParams2();
     const FLinearColor params3(static_cast<float>(SOL::NPC_POINT_BRIGHTNESS_EXPONENT),
         static_cast<float>(SOL::NPC_POINT_EMISSIVE), static_cast<float>(SOL::NPC_RAIL_TEXTURE_WIDTH),
         static_cast<float>(SOL::NPC_CPU_TEXTURE_WIDTH));
@@ -807,7 +810,42 @@ void ASOLNpcVisuals::UpdateFarPoints()
     }
     FarMaterial->SetVectorParameterValue(PARAM_0, FLinearColor(static_cast<float>(frame.RailTimeS - mGpuRailEpochS),
         static_cast<float>(stats.MidRadiusM), static_cast<float>(Npcs->GetRails().Num()), 0.0f));
-    UpdateLanes(params1);
+
+    // The sub-pixel rule (SDD 54 4.4, 4.6, Q9): the jump map keeps today's dots (map flag, pushed on a change only) and
+    // the far layer is shown only while its nearest ship, at the Mid radius, can pass the 1 px cutoff at the live
+    // focal (never the quality-scaled one), visibility changed on a flip only
+    const bool bMapOpen = IsMapOpen();
+    if (!mHasPushedPointMapFlag || bMapOpen != mIsPointMapFlagOn)
+    {
+        mHasPushedPointMapFlag = true;
+        mIsPointMapFlagOn = bMapOpen;
+        const FLinearColor params5 = SOLNpcPixel::PointParams5(bMapOpen);
+        const FLinearColor params6 = SOLNpcPixel::PointParams6();
+        FarMaterial->SetVectorParameterValue(PARAM_5, params5);
+        CpuPointMaterial->SetVectorParameterValue(PARAM_5, params5);
+        FarMaterial->SetVectorParameterValue(PARAM_6, params6);
+        CpuPointMaterial->SetVectorParameterValue(PARAM_6, params6);
+    }
+    double fovDeg = 0.0;
+    FVector2D viewportPx;
+    ViewCamera(fovDeg, viewportPx);
+    const bool bFarShown = SOLNpcPixel::FarLayerShown(bMapOpen, SOLThruster::FocalRefPx(fovDeg,
+        viewportPx.X / viewportPx.Y), stats.MidRadiusM);
+    if (bFarShown != mIsFarLayerShown)
+    {
+        mIsFarLayerShown = bFarShown;
+        FarPoints->SetVisibility(bFarShown);
+    }
+    UpdateLanes(params1, bMapOpen);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the local player's jump map is open
+bool ASOLNpcVisuals::IsMapOpen() const
+{
+    const APlayerController* controller = GetWorld()->GetFirstPlayerController();
+    const ASOLShipPawn* pawn = controller != nullptr ? Cast<ASOLShipPawn>(controller->GetPawn()) : nullptr;
+    return pawn != nullptr && pawn->IsMapOpen();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -890,7 +928,7 @@ void ASOLNpcVisuals::BuildLaneMesh()
 
 //////////////////////////////////////////////////////////////////////////
 // Per frame: lanes shown, the far points' crossfade, the lane component, the flow clock, the glow and the frame
-void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
+void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams, const bool bMapOpen)
 {
     SCOPE_CYCLE_COUNTER(STAT_SOL_NpcLanes);
 
@@ -927,8 +965,6 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
 
     // The component: shown with a drawn lane, on the jump map only (SDD 52 D1)
     const APlayerController* controller = GetWorld()->GetFirstPlayerController();
-    const ASOLShipPawn* pawn = controller != nullptr ? Cast<ASOLShipPawn>(controller->GetPawn()) : nullptr;
-    const bool bMapOpen = pawn != nullptr && pawn->IsMapOpen();
     const bool bDraw = bCrossfade && SOLNpcLane::ShouldDrawLaneLines(mAreLanesShown, bMapOpen, mLaneFrame);
     if (bDraw != mAreLaneLinesDrawn)
     {
@@ -1016,7 +1052,6 @@ void ASOLNpcVisuals::UpdateCpuShips()
         mHullPrevTransforms[faction].Reset();
     }
     const double lengthCm = SOL::NPC_HULL_LENGTH_M * SOL::METERS_TO_CM;
-    const double pixelPerCm = PixelWorldCm(1.0);
     const FVector viewRenderCm(origin.UniverseToRenderCm(viewpointM));
     double fovDeg = 0.0;
     FVector2D viewportPx;
@@ -1025,7 +1060,7 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const bool bPlumes = mArePlumeMeshes;
 
     // Returns a hull-drawn ship's plume floats from its main-engine thrust and its true hull length at a render
-    // distance (SDD 51 sections 4.3, 4.5; dot-drawn ships never get here, Q27)
+    // distance (SDD 51 sections 4.3, 4.5; the glow is a hull section, so dot-drawn ships never get here, SDD 54 4.7)
     const auto shipPlume = [this, bPlumes](const FSOLNpcCpuShip& ship, const double distanceCm)
     {
         return bPlumes ? SOLThruster::PlumeInstance(ship.ThrustLocalG.X, false, SOL::Thruster::NPC_HULL_LENGTH_M,
@@ -1034,7 +1069,8 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const float gpuHideRadiusM = static_cast<float>(Npcs->GetStats().MidRadiusM);
     int32 meshSlots[2] = { 0, 1 };
 
-    // The thruster flames (SDD 51 R7, R2, R4, R10): fed from this pass for the hull-drawn ships; switches read once
+    // The thruster flames (SDD 51 R7, R2, R4, R10): fed from this pass for the hull-drawn ships and the dot-drawn or
+    // hidden ships with flame data (SDD 54 4.7, Q7: the flame keeps its own pixel rule); switches read once
     // here, never in the parallel tasks. Off with the plume meshes too (sol.NpcPlumes 0 collects no thrust)
     ASOLThrusterRibbons* const ribbons = bPlumes && IsValid(ThrusterRibbons)
         && ASOLThrusterRibbons::AreRibbonsEnabled() ? ThrusterRibbons.Get() : nullptr;
@@ -1047,12 +1083,13 @@ void ASOLNpcVisuals::UpdateCpuShips()
         + SOL::Thruster::FLAME_REACH_BEND_MARGIN * SOL::Thruster::FLAME_LENGTH_FACTOR
         * SOL::Thruster::NPC_HULL_LENGTH_M;
 
-    // Feeds a hull-drawn ship's flame from its raw main-engine thrust (not the glow's pixel-gated PlumeInstance), only
-    // while the ship's largest flame touches last frame's view frustum (R10-Q8: a ship turning into view grows its
-    // flame in at v_e over 1-3 frames; off screen its flame is released once its gas has left): a new flame only for a
-    // burning ship whose flame reaches V on screen (left pending for the serial commit), a ship with a flame always,
-    // committed in place from this task (the store runs the spool-down). Positions in render-space metres (Unreal
-    // axes, after the rebase), the nozzle offset and exhaust in non-rotating world axes (one nozzle on the aft centre)
+    // Feeds a ship's flame (hull, dot or hidden) from its raw main-engine thrust (not the glow's pixel-gated
+    // PlumeInstance), only while the ship's largest flame touches last frame's view frustum (R10-Q8: a ship turning
+    // into view grows its flame in at v_e over 1-3 frames; off screen its flame is released once its gas has left): a
+    // new flame only for a burning ship whose flame reaches V on screen (left pending for the serial commit), a ship
+    // with a flame always, committed in place from this task (the store runs the spool-down). Positions in
+    // render-space metres (Unreal axes, after the rebase), the nozzle offset and exhaust in non-rotating world axes
+    // (one nozzle on the aft centre)
     const auto feedRibbon = [ribbons, ribbonVanishPx, focalRefPx](const FSOLNpcCpuShip& ship,
         const FVector& locationCm, const FVector& prevLocationCm, const double distanceCm, FSOLRibbonFeed& outPending)
     {
@@ -1104,14 +1141,17 @@ void ASOLNpcVisuals::UpdateCpuShips()
     // The Mid hand-over of the Point-tier ships (SDD 50 section 4.6), in parallel before the slots: a lane ship is
     // drawn here exactly where the point shader hides it (the float mirror of SOLNpcTraffic.ush on this frame's GPU
     // inputs, its length against the Mid radius) and blended from the mirror's position at the Mid radius to the
-    // double one at the hull radius; other ships by their bare-rail distance at their double position. Per ship: the
-    // two GPU rail texels and one float evaluation, no allocation
+    // double one at the hull radius or the 1 px distance, whichever is farther, and at the double one whenever the
+    // double distance is inside that (SDD 54 4.5: every dot that can be seen sits at its double position, however far
+    // off the mirror is); other ships by their bare-rail distance at their double position. Per ship: the two GPU rail
+    // texels and one float evaluation, no allocation
     const TConstArrayView<FSOLNpcRail> rails = Npcs->GetRails();
     const TConstArrayView<FSOLLaneProfile> laneProfiles = Npcs->GetGroups().LaneProfile;
     const TConstArrayView<FVector4f> groupTexels = mGroupTexels[mUploadRing];
     const bool bHasGroupRows = groupTexels.Num() >= SOL::NPC_GROUP_TEXTURE_WIDTH * SOL::NPC_GROUP_TEXTURE_ROWS;
     const float shaderTimeS = static_cast<float>(Npcs->GetRailFrame().RailTimeS - mGpuRailEpochS);
-    const double hullStartM = Npcs->GetStats().InstancedRadiusM;
+    const double hullStartM = SOLNpcPixel::HandOverStartM(Npcs->GetStats().InstancedRadiusM,
+        SOL::NPC_HULL_BOUNDING_DIAMETER_M, focalRefPx, SOL::NPC_SHIP_HIDE_PX);
     const uint8 laneKind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane);
     constexpr int32 SHIPS_PER_TASK = 1024;
     mPointRelM.SetNumUninitialized(ships.Num(), EAllowShrinking::No);
@@ -1129,8 +1169,8 @@ void ASOLNpcVisuals::UpdateCpuShips()
             const FSOLNpcRail* rail = rails.IsValidIndex(ship.NpcIndex) ? &rails[ship.NpcIndex] : nullptr;
             if (rail != nullptr && SOLNpcRail::IsParked(*rail))
             {
-                // A parked lane ship (free-pool block) is never drawn
-                mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+                // A parked lane ship (free-pool block) is never drawn (w -1: no flame either)
+                mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, -1.0f);
                 continue;
             }
             if (bHasGroupRows && rail != nullptr && rail->Kind == laneKind && laneProfiles.IsValidIndex(rail->Group)
@@ -1147,10 +1187,10 @@ void ASOLNpcVisuals::UpdateCpuShips()
                 }
 
                 // Outside its slot's window (docked, or a closed lane) or on an inactive lane the shader hides the
-                // ship, so the CPU does too (SDD 53 R8, Q21; the same float test on the same texels)
+                // ship, so the CPU does too (SDD 53 R8, Q21; the same float test on the same texels; w -1: no flame)
                 if (!SOLNpcTrafficMirror::LaneShipPointDrawn(texelA, texelB, rows, shaderTimeS))
                 {
-                    mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+                    mPointRelM[index] = FVector4f(0.0f, 0.0f, 0.0f, -1.0f);
                     continue;
                 }
                 const SOLNpcTrafficMirror::FHandOver handOver = SOLNpcTrafficMirror::CpuPointHandOver(
@@ -1180,13 +1220,16 @@ void ASOLNpcVisuals::UpdateCpuShips()
     // Serial pass: each ship's slot in its layer (texel or per-faction instance; mesh-pool ships are placed here,
     // INDEX_NONE), so the heavy per-ship work below can run in parallel (SDD 11 Amendment 6)
     mShipSlots.SetNumUninitialized(ships.Num(), EAllowShrinking::No);
+    mDotFlameSlots.SetNumUninitialized(ships.Num(), EAllowShrinking::No);
     mMeshPoolShips.Reset();
     int32 pointCount = 0;
+    int32 dotFlameCount = 0;
     int32 instanceCounts[2] = { 0, 0 };
     for (int32 index = 0; index < ships.Num(); ++index)
     {
         const FSOLNpcCpuShip& ship = ships[index];
         const int32 faction = ship.Faction & 1;
+        mDotFlameSlots[index] = INDEX_NONE;
         if (ship.bHidden != 0)
         {
             mShipSlots[index] = INDEX_NONE;
@@ -1196,7 +1239,15 @@ void ASOLNpcVisuals::UpdateCpuShips()
         {
             // At or beyond the Mid radius the far layer draws this ship's rail point (Mid hysteresis band): drawing it
             // here too would double it (the hand-over pass above decided by the far layer's own test)
-            mShipSlots[index] = mPointRelM[index].W > 0.5f ? pointCount++ : INDEX_NONE;
+            const float drawnW = mPointRelM[index].W;
+            mShipSlots[index] = drawnW > 0.5f ? pointCount++ : INDEX_NONE;
+
+            // A ribbon feed slot for every dot or hidden ship with flame data that is ever drawn (SDD 54 4.7): coasting
+            // ones too, so a flame that is already lit spools down instead of vanishing with its feed
+            if (ribbons != nullptr && ship.bFlameData != 0 && drawnW >= 0.0f)
+            {
+                mDotFlameSlots[index] = dotFlameCount++;
+            }
             continue;
         }
         if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Mesh)
@@ -1237,11 +1288,12 @@ void ASOLNpcVisuals::UpdateCpuShips()
     }
 
     // Ribbon feed slots: the pool meshes' ships first (fed here, serially), then faction 0's and faction 1's instance
-    // slots (fed by the parallel pass, one slot per ship)
+    // slots, then the dot flames (both fed by the parallel pass, one slot per ship)
     const int32 meshFeeds = mMeshPoolShips.Num();
     const int32 instanceFeedBase[2] = { meshFeeds, meshFeeds + instanceCounts[0] };
+    const int32 dotFeedBase = meshFeeds + instanceCounts[0] + instanceCounts[1];
     const TArrayView<FSOLRibbonFeed> ribbonFeeds = ribbons != nullptr
-        ? ribbons->BeginNpcFeeds(meshFeeds + instanceCounts[0] + instanceCounts[1]) : TArrayView<FSOLRibbonFeed>();
+        ? ribbons->BeginNpcFeeds(dotFeedBase + dotFlameCount) : TArrayView<FSOLRibbonFeed>();
     if (ribbons != nullptr)
     {
         for (int32 feed = 0; feed < meshFeeds; ++feed)
@@ -1254,8 +1306,9 @@ void ASOLNpcVisuals::UpdateCpuShips()
         }
     }
 
-    // Parallel pass: point texels and instanced hulls (never smaller than a few pixels, previous transform from the
-    // ship's own last position) with their plume floats; each task notes its lowest and highest slot with a plume
+    // Parallel pass: point texels, the flame feeds of dot and hidden ships with flame data (SDD 54 4.7) and instanced
+    // hulls (drawn from the quality-scaled hull threshold up; previous transform from the ship's own last position)
+    // with their plume floats; each task notes its lowest and highest slot with a plume
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::PlaceShips);
     ParallelFor(blockCount, [&](const int32 block)
     {
@@ -1266,25 +1319,39 @@ void ASOLNpcVisuals::UpdateCpuShips()
             const FSOLNpcCpuShip& ship = ships[index];
             const int32 slot = mShipSlots[index];
             const int32 faction = ship.Faction & 1;
-            if (slot == INDEX_NONE)
-            {
-                continue;
-            }
             if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point))
             {
-                const FVector4f& relM = mPointRelM[index];
-                cpuTexels[slot] = FVector4f(relM.X, relM.Y, relM.Z, static_cast<float>(faction));
+                if (slot != INDEX_NONE)
+                {
+                    const FVector4f& relM = mPointRelM[index];
+                    cpuTexels[slot] = FVector4f(relM.X, relM.Y, relM.Z, static_cast<float>(faction));
+                }
+
+                // A dot or hidden ship's flame (SDD 54 4.7), at the ship's double position whichever layer draws its
+                // dot (every dot that can be seen sits there, 4.5); slots are only handed out while the ribbons are on
+                const int32 flameSlot = mDotFlameSlots[index];
+                if (flameSlot != INDEX_NONE)
+                {
+                    const FVector locationCm(origin.UniverseToRenderCm(ship.PositionM));
+                    const FVector prevLocationCm(origin.UniverseToRenderCm(ship.PrevPositionM));
+                    feedRibbon(ship, locationCm, prevLocationCm, FMath::Max((locationCm - viewRenderCm).Size(), 1.0),
+                        ribbonFeeds[dotFeedBase + flameSlot]);
+                }
+                continue;
+            }
+            if (slot == INDEX_NONE)
+            {
                 continue;
             }
             FVector locationCm, prevLocationCm;
             FQuat rotation;
             placeShip(ship, faction, locationCm, prevLocationCm, rotation);
+            // The hull at its true length (SDD 54 4.5: no pixel floor; the tier rule keeps it above 2 px)
             const double distanceCm = FMath::Max((locationCm - viewRenderCm).Size(), 1.0);
-            const double sizeCm = FMath::Max(lengthCm, SOL::NPC_HULL_MIN_PIXELS * pixelPerCm * distanceCm);
-            mHullTransforms[faction][slot] = HullTransform(locationCm, rotation, faction, sizeCm);
-            mHullPrevTransforms[faction][slot] = HullTransform(prevLocationCm, rotation, faction, sizeCm);
+            mHullTransforms[faction][slot] = HullTransform(locationCm, rotation, faction, lengthCm);
+            mHullPrevTransforms[faction][slot] = HullTransform(prevLocationCm, rotation, faction, lengthCm);
 
-            // Plume floats (SDD 51 section 4.10): the true plume, judged by its true size, not the inflated hull's
+            // Plume floats (SDD 51 section 4.10): the true plume, judged by its true size
             const FSOLPlumeInstance plume = shipPlume(ship, distanceCm);
             SOLThruster::PlumeCustomData(plume, MakeArrayView(mHullPlumeData[faction].GetData() + slot * PLUME_FLOATS,
                 PLUME_FLOATS));
@@ -1415,19 +1482,6 @@ void ASOLNpcVisuals::UploadHulls(const int32 faction)
         prevTransforms[slot] = hidden;
     }
     hulls->BatchUpdateInstancesTransforms(0, transforms, prevTransforms, false, false, true);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns the world size of one pixel at a render distance (cm), from the player camera
-double ASOLNpcVisuals::PixelWorldCm(const double distanceCm) const
-{
-    double fovDeg = 0.0;
-    FVector2D viewportPx;
-    ViewCamera(fovDeg, viewportPx);
-
-    // The camera's FOV is horizontal, so one pixel spans the view width over the viewport's pixel width (square
-    // pixels, any aspect)
-    return 2.0 * distanceCm * FMath::Tan(FMath::DegreesToRadians(fovDeg) * 0.5) / viewportPx.X;
 }
 
 //////////////////////////////////////////////////////////////////////////

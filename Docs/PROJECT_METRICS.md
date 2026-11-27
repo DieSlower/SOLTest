@@ -4,30 +4,30 @@
 
 What building SOLTest has cost so far. **Generated** by `Tools/Metrics/update_metrics.py` (`Tools\UpdateMetrics.bat`); do not edit by hand. Rule and design: `CLAUDE.md` (Project metrics), [SDD 41](SDDs/41-project-metrics-tracking.md).
 
-Last updated: 2026-11-26. Tracking since 2026-09-27 (16 sessions).
+Last updated: 2026-11-27. Tracking since 2026-09-27 (16 sessions).
 
 ## Totals
 
 | Metric | Value |
 |---|---|
-| Work time (wall-clock, agent running; parallel agents do not add up) | 182.9 h |
-| Human answer time (waiting on the user's replies) | 13.2 h |
-| Agent time (sum of every subagent's run time; parallel agents add up) | 833.4 h |
-| Tokens, all | 9,902.3M |
-| of which new input / cache writes / cache reads / output | 0.1M / 260.9M / 9,602.6M / 38.7M |
-| Notional API price (list rates, see Method) | $3,862 |
-| Subagents dispatched | 728 |
+| Work time (wall-clock, agent running; parallel agents do not add up) | 186.7 h |
+| Human answer time (waiting on the user's replies) | 13.4 h |
+| Agent time (sum of every subagent's run time; parallel agents add up) | 839.6 h |
+| Tokens, all | 10,090.9M |
+| of which new input / cache writes / cache reads / output | 0.1M / 265.1M / 9,786.2M / 39.5M |
+| Notional API price (list rates, see Method) | $3,934 |
+| Subagents dispatched | 742 |
 
 ## By model
 
 | Model | New input | Cache writes | Cache reads | Output | Notional price |
 |---|---:|---:|---:|---:|---:|
-| claude-opus-5-5 | 0.1M | 198.7M | 8,019.2M | 33.5M | $3,267 |
-| claude-sonnet-5-5 | 0.0M | 46.8M | 779.2M | 3.1M | $353 |
+| claude-opus-5-5 | 0.1M | 202.2M | 8,189.3M | 34.2M | $3,333 |
+| claude-sonnet-5-5 | 0.0M | 47.4M | 792.8M | 3.2M | $359 |
 | claude-sonnet-5 | 0.0M | 15.3M | 803.4M | 2.1M | $241 |
 | claude-fable-5-2 | 0.0M | 0.1M | 0.3M | 0.0M | $1.31 |
 | claude-haiku-5-5 | 0.0M | 0.1M | 0.5M | 0.0M | $0.02 |
-| **Total** | 0.1M | 260.9M | 9,602.6M | 38.7M | **$3,862** |
+| **Total** | 0.1M | 265.1M | 9,786.2M | 39.5M | **$3,934** |
 
 ## Subagents by type, model and effort
 
@@ -35,18 +35,18 @@ Effort is the level the agent's messages actually ran at (`default` = none recor
 
 | Agent type | Model | Effort | Agents | Tokens | Agent time | Notional price |
 |---|---|---|---:|---:|---:|---:|
-| general-purpose | claude-opus-5-5 | high | 282 | 4,927.8M | 326.4 h | $1,925 |
-| general-purpose | claude-opus-5-5 | medium | 214 | 1,969.2M | 436.6 h | $769 |
-| general-purpose | claude-opus-5-5 | xhigh | 87 | 1,235.2M | 46.3 h | $529 |
-| general-purpose | claude-sonnet-5-5 | medium | 109 | 176.8M | 12.1 h | $76.10 |
+| general-purpose | claude-opus-5-5 | high | 292 | 5,083.2M | 331.8 h | $1,984 |
+| general-purpose | claude-opus-5-5 | medium | 215 | 1,972.4M | 436.7 h | $771 |
+| general-purpose | claude-opus-5-5 | xhigh | 88 | 1,250.9M | 46.6 h | $535 |
+| general-purpose | claude-sonnet-5-5 | medium | 111 | 184.8M | 12.4 h | $78.72 |
 | claude | claude-opus-5-5 | medium | 5 | 119.3M | 9.4 h | $43.48 |
 | general-purpose | claude-sonnet-5 | high | 9 | 40.0M | 1.8 h | $13.20 |
-| general-purpose | claude-sonnet-5-5 | high | 4 | 33.6M | 0.5 h | $9.25 |
+| general-purpose | claude-sonnet-5-5 | high | 4 | 34.3M | 0.6 h | $9.41 |
 | general-purpose | claude-sonnet-5-5 | low | 15 | 6.5M | 0.2 h | $4.06 |
 | Explore | claude-sonnet-5-5 | medium | 1 | 0.2M | 0.0 h | $0.14 |
 | general-purpose | claude-haiku-5-5 | low | 1 | 0.6M | 0.0 h | $0.01 |
 | general-purpose | claude-haiku-5-5 | medium | 1 | 0.0M | 0.0 h | $0.01 |
-| **Total** | | | **728** | **8,509.2M** | **833.4 h** | **$3,370** |
+| **Total** | | | **742** | **8,692.2M** | **839.6 h** | **$3,439** |
 
 ## Main contexts by model and effort
 
@@ -54,10 +54,10 @@ The interactive sessions (not counted as agents).
 
 | Model | Effort | Tokens | Notional price |
 |---|---|---:|---:|
-| claude-sonnet-5-5 | medium | 611.9M | $263 |
+| claude-sonnet-5-5 | medium | 617.6M | $266 |
 | claude-sonnet-5 | high | 780.8M | $227 |
 | claude-fable-5-2 | medium | 0.3M | $1.31 |
-| **Total** | | **1,393.1M** | **$492** |
+| **Total** | | **1,398.7M** | **$495** |
 
 ## Method and caveats
 

@@ -29,14 +29,18 @@ struct FSOLNpcCpuShip
     uint8 RenderTier = 2;                             // SOLNpcScale::ERenderTier
     uint8 AiTier = 1;                                 // SOLNpcScale::EAiTier
     FVector3f HeadingDirection = FVector3f::ZeroVector; // Unit hull heading (ecliptic): a Full ship's nose, a Mid
-                                                      // ship's SOLNpcAi::HullForward (zero for Point-tier ships)
+                                                      // ship's SOLNpcAi::HullForward (zero for a Point-tier ship
+                                                      // without flame data)
     FVector3f HeadingTop = FVector3f::ZeroVector;     // Hull body top (ecliptic, not yet orthogonal to the heading):
                                                       // a Full ship's attitude up, else a lane ship's LaneHullBasis
                                                       // top or the radial up hint (SOLNpcRail::HullUpHint)
     FVector3f ThrustLocalG = FVector3f::ZeroVector;   // Plume thrust in G in the drawn hull frame (X nose, Y right, Z
-                                                      // top, Unreal axes; SDD 51 section 4.2): hull-drawn ships inside
-                                                      // the plume gate only, else zero; transient, never saved
+                                                      // top, Unreal axes; SDD 51 section 4.2): ships with flame data
+                                                      // only, else zero; transient, never saved
     uint8 bHidden = 0;                                // Dead (waiting to respawn): not drawn
+    uint8 bFlameData = 0;                             // Live and inside the plume gate, however drawn (SDD 54 4.7,
+                                                      // Q7): heading, top and ThrustLocalG collected (zero thrust
+                                                      // while coasting), so its flame is fed and can spool down
     int32 NpcIndex = INDEX_NONE;                      // Population index (stable owner key for pooled meshes)
     float RailDistanceM = 0.0f;                       // Bare-rail distance from the viewpoint (the GPU far layer's
                                                       // test: at or beyond the Mid radius the GPU draws the point)
@@ -95,8 +99,10 @@ public:
         double InstancedRadiusM = 0.0;                // Budgeted
         double RenderHysteresis = 0.0;
         double PixelAngleRad = 0.0;                   // One pixel's angle on screen (Mid-to-Far snap gate)
-        double PlumeGateM = 0.0;                      // Collect: plume thrust only for hull-drawn ships nearer than
-                                                      // this (SOLThruster::PlumeMaxDistanceM of the view, SDD 51 4.2)
+        double PlumeGateM = 0.0;                      // Collect: flame data (heading, top, plume thrust) for live
+                                                      // ships nearer than this, however they are drawn
+                                                      // (SOLThruster::NpcThrustGateM of the view, SDD 51 4.2, SDD 54
+                                                      // 4.7)
         bool bMidBudgetForced = false;                // The Mid budget shrank the Mid radius (demotions are forced)
         TConstArrayView<double> GroupOpenStartRailS;  // Per lane column: its slot's open window in rail time (SDD 53
         TConstArrayView<double> GroupCloseRailS;      // 5.4; NaN = none, so its ships are docked); empty = no network,

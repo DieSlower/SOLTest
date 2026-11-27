@@ -1999,6 +1999,10 @@ namespace SOL
         // The sim date -SOLSmokeAutoLanes starts at unless -SOLSimDate= is given (the lane's length and the planets'
         // places decide the trip times and views), pinned like the merge smoke's
         inline constexpr const TCHAR* SMOKE_AUTO_LANES_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
+        // NPC sub-pixel ship rule (SDD 54 section 9.6, cases a-f): render tiers against true px, the far layer skip,
+        // the jump map's dots, a hidden ship's icon and selection, the screenshot GPU check at 0.8 / 1.5 / 3 px, then
+        // quit
+        inline constexpr const TCHAR* SMOKE_NPC_PIXEL = TEXT("SOLSmokeNpcPixel");
         // AUTO lane routing and Sun safety (SDD 53 6.4, 6.5): multi-hop plans at three warps, a held lane closing for
         // the Sun, the Sun detour on every AUTO order, the override (radial row) and the stop at the zone, then quit
         inline constexpr const TCHAR* SMOKE_LANE_ROUTE = TEXT("SOLSmokeLaneRoute");
@@ -2697,13 +2701,37 @@ namespace SOL
                                                                        // time runs this far (sim s) from its epoch...
     inline constexpr double NPC_GPU_RAIL_EPOCH_MIN_INTERVAL_S = 2.0;   // ...at most once per this many real seconds
                                                                        // (Amendment 7)
-    inline constexpr double NPC_POINT_MIN_PIXELS = 2.0;                // Point diameter floor, in pixels
     inline constexpr double NPC_HULL_LENGTH_M = 30.0;                  // Placeholder hull length
-    inline constexpr double NPC_HULL_MIN_PIXELS = 3.0;                 // Instanced hulls never shrink below this
-    inline constexpr double NPC_REFERENCE_VIEWPORT_WIDTH_PX = 1920.0;  // Pixel-size fallback before a viewport exists
+    inline constexpr double NPC_REFERENCE_VIEWPORT_WIDTH_PX = 1920.0;  // View-size fallback before a viewport exists
     inline constexpr int32 NPC_HULL_MIN_INSTANCES = 1024;              // Hull ISM instance count floor once grown...
     inline constexpr int32 NPC_HULL_SHRINK_FRAMES = 300;               // ...shrunk after this many frames in a row
                                                                        // using under a quarter of the instances
+    // The sub-pixel ship rule (SDD 54, Q1-Q5; sizes in 1080p reference px of the ship's true on-screen size)
+    inline constexpr double NPC_SHIP_HIDE_PX = 1.0;                    // A ship at or under this size is not drawn...
+    inline constexpr double NPC_SHIP_DOT_FULL_PX = 2.0;                // ...its dot fades in linearly to full here
+    inline constexpr double NPC_HULL_DOT_PX = 4.0;                     // Instanced hull above this size, else a dot
+    inline constexpr double NPC_MESH_MIN_PX = 16.0;                    // Full mesh above this size, else a hull
+    inline constexpr double NPC_HULL_BOUNDING_DIAMETER_M = 34.467;     // Bounding diameter of the placeholder hulls
+                                                                       // (the 12 x 12 x 30 m cone's box diagonal)
+    inline constexpr double NPC_POINT_RASTER_MIN_DEVICE_PX = 1.0;      // A drawn dot is never under this many device
+                                                                       // px across (rasterization floor)
+    inline constexpr double NPC_POINT_REFERENCE_HEIGHT_PX = 1080.0;    // Viewport height the reference px are for
+    inline constexpr double NPC_POINT_DOT_MAX_PX = 4.0;                // A dot is drawn at most this size (the
+                                                                       // reference hull switch; quality never grows it)
+    static_assert(NPC_SHIP_HIDE_PX > 0.0 && NPC_SHIP_HIDE_PX < NPC_SHIP_DOT_FULL_PX,
+        "the dot fades in over a positive pixel range");
+    static_assert(NPC_HULL_DOT_PX / 1.5 >= NPC_SHIP_DOT_FULL_PX,
+        "a hull only replaces a fully faded-in dot, with room");
+    static_assert(NPC_POINT_DOT_MAX_PX == NPC_HULL_DOT_PX,
+        "the dot is capped at the hull switch size of the reference (Epic) preset");
+    static_assert(NPC_POINT_DOT_MAX_PX > NPC_SHIP_DOT_FULL_PX,
+        "the cap never shrinks a dot that is still fading in");
+    static_assert(NPC_MESH_MIN_PX > NPC_HULL_DOT_PX * 1.5, "the mesh and hull thresholds are well apart");
+    inline constexpr double NPC_HULL_DOT_PX_MIN = 3.0;                 // Lowest Demo "Hull from (px)" (and mesh) value
+    static_assert(NPC_HULL_DOT_PX_MIN / 1.5 >= NPC_SHIP_DOT_FULL_PX && NPC_HULL_DOT_PX_MIN <= NPC_HULL_DOT_PX,
+        "no Demo setting keeps a hull (hysteresis up to 0.5) under the dot's full size");
+    static_assert(NPC_HULL_BOUNDING_DIAMETER_M > 0.0 && NPC_POINT_RASTER_MIN_DEVICE_PX >= 0.0,
+        "a positive hull diameter and a non-negative raster floor");
     inline constexpr double NPC_POINT_BRIGHTNESS_REF_M = 2.0e6;        // Full brightness up to this distance...
     inline constexpr double NPC_POINT_BRIGHTNESS_EXPONENT = 0.5;       // ...then falls off as (ref / d)^exponent...
     inline constexpr double NPC_POINT_BRIGHTNESS_MIN = 0.04;           // ...down to this floor (open question 9)

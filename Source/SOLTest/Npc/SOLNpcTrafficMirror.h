@@ -29,8 +29,12 @@ namespace SOLNpcTrafficMirror
 
     // Returns the CPU point hand-over of a lane ship (SDD 50 section 4.6): the CPU draws it exactly where the point
     // shader hides it (the float mirror's length below the Mid radius, the shader's length(relM) < P0.y), at the
-    // mirror's position at the Mid radius, smoothstepped to the double position cpuRelM by hullStartM (the instanced
-    // hull radius), so the hand-over neither pops nor doubles or drops the point
+    // mirror's position at the Mid radius, smoothstepped by the mirror's length to the double position cpuRelM at
+    // hullStartM (the hull radius or the 1 px distance, the farther, SOLNpcPixel::HandOverStartM), so the hand-over
+    // neither pops nor doubles or drops the point. While the double distance is under hullStartM the double position
+    // is drawn whatever the mirror says (SDD 54 4.5: on an outer lane the mirror is tens to hundreds of km off, which
+    // keyed to its length alone would draw a visible dot tens of px off and make it jump at the hull demotion); the
+    // step where the double distance crosses hullStartM is at the 1 px cutoff or the hull switch, where it is not seen
     inline FHandOver CpuPointHandOver(const FVector3f& mirrorRelM, const FVector3d& cpuRelM, const float midRadiusM,
         const double hullStartM)
     {
@@ -41,8 +45,8 @@ namespace SOLNpcTrafficMirror
         if (result.bCpuDraws)
         {
             const double midM = static_cast<double>(midRadiusM);
-            const double mirrorWeight = FMath::SmoothStep(FMath::Min(hullStartM, midM), midM,
-                static_cast<double>(mirrorM));
+            const double mirrorWeight = cpuRelM.SizeSquared() < hullStartM * hullStartM ? 0.0
+                : FMath::SmoothStep(FMath::Min(hullStartM, midM), midM, static_cast<double>(mirrorM));
             result.RelM = FVector3f(cpuRelM + (FVector3d(mirrorRelM) - cpuRelM) * mirrorWeight);
         }
         return result;

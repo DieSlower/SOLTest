@@ -162,8 +162,8 @@ namespace SOLNpcScale
         FullAiBudget,
         MidAiBudget,
         AiHysteresis,
-        MeshRadiusM,
-        InstancedRadiusM,
+        MeshMinPx,
+        HullMinPx,
         MeshBudget,
         InstancedBudget,
         RenderHysteresis,
@@ -189,10 +189,10 @@ namespace SOLNpcScale
         int32 FullAiBudget = 4000;
         int32 MidAiBudget = 100000;
         double AiHysteresis = 0.1;
-        double MeshRadiusM = 2000.0;
-        double InstancedRadiusM = 200000.0;
-        int32 MeshBudget = 32;
-        int32 InstancedBudget = 20000;
+        double MeshMinPx = SOL::NPC_MESH_MIN_PX;      // Full mesh above this true size (reference px, SDD 54 Q6)
+        double HullMinPx = SOL::NPC_HULL_DOT_PX;      // Instanced hull above this true size, else a dot
+        int32 MeshBudget = 32;                        // Fixed mesh pool: a hard limit only (SDD 54 Q6)
+        int32 InstancedBudget = 20000;                // Fixed hull pool: a hard limit only
         double RenderHysteresis = 0.1;
         bool bNpcCombat = true;
         bool bShowStats = true;
@@ -219,8 +219,7 @@ namespace SOLNpcScale
         None = 0,
         ValueClamped = 1 << 0,                // A field was non-finite or outside its descriptor range
         MidRadiusRaised = 1 << 1,
-        InstancedRadiusLowered = 1 << 2,
-        MeshRadiusLowered = 1 << 3,
+        MeshPxRaised = 1 << 3,                // MeshMinPx < HullMinPx: raised to it (1 << 2 is retired, SDD 54 Q6)
         BattleShipsLimited = 1 << 4,          // BattleShipCount > NpcCount
         BattleDistanceRaised = 1 << 5,        // BattleMaxDistanceM < BattleMinDistanceM
         BattleShipsOverFullBudget = 1 << 6,   // Warning only, nothing changed

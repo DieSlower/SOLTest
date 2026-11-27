@@ -2252,6 +2252,57 @@ bool FSOLNpcRailCpuPointHandOverTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailCpuPointHandOverInsideTest, "SOLTest.NpcRail.CpuPointHandOverInside",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 54 4.5 (issue #54 review H1; written after the fix, by its implementer): inside the hand-over start the CPU point
+// sits at the double position by the double distance, whatever the float mirror says (on an outer lane it is tens to
+// hundreds of km off); beyond the start the mirror-keyed blend is unchanged and still lands on the mirror at the Mid
+// radius; with a mirror that agrees with the double position, crossing the start does not step
+bool FSOLNpcRailCpuPointHandOverInsideTest::RunTest(const FString& /*parameters*/)
+{
+    const float midM = 2.0e6f;
+    const double startM = 3.31e4;
+
+    // A mirror 100 km off a ship 9 km away: the double position
+    const FVector3d trueM(9000.0, 0.0, 0.0);
+    const FVector3f farMirror(9000.0f, 1.0e5f, 0.0f);
+    const SOLNpcTrafficMirror::FHandOver inside = SOLNpcTrafficMirror::CpuPointHandOver(farMirror, trueM, midM, startM);
+    TestTrue(TEXT("9 km, mirror 100 km off: the CPU draws it"), inside.bCpuDraws);
+    TestTrue(TEXT("9 km, mirror 100 km off: at the double position"), FVector3d(inside.RelM).Equals(trueM, 1.0e-2));
+
+    // Just beyond the start: the old mirror-keyed blend (the smoothstep of the mirror's length)
+    const FVector3d beyondM(startM * 1.001, 0.0, 0.0);
+    const SOLNpcTrafficMirror::FHandOver beyond = SOLNpcTrafficMirror::CpuPointHandOver(farMirror + FVector3f(
+        static_cast<float>(beyondM.X - 9000.0), 0.0f, 0.0f), beyondM, midM, startM);
+    const FVector3d beyondMirror = FVector3d(farMirror) + FVector3d(beyondM.X - 9000.0, 0.0, 0.0);
+    const double weight = FMath::SmoothStep(startM, static_cast<double>(midM), FVector3d(FVector3f(beyondMirror))
+        .Size());
+    TestTrue(TEXT("just beyond the start: the mirror-keyed blend"), FVector3d(beyond.RelM).Equals(beyondM
+        + (beyondMirror - beyondM) * weight, 1.0));
+
+    // Just inside the Mid radius: still the mirror's position (no pop at the far layer hand-over)
+    const FVector3f midMirror(std::nextafter(midM, 0.0f), 0.0f, 0.0f);
+    const SOLNpcTrafficMirror::FHandOver atMid = SOLNpcTrafficMirror::CpuPointHandOver(midMirror,
+        FVector3d(midMirror) + FVector3d(0.0, 1.0e5, 0.0), midM, startM);
+    TestTrue(TEXT("just inside the Mid radius: the CPU draws it"), atMid.bCpuDraws);
+    TestTrue(TEXT("just inside the Mid radius: at the mirror's position"),
+        (FVector3d(atMid.RelM) - FVector3d(midMirror)).Size() <= 1.0e-4 * 1.0e5 + 1.0);
+
+    // A mirror 30 m off: crossing the start moves the drawn point by under a metre
+    const FVector3f smallOffset(0.0f, 30.0f, 0.0f);
+    const FVector3d justInM(startM * (1.0 - 1.0e-7), 0.0, 0.0);
+    const FVector3d justOutM(startM * (1.0 + 1.0e-7), 0.0, 0.0);
+    const FVector3d drawnIn(SOLNpcTrafficMirror::CpuPointHandOver(FVector3f(justInM) + smallOffset, justInM, midM,
+        startM).RelM);
+    const FVector3d drawnOut(SOLNpcTrafficMirror::CpuPointHandOver(FVector3f(justOutM) + smallOffset, justOutM, midM,
+        startM).RelM);
+    TestTrue(TEXT("a consistent mirror: no step across the start"), (drawnOut - drawnIn).Size() <= 1.0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailLaneThrustTest, "SOLTest.NpcRail.LaneThrust",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

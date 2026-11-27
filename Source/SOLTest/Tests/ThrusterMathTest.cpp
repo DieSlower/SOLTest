@@ -3,6 +3,7 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Npc/SOLNpcPixelMath.h"
 #include "Visuals/SOLThrusterMath.h"
 #include "Visuals/SOLThrusterMirror.h"
 #include "Visuals/SOLThrusterRibbons.h"
@@ -26,7 +27,8 @@
 // the contract: lengths 1e-3 m, scalars 1e-4, unless a case states otherwise (the R10 cases 20-23: 1e-4 m, 1e-5).
 // Hull frame: X nose, Y right, Z top (UE axes). Values the contract marks as parameters (the LOD bands, the burst
 // threshold, the exhaust speed v_e, the streak depths) are passed as arguments here, so tuning them later does not
-// touch this file.
+// touch this file. Exception: case NpcFlameData (issue #54 part 54e, SDD 54 section 4.7) was written test-after by the
+// agent that implemented it, from the SDD's figures, not from a contract; there is no spec-first author for it.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -1028,8 +1030,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLThrusterGasBurstsTest, "SOLTest.Thruster.Ga
 
 //////////////////////////////////////////////////////////////////////////
 // Case 13: the gas leaves opposite to the thrust, the burst strength ramp (threshold and reference as test parameters),
-// the main plume and bursts independent and the burst length L_hull / 6 x s (no plume or burst on dot-drawn ships,
-// Q27, holds by construction: only the hull-drawn pass feeds them; -SOLSmokeThruster's P3-dots-no-plume checks it)
+// the main plume and bursts independent and the burst length L_hull / 6 x s (no glow or burst floats on dot-drawn
+// ships, SDD 54 4.7, holds by construction: only the hull-drawn pass writes them; -SOLSmokeThruster's
+// P3-dot-thrust-gated reports it; the flames are not hull sections and follow their own rule, case NpcFlameData)
 bool FSOLThrusterGasBurstsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLThruster;
@@ -1988,6 +1991,86 @@ bool FSOLThrusterThrustGateTest::RunTest(const FString& /*parameters*/)
             }
         }
     }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLThrusterNpcFlameDataTest, "SOLTest.Thruster.NpcFlameData",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case NpcFlameData (issue #54 part 54e, test-after by the implementing agent; SDD 54 section 4.7, Q7): the Collect
+// pass gives every live ship strictly inside the thrust gate its flame data whatever its render tier (the predicate has
+// no tier input), and a lane ship's flame is still lit where its hull has become a dot (90 degrees, 1920x1080, Epic)
+bool FSOLThrusterNpcFlameDataTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLThruster;
+    constexpr double focalRefPx = 960.0;                            // FocalRefPx(90, 16/9)
+
+    // The predicate: strictly inside a positive gate, live only; NaN and bad gates give no data
+    TestTrue(TEXT("live, 1 km inside a 10 km gate"), NpcHasFlameData(FMath::Square(1000.0), 10000.0, true));
+    TestTrue(TEXT("live, at 0 m"), NpcHasFlameData(0.0, 10000.0, true));
+    TestFalse(TEXT("dead, 1 km inside"), NpcHasFlameData(FMath::Square(1000.0), 10000.0, false));
+    TestFalse(TEXT("exactly at the gate (strict)"), NpcHasFlameData(FMath::Square(10000.0), 10000.0, true));
+    TestFalse(TEXT("beyond the gate"), NpcHasFlameData(FMath::Square(10001.0), 10000.0, true));
+    TestFalse(TEXT("gate 0 (plumes off)"), NpcHasFlameData(0.0, 0.0, true));
+    TestFalse(TEXT("negative gate (no squaring past the sign)"), NpcHasFlameData(FMath::Square(1000.0), -10000.0,
+        true));
+    TestFalse(TEXT("NaN gate"), NpcHasFlameData(FMath::Square(1000.0), THRUSTER_NAN, true));
+    TestFalse(TEXT("NaN distance"), NpcHasFlameData(THRUSTER_NAN, 10000.0, true));
+    TestTrue(TEXT("infinite gate, finite distance"), NpcHasFlameData(FMath::Square(1.0e9), THRUSTER_INF, true));
+
+    // The figures of SDD 54 section 4.7 (Epic: V = 1 px): the hardest-burning lane ship (1.65 G) on the 30 m hull
+    const double vanishPx = RibbonVanishPx(3);
+    TestEqual(TEXT("Epic V = 1 px"), vanishPx, 1.0, 1.0e-9);
+    const double plumeM = PlumeLengthM(SOL::Thruster::NPC_HULL_LENGTH_M, 1.65);
+    TestEqual(TEXT("L_p(30 m, 1.65 G) = 9.659 m"), plumeM, 9.659, 1.0e-3);
+
+    // Where the hull becomes a dot (its 34.467 m bounding sphere 4 px across, quality scale 1) the flame is still about
+    // 0.79 alpha, so tying the flame to the hull tier would pop it (the SDD's "about 0.7")
+    const double hullSwitchM = SOLNpcPixel::PixelRadiusM(SOL::NPC_HULL_BOUNDING_DIAMETER_M, focalRefPx,
+        SOL::NPC_HULL_DOT_PX);
+    TestEqual(TEXT("hull switch 8,272 m"), hullSwitchM, 8272.08, 0.01);
+    const double switchPx = RibbonPixelLength(plumeM, hullSwitchM, focalRefPx);
+    TestEqual(TEXT("flame 3.363 px at the hull switch"), switchPx, 3.363, 2.0e-3);
+    TestEqual(TEXT("flame alpha 0.788 at the hull switch"), RibbonPixelFade(switchPx, vanishPx), 0.788, 1.0e-3);
+
+    // Full alpha (4 V) to about 6.95 km, gone (V) at about 27.8 km, both inside the Epic gate (86.4 km)
+    const double gateM = NpcThrustGateM(SOL::Thruster::NPC_HULL_LENGTH_M, SOL::Thruster::NPC_NOZZLE_RADIUS_M,
+        focalRefPx, true, vanishPx);
+    const double fullM = focalRefPx * SOL::Thruster::FLAME_LENGTH_FACTOR * plumeM
+        / (SOL::Thruster::RIBBON_FADE_START_FACTOR * vanishPx);
+    const double goneM = focalRefPx * SOL::Thruster::FLAME_LENGTH_FACTOR * plumeM / vanishPx;
+    TestEqual(TEXT("full alpha out to 6,954 m"), fullM, 6954.5, 2.0);
+    TestEqual(TEXT("gone at 27,818 m"), goneM, 27818.0, 5.0);
+    TestEqual(TEXT("fade 1 at the full distance"), RibbonPixelFade(RibbonPixelLength(plumeM, fullM, focalRefPx),
+        vanishPx), 1.0, 1.0e-6);
+    TestEqual(TEXT("fade 0 at the gone distance"), RibbonPixelFade(RibbonPixelLength(plumeM, goneM, focalRefPx),
+        vanishPx), 0.0, 1.0e-6);
+    TestTrue(TEXT("the gone distance lies inside the Epic thrust gate"), goneM < gateM);
+
+    // A dot ship anywhere the flame can still be seen has flame data: 20 km is between the hull switch and the 1 px
+    // ship distance (33.1 km), and the flame there is 1.39 px long (lit)
+    constexpr double dotDistanceM = 20000.0;
+    const double hiddenM = SOLNpcPixel::PixelRadiusM(SOL::NPC_HULL_BOUNDING_DIAMETER_M, focalRefPx,
+        SOL::NPC_SHIP_HIDE_PX);
+    TestTrue(TEXT("20 km: a dot (beyond the hull switch, inside the 1 px distance)"),
+        dotDistanceM > hullSwitchM && dotDistanceM < hiddenM);
+    TestTrue(TEXT("20 km: flame data"), NpcHasFlameData(FMath::Square(dotDistanceM), gateM, true));
+    TestTrue(TEXT("20 km: flame lit"), RibbonPixelFade(RibbonPixelLength(plumeM, dotDistanceM, focalRefPx),
+        vanishPx) > 0.0);
+
+    // A hidden ship (under 1 px, 40 km) inside the gate still has flame data; its flame is already gone by its own rule
+    constexpr double hiddenShipM = 40000.0;
+    TestTrue(TEXT("40 km: hidden (under 1 px)"), hiddenShipM > hiddenM);
+    TestTrue(TEXT("40 km: flame data"), NpcHasFlameData(FMath::Square(hiddenShipM), gateM, true));
+    TestEqual(TEXT("40 km: flame alpha 0"), RibbonPixelFade(RibbonPixelLength(plumeM, hiddenShipM, focalRefPx),
+        vanishPx), 0.0, 1.0e-9);
+
+    // The 22 km figure (SDD 54 4.7 against SDD 51's 1.03 px): this formula gives 1.25 px for 1.63 G and 1.26 for 1.65
+    TestEqual(TEXT("1.63 G at 22 km: 1.252 px"), RibbonPixelLength(PlumeLengthM(SOL::Thruster::NPC_HULL_LENGTH_M, 1.63),
+        22000.0, focalRefPx), 1.252, 1.0e-3);
+    TestEqual(TEXT("1.65 G at 22 km: 1.265 px"), RibbonPixelLength(plumeM, 22000.0, focalRefPx), 1.265, 1.0e-3);
     return true;
 }
 

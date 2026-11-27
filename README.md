@@ -269,7 +269,7 @@ The player ship's one-piece thruster flame (issue #51) at war power, seen from b
 
 ![NPC thruster flames along a lane](Docs/Images/51-thruster-flame-npc-lane.png)
 
-NPC ships in a lane (issue #51): each hull-drawn ship trails its own flame, scaled by its thrust.
+NPC ships in a lane (issue #51): each ship trails its own flame, scaled by its thrust (a ship too far to show as a hull keeps its flame while the flame is long enough to see).
 
 ![Lane traffic flowing through the Earth-Mars tunnel](Docs/Images/50-lane-traffic-flow.png)
 
@@ -295,6 +295,14 @@ AUTO to Saturn from Earth (issue #53): the autopilot plans the fastest chain of 
 
 The round command menu of a body now has 11 rows (issue #53): the new Toggle Sun Safety row switches the Sun safety override, which lets AUTO orders fly through the danger zone of 20 Sun radii (a SUN SAFETY OFF line shows while it is on). With safety on, every AUTO order detours around the Sun.
 
+![One NPC ship at three on-screen sizes](Docs/Images/54-npc-dot-size-ladder.png)
+
+NPC ships by their size on screen (issue #54): the same battle ship seen from three distances in flight at 1920x1080, each crop 40x40 px enlarged 10x with no smoothing. Under 1 px a ship is not drawn at all; from 1 to 2 px its dot fades in (here 0.51 of full); at 2 px and above it is a full dot, and it switches to a hull at 4 px (a full mesh at 16 px, both set in the Demo page's Render tiers rows and scaled by the graphics quality).
+
+![NPC ships on the jump map](Docs/Images/54-jump-map-npc-dots.png)
+
+The jump map with 1M NPC ships (issue #54): the map is exempt from the 1 px rule and keeps its 2 px dots, so the whole population shows as the bright ring of dots around the inner planets even though every ship is far under a pixel at this scale.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -302,11 +310,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 182.9 h |
-| Time spent answering questions | 13.2 h |
-| Tokens | 9,902.3M |
-| Notional API price | $3,862 |
-| Subagents dispatched | 728 |
+| Work time (wall-clock) | 186.7 h |
+| Time spent answering questions | 13.4 h |
+| Tokens | 10,090.9M |
+| Notional API price | $3,934 |
+| Subagents dispatched | 742 |
 <!-- METRICS:END -->
 
 ## Documentation map

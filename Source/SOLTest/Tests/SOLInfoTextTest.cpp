@@ -459,10 +459,14 @@ namespace
             "points while their lane is large enough on screen); the rings and lines glow with the HUD glow "
             "setting.");
 
-    // The Info Demo paragraph's far-ship clause of SDD 38 section 7 (since SDD 52 D6: far lane ships are not drawn)
+    // The Info Demo paragraph's far-ship clause of SDD 38 section 7 (since SDD 52 D6: far lane ships are not drawn;
+    // since SDD 54 ships are points only while at least about a pixel across, and a far lane's tunnel stands for them)
     constexpr const TCHAR* INFOTEXT_DEMO_LANE_LINES =
-        TEXT("farther ones follow simpler motion and are drawn as points, or not at all along a far lane, whose "
-            "tunnel stands for them (see the overlays).");
+        TEXT("farther ones follow simpler motion and are drawn as points while the ship is at least about a pixel "
+            "across on screen (fading in from one to two pixels), and not drawn at all when smaller, which is every "
+            "ship beyond about 33 km at a normal view, so the distant crowd stays on the radar and can still be "
+            "selected but is no longer a sea of dots. Along a far lane its tunnel stands for the ships (see the "
+            "overlays).");
 
     // Returns the indices of the paragraphs that contain a text (case-sensitive)
     TArray<int32> InfoTextParagraphsWith(const TArray<FString>& prose, const FString& text)
@@ -548,7 +552,8 @@ namespace
     // since SDD 53 Q20 (53d review) the point and label bands are stated in pixels)
     constexpr const TCHAR* INFOTEXT_TUNNEL_SENTENCE =
         TEXT("Close to a lane its ships show as points again (from about 2.4 pixels of lane radius on screen, fully "
-            "from about 9.6 pixels, more at lower graphics quality) and you can fly through its tunnel. The lane's "
+            "from about 9.6 pixels, more at lower graphics quality), but only the ones that are themselves at least "
+            "about a pixel across, so only the ships fairly near you, and you can fly through its tunnel. The lane's "
             "rule is keep right: the green dots and chevrons on the right wall mark the way "
             "out from the inner body, the red ones on the left the way back; they show where the rings are far "
             "enough apart on screen. The rings stay fixed to the lane, and everything moves with the lane under time "

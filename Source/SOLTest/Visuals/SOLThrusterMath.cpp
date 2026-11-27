@@ -826,6 +826,13 @@ double SOLThruster::NpcThrustGateM(const double hullLengthM, const double nozzle
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns whether a live NPC is strictly inside the thrust gate (its render tier plays no part)
+bool SOLThruster::NpcHasFlameData(const double distanceSquaredM2, const double plumeGateM, const bool bAlive)
+{
+    return bAlive && plumeGateM > 0.0 && distanceSquaredM2 < FMath::Square(plumeGateM);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the Niagara threshold RIBBON_NIAGARA_PX_FACTOR x V of the clamped preset
 double SOLThruster::RibbonNiagaraMinPx(const int32 qualityPreset)
 {

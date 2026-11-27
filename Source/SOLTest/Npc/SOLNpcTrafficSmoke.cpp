@@ -7,6 +7,7 @@
 
 #include "Game/SOLGameMode.h"
 #include "Npc/SOLNpcAiMath.h"
+#include "Npc/SOLNpcPixelMath.h"
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "Npc/SOLNpcSubsystem.h"
@@ -67,13 +68,15 @@ namespace
     constexpr double NPCTRAFFIC_WALL_PEAK = 1.05;            // V2: wall ships have a peak of at most 1.05 w...
     constexpr double NPCTRAFFIC_WALL_TOLERANCE = 0.1;        // ...and are measured at w +- 10 %
     constexpr int32 NPCTRAFFIC_MIN_WALL_SHIPS = 5;
-    constexpr double NPCTRAFFIC_MID_HEADING_DEG = 2.0;       // V2: a Mid hull's heading (deviation velocity included)
+    constexpr double NPCTRAFFIC_MID_HEADING_DEG = 2.0;       // V2: a Mid ship's heading (deviation velocity included)
     constexpr double NPCTRAFFIC_RAIL_HEADING_DEG = 0.1;      // V2: the heading chain on a bare rail
-    constexpr double NPCTRAFFIC_FULL_HEADING_DEG = 15.0;     // V2: a Full hull's nose off LaneHullForward (lag)
+    constexpr double NPCTRAFFIC_FULL_HEADING_DEG = 15.0;     // V2: a Full ship's nose off LaneHullForward (lag)
     constexpr double NPCTRAFFIC_HULL_DOT = 0.9999;           // V2: nose first, engine first, the held brake attitude
-    constexpr double NPCTRAFFIC_V2_MISS_M = 5000.0;          // V2: the fly-by passes the tracked ship this close...
+    constexpr double NPCTRAFFIC_V2_MISS_M = 5000.0;          // V2: the fly-by passes the tracked ship this close
+    constexpr double NPCTRAFFIC_V2_MISS_FULL = 0.5;          // (at most this many Full radii, so it is promoted)...
     constexpr double NPCTRAFFIC_V2_MIN_CLOSEST_S = 1.5;      // ...this long after the move at the earliest (2 Full
     constexpr double NPCTRAFFIC_V2_MAX_CLOSEST_S = 4.0;      // radii out at the relative speed) and at the latest
+    constexpr double NPCTRAFFIC_V2_GATE_MARGIN = 1.25;       // V2: the plume gate must lie this many Full radii out
     constexpr double NPCTRAFFIC_V2_START_RADII = 2.0;        // V2: the fly-by starts this many Full radii away, so
                                                              // a ship slower than that over the latest closest time
                                                              // (it would start inside the Full radius) is not taken
@@ -87,6 +90,8 @@ namespace
     constexpr double NPCTRAFFIC_BAND_MIN = 0.5;              // ...of 0.5 - 2 Mid radii (and sampled ships crossing)
     constexpr double NPCTRAFFIC_BAND_MAX = 2.0;
     constexpr double NPCTRAFFIC_HANDOVER_PX = 0.5;           // V5: the drawn step off the far point's (px at Mid)
+    constexpr double NPCTRAFFIC_INSIDE_PX = 0.05;            // V5: a dot inside the hand-over start off its double
+                                                             // position (px at its own distance; float rounding)
     constexpr int32 NPCTRAFFIC_SMOOTH_SAMPLES = 30;          // V5: end-zone and U-turn ships near the viewpoint
     constexpr int32 NPCTRAFFIC_SMOOTH_FRAMES = 300;          // ...sampled at 60 Hz for 5 s
     constexpr double NPCTRAFFIC_SMOOTH_HZ = 60.0;
@@ -199,6 +204,23 @@ void FSOLNpcTrafficSmoke::Start(ASOLShipPawn& pawn)
         mOrbitLines->SetLinesEnabled(false);
     }
     TrafficSmokeSetCvar(SOL::SpaceDust::CVAR_ENABLED, 0);
+
+    // V2 sees the tracked ship's hand-offs on its flame-data heading, which exists only inside the plume gate (SDD 54
+    // 4.7), so the gate must lie beyond the Full radius whatever the machine's quality preset: where it does not (a
+    // lower preset's shorter flame reach), the Full AI radius is pinned in memory under the gate before the population
+    // is requested (a population already spawned is respawned); never written to any setting
+    if (mNpcs.IsValid())
+    {
+        const double gateM = mNpcs->ViewPlumeGateM();
+        if (gateM < NPCTRAFFIC_V2_GATE_MARGIN * mNpcs->GetOptions().FullAiRadiusM)
+        {
+            mNpcs->SetOptionValue(SOLNpcScale::EDemoOption::FullAiRadiusM, gateM / NPCTRAFFIC_V2_GATE_MARGIN);
+            mPinnedFullRadiusM = mNpcs->GetOptions().FullAiRadiusM;
+        }
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcTraffic: plume gate %.1f km, Full AI radius %.1f km%s"), gateM / 1000.0,
+            mNpcs->GetOptions().FullAiRadiusM / 1000.0, mPinnedFullRadiusM > 0.0
+            ? TEXT(" (pinned in memory under the gate for V2)") : TEXT(""));
+    }
     if (mNpcs.IsValid() && mNpcs->GetRequestedCount() == 0)
     {
         mNpcs->RequestNpcCount(NPCTRAFFIC_SHIPS);
@@ -466,7 +488,8 @@ void FSOLNpcTrafficSmoke::SetupShip(const FVector3d& positionM, const FVector3d&
 //////////////////////////////////////////////////////////////////////////
 // V2: picks the sampled Earth-Mars ship coasting nearest the lane's middle with no flip or segment change during the
 // fly-by and places the viewpoint (at rest in the reference frame) where that ship passes it at NPCTRAFFIC_V2_MISS_M,
-// two Full radii of approach after the move (clamped), so it is drawn as a Mid hull, promoted to Full and demoted again
+// two Full radii of approach after the move (clamped), so it is a Mid ship with a heading (a flame-data dot), promoted
+// to Full and demoted again
 void FSOLNpcTrafficSmoke::SetupFlyBy()
 {
     const FSOLNpcRailFrame& frame = mNpcs->GetRailFrame();
@@ -547,7 +570,8 @@ void FSOLNpcTrafficSmoke::SetupFlyBy()
     mFlyBy.RelativeSpeedMps = relativeMps.Size();
     const double closestS = FMath::Clamp(NPCTRAFFIC_V2_START_RADII * mNpcs->GetStats().FullRadiusM
         / FMath::Max(mFlyBy.RelativeSpeedMps, 1.0), NPCTRAFFIC_V2_MIN_CLOSEST_S, NPCTRAFFIC_V2_MAX_CLOSEST_S);
-    SetupShip(positionM + relativeMps * closestS + laneFrame.Up * NPCTRAFFIC_V2_MISS_M, -relativeMps.GetSafeNormal());
+    const double missM = FMath::Min(NPCTRAFFIC_V2_MISS_M, NPCTRAFFIC_V2_MISS_FULL * mNpcs->GetStats().FullRadiusM);
+    SetupShip(positionM + relativeMps * closestS + laneFrame.Up * missM, -relativeMps.GetSafeNormal());
     UE_LOG(LogSOL, Log, TEXT("SmokeNpcTraffic: V2 fly-by of ship %d, %.3f of the lane from its middle, %.1f km/s "
         "relative (at least %.1f km/s wanted), closest in %.2f s, starting %.0f km away (Full radius %.0f km)"),
         mFlyBy.Npc, bestOffset, mFlyBy.RelativeSpeedMps / 1000.0, minRelativeMps / 1000.0, closestS,
@@ -568,6 +592,10 @@ void FSOLNpcTrafficSmoke::TrackFlyBy()
     const FSOLNpcCpuShip* tracked = nullptr;
     for (const FSOLNpcCpuShip& ship : mNpcs->GetCpuShips())
     {
+        // Ships with a hull heading: hulls and, since SDD 54 4.7, dots with flame data (their flames follow it). A
+        // hull is drawn only from the hull threshold in (about 8 km at 1080p), inside the default 50 km Full radius,
+        // so the hand-offs and the Mid ships are seen as flame-data dots
+        const bool bDot = ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point);
         if (ship.HeadingDirection.IsNearlyZero() || !rails.IsValidIndex(ship.NpcIndex)
             || rails[ship.NpcIndex].Kind != laneKind || (ship.AiTier != mid && ship.AiTier != full))
         {
@@ -575,18 +603,19 @@ void FSOLNpcTrafficSmoke::TrackFlyBy()
         }
         tracked = ship.NpcIndex == mFlyBy.Npc ? &ship : tracked;
 
-        // Mid hulls within the deviation velocity's turn; Full hulls (the nose, aiming near a target) counted
+        // Mid ships within the deviation velocity's turn; Full ships (the nose, aiming near a target) counted
         const FVector3d laneForward = SOLNpcRail::LaneHullForward(rails[ship.NpcIndex], frame, ship.NpcIndex,
             frame.RailTimeS);
         const double offDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
             FVector3d(ship.HeadingDirection).GetSafeNormal() | laneForward, -1.0, 1.0)));
         if (ship.AiTier == mid)
         {
-            ++mFlyBy.MidHulls;
+            ++mFlyBy.MidShips;
+            mFlyBy.MidDots += bDot ? 1 : 0;
             mFlyBy.MidWorstDeg = FMath::Max(mFlyBy.MidWorstDeg, offDeg);
             continue;
         }
-        ++mFlyBy.FullHulls;
+        ++mFlyBy.FullShips;
         mFlyBy.FullWorstDeg = FMath::Max(mFlyBy.FullWorstDeg, offDeg);
         mFlyBy.FullAligned += offDeg <= NPCTRAFFIC_FULL_HEADING_DEG ? 1 : 0;
         mFlyBy.FullReversed += offDeg > 90.0 ? 1 : 0;
@@ -598,7 +627,9 @@ void FSOLNpcTrafficSmoke::TrackFlyBy()
         mFlyBy.PrevTier = 0xFF;
         return;
     }
+    mFlyBy.FirstHeadingM = mFlyBy.Frames == 0 ? (tracked->PositionM - viewpointM).Size() : mFlyBy.FirstHeadingM;
     ++mFlyBy.Frames;
+    mFlyBy.DotFrames += tracked->RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point) ? 1 : 0;
     mFlyBy.ClosestM = FMath::Min(mFlyBy.ClosestM, (tracked->PositionM - viewpointM).Size());
     if (mFlyBy.PrevTier != 0xFF)
     {
@@ -960,23 +991,32 @@ void FSOLNpcTrafficSmoke::CheckSpeeds()
         "Earth-Mars wall ships (radial factor <= %.2e, rails evaluated directly) at %.2f - %.2f km/s, %d outside w +- "
         "10 %%"), wallShips, wallKappa, wallShips > 0 ? wallMin / 1000.0 : 0.0, wallMax / 1000.0, wallOff));
 
-    // Hulls over the fly-by (TrackFlyBy, every frame): Mid-tier lane hulls face LaneHullForward (within the deviation
-    // velocity's turn). The Full step steers the nose along the rail hull heading (D21), so a Full lane ship faces
-    // LaneHullForward too (engine first while braking); ships near a target aim at it, so at least 80 % (not all) of
-    // the Full hull frames must be within the limit. At least one hull of each tier must have been drawn
+    // Hull headings over the fly-by (TrackFlyBy, every frame; hulls and flame-data dots): Mid-tier lane ships face
+    // LaneHullForward (within the deviation velocity's turn). The Full step steers the nose along the rail hull heading
+    // (D21), so a Full lane ship faces LaneHullForward too (engine first while braking); ships near a target aim at
+    // it, so at least 80 % (not all) of the Full ship-frames must be within the limit. At least one ship with a heading
+    // of each tier must have been seen
     const FFlyBy& flyBy = mFlyBy;
-    Check(TEXT("V2-full-hull-heading"), flyBy.FullHulls > 0 && flyBy.FullAligned * 5 >= flyBy.FullHulls * 4,
-        FString::Printf(TEXT("%d Full-tier lane hull frames over the fly-by: %d within %.0f deg of LaneHullForward, %d "
-        "reversed (over 90 deg), worst %.1f deg"), flyBy.FullHulls, flyBy.FullAligned, NPCTRAFFIC_FULL_HEADING_DEG,
-        flyBy.FullReversed, flyBy.FullWorstDeg));
+    Check(TEXT("V2-full-heading"), flyBy.FullShips > 0 && flyBy.FullAligned * 5 >= flyBy.FullShips * 4,
+        FString::Printf(TEXT("%d Full-tier lane ship-frames with a hull heading over the fly-by: %d within %.0f deg of "
+        "LaneHullForward, %d reversed (over 90 deg), worst %.1f deg"), flyBy.FullShips, flyBy.FullAligned,
+        NPCTRAFFIC_FULL_HEADING_DEG, flyBy.FullReversed, flyBy.FullWorstDeg));
 
-    // The tracked ship's nose across its promotion and demotion: no turn in the hand-off frames
-    Check(TEXT("V2-handoff-nose"), flyBy.Promotions > 0 && flyBy.Demotions > 0
+    // The tracked ship's nose across its promotion and demotion: no turn in the hand-off frames. Since SDD 54 a hull
+    // is drawn only inside the Full radius, so the hand-offs are seen on its flame-data heading, which exists only
+    // inside the plume gate: the heading must first appear beyond the Full radius (Start pins the radius under the
+    // gate on a lower quality preset), else the hand-off was not observed and the check fails
+    const double fullRadiusM = mNpcs->GetStats().FullRadiusM;
+    const bool bObservable = flyBy.FirstHeadingM > fullRadiusM;
+    Check(TEXT("V2-handoff-nose"), bObservable && flyBy.Promotions > 0 && flyBy.Demotions > 0
         && flyBy.PromoteDeg <= NPCTRAFFIC_HANDOFF_DEG && flyBy.DemoteDeg <= NPCTRAFFIC_HANDOFF_DEG,
-        FString::Printf(TEXT("ship %d flown past at %.1f km/s, closest %.1f km, %d frames drawn as a hull: %d promotions "
-        "(nose change worst %.3f deg), %d demotions (worst %.3f deg), other frames worst %.3f deg (limit %.1f deg)"),
-        flyBy.Npc, flyBy.RelativeSpeedMps / 1000.0, flyBy.Frames > 0 ? flyBy.ClosestM / 1000.0 : 0.0, flyBy.Frames,
-        flyBy.Promotions, flyBy.PromoteDeg, flyBy.Demotions, flyBy.DemoteDeg, flyBy.FrameDeg,
+        FString::Printf(TEXT("ship %d flown past at %.1f km/s, closest %.1f km, first heading at %.1f km (Full radius "
+        "%.1f km%s%s), %d frames with a hull heading (%d as a flame-data dot): %d promotions (nose change worst %.3f "
+        "deg), %d demotions (worst %.3f deg), other frames worst %.3f deg (limit %.1f deg)"), flyBy.Npc,
+        flyBy.RelativeSpeedMps / 1000.0, flyBy.Frames > 0 ? flyBy.ClosestM / 1000.0 : 0.0,
+        flyBy.FirstHeadingM / 1000.0, fullRadiusM / 1000.0, mPinnedFullRadiusM > 0.0 ? TEXT(", pinned") : TEXT(""),
+        bObservable ? TEXT("") : TEXT(": hand-off not observable, the plume gate lies inside it"), flyBy.Frames,
+        flyBy.DotFrames, flyBy.Promotions, flyBy.PromoteDeg, flyBy.Demotions, flyBy.DemoteDeg, flyBy.FrameDeg,
         NPCTRAFFIC_HANDOFF_DEG));
 
     // Rails: the heading chain (HullHeadingVelocityMps -> HullForward) equals LaneHullForward; nose first before the
@@ -1033,12 +1073,12 @@ void FSOLNpcTrafficSmoke::CheckSpeeds()
             ++flipping;
         }
     }
-    Check(TEXT("V2-hull-heading"), flyBy.MidHulls > 0 && flyBy.MidWorstDeg <= NPCTRAFFIC_MID_HEADING_DEG
+    Check(TEXT("V2-mid-heading"), flyBy.MidShips > 0 && flyBy.MidWorstDeg <= NPCTRAFFIC_MID_HEADING_DEG
         && chainBad == 0 && attitudeBad == 0 && nose > 0 && engine > 0 && held > 0, FString::Printf(TEXT("%d Mid-tier "
-        "lane hull frames over the fly-by, worst %.3f deg off LaneHullForward; sampled Earth-Mars rails (and every "
-        "U-turn ship): heading chain off LaneHullForward on %d, nose first %d, engine first %d, flipping %d, brake "
-        "attitude held in U-turns %d, %d with the wrong attitude"), flyBy.MidHulls, flyBy.MidWorstDeg, chainBad, nose,
-        engine, flipping, held, attitudeBad));
+        "lane ship-frames with a hull heading over the fly-by (%d as flame-data dots), worst %.3f deg off "
+        "LaneHullForward; sampled Earth-Mars rails (and every U-turn ship): heading chain off LaneHullForward on %d, "
+        "nose first %d, engine first %d, flipping %d, brake attitude held in U-turns %d, %d with the wrong attitude"),
+        flyBy.MidShips, flyBy.MidDots, flyBy.MidWorstDeg, chainBad, nose, engine, flipping, held, attitudeBad));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1137,7 +1177,8 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
     const double slope = FMath::Max(1.0, (laneFrame.CurrentLegM - profile.MetricZoneM)
         / (profile.NominalLegM - profile.MetricZoneM));
     const double midRadiusM = mNpcs->GetStats().MidRadiusM;
-    const double hullStartM = mNpcs->GetStats().InstancedRadiusM;
+    const double hullStartM = SOLNpcPixel::HandOverStartM(mNpcs->GetStats().InstancedRadiusM,
+        SOL::NPC_HULL_BOUNDING_DIAMETER_M, mVisuals->GetPlumeFocalRefPx(), SOL::NPC_SHIP_HIDE_PX);
     const double bandMinM = NPCTRAFFIC_BAND_MIN * midRadiusM;
     const double bandMaxM = NPCTRAFFIC_BAND_MAX * midRadiusM;
 
@@ -1213,6 +1254,9 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
     int32 floatOnlyFrames = 0;
     int32 worstFloatOnlyRun = 0;
     int32 handOverFrames = 0;
+    double insideWorstPx = 0.0;
+    double insideMirrorWorstPx = 0.0;
+    int32 insideFailures = 0;
 
     // The tiers' view of the lane: a lane ship is a CPU ship within the Mid radius plus the lane's hand-over margin
     // (the subsystem's own margin this frame), with the AI hysteresis; Full stays inside Mid
@@ -1326,8 +1370,36 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
             previousDrawn = drawn;
             bPreviousCpu = handOver.bCpuDraws;
         }
+
+        // Inside the hand-over start (SDD 54 4.5): the same ship seen from half the start distance away (rows 0-1
+        // written for that viewpoint, the lane ends' float error kept) is drawn at its double position however far off
+        // the mirror is; the mirror's own error is measured in px at that distance
+        const FVector3d probeViewM = cpuM - (cpuM - caseViewM).GetSafeNormal() * (0.5 * hullStartM);
+        FVector4f probeRows[SOL::NPC_GROUP_TEXTURE_ROWS];
+        for (int32 row = 0; row < SOL::NPC_GROUP_TEXTURE_ROWS; ++row)
+        {
+            probeRows[row] = rows[row];
+        }
+        probeRows[0] = FVector4f(FVector3f(frame.GroupPointAM[mLane] - probeViewM), rows[0].W);
+        probeRows[1] = FVector4f(FVector3f(frame.GroupPointBM[mLane] - probeViewM), rows[1].W);
+        const FVector3d probeRelM = cpuM - probeViewM;
+        const FVector3f probeMirror = SOLNpcTrafficMirror::LaneShipRelM(texelA, texelB, probeRows, shaderTimeS);
+        const SOLNpcTrafficMirror::FHandOver probe = SOLNpcTrafficMirror::CpuPointHandOver(probeMirror, probeRelM,
+            static_cast<float>(midRadiusM), hullStartM);
+        const double probePixelM = pixelAtMidM * probeRelM.Size() / FMath::Max(midRadiusM, 1.0);
+        const double probeOffPx = (FVector3d(probe.RelM) - probeRelM).Size() / FMath::Max(probePixelM, 1.0e-3);
+        insideWorstPx = FMath::Max(insideWorstPx, probeOffPx);
+        insideMirrorWorstPx = FMath::Max(insideMirrorWorstPx, (FVector3d(probeMirror) - probeRelM).Size()
+            / FMath::Max(probePixelM, 1.0e-3));
+        insideFailures += probe.bCpuDraws && probeOffPx <= NPCTRAFFIC_INSIDE_PX ? 0 : 1;
     }
     const int32 handOverCount = cases.Num();
+    Check(*FString::Printf(TEXT("%s-handover-inside"), label), handOverCount > 0 && insideFailures == 0,
+        FString::Printf(TEXT("%d ships seen from half the hand-over start (%.1f km; the hull radius or the 1 px "
+        "distance): drawn at most %.4f px off the double position (limit %.2f px, %d over it or not drawn by the CPU); "
+        "the float mirror alone is up to %.1f px off there (the unit test CpuPointHandOverInside is what tells the fix "
+        "from the old mirror-keyed blend)"), handOverCount, 0.5 * hullStartM / 1000.0, insideWorstPx,
+        NPCTRAFFIC_INSIDE_PX, insideFailures, insideMirrorWorstPx));
     Check(*FString::Printf(TEXT("%s-handover"), label), handOverCount > 0 && failures == 0 && outOfBand == 0
         && bRowsMatch, FString::Printf(TEXT("%d Earth-Mars ships (%d within %.1f - %.1f Mid radii now, %d made to "
         "cross it) at %.0f - %.0f km (Mid radius %.0f km, %d samples outside the band): float mirror vs CPU worst %.3f km, "

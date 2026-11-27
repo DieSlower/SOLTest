@@ -77,7 +77,10 @@ This replaces `ARCHITECTURE.md` section 8's earlier note that NPCs would reuse t
   holds even with hysteresis. The battle sizes default below the Full budget, so battles run Full AI.
 - **Render tiers** (`ERenderTier`) for CPU-simulated ships (Mid and Full): Mesh (closest), Instanced, Point. Same
   hysteresis and budget rule. The instanced radius is never larger than the Mid AI radius, so every instanced or meshed
-  ship has a CPU position.
+  ship has a CPU position. *Amended by issue #54 (SDD 54 section 4.5): the render tier radii are no longer the options
+  `MeshRadiusM` 2 km and `InstancedRadiusM` 200 km but are derived each frame from pixel thresholds (mesh above 16 px,
+  hull above 4 px, 10% hysteresis, times the quality factor, capped by the Mid radius), the Demo rows are "Mesh from
+  (px)" and "Hull from (px)", and the budgets remain as hard limits.*
 - **Group culling:** a Far ship can only be promoted if its whole group (one lane capsule or one cluster shell) comes
   within the Mid radius. The tier processor first checks each group's distance (`DistanceToLaneM`,
   `DistanceToShellM`, O(groups) per frame), and evaluates rails only for ships in candidate groups. With the player
@@ -194,8 +197,8 @@ around every NPC phase and Insights counters for tier counts), not estimates.
 | Full AI radius / budget | 5-500 km / 0-20,000 | 50 km / 4,000 |
 | Mid AI radius / budget | 50-20,000 km / 0-500,000 | 2,000 km / 100,000 |
 | AI hysteresis | 0-0.5 | 0.1 |
-| Mesh radius / budget | 0.5-20 km / 0-256 | 2 km / 32 |
-| Instanced radius / budget | 1-2,000 km / 0-200,000 | 200 km / 20,000 |
+| Mesh radius / budget (replaced by #54: "Mesh from (px)" 3-128 px, default 16) | 0.5-20 km / 0-256 | 2 km / 32 |
+| Instanced radius / budget (replaced by #54: "Hull from (px)" 3-64 px, default 4) | 1-2,000 km / 0-200,000 | 200 km / 20,000 |
 | Render hysteresis | 0-0.5 | 0.1 |
 | NPC combat | on / off | on |
 | Stats overlay | on / off | on |
@@ -729,3 +732,4 @@ is per ship on the CPU; the rails, tiers, stats and simulation are unchanged, an
 - 2026-10-21: Amendment 7 (10f adversarial review fixes; Demo option maxima kept by user decision).
 - 2026-11-11: Amendment 8 (issue #38: lane ships drawn as lane lines, their far points cross-faded; measured).
 - 2026-11-13: Amendment 9 (issue #49: lane tunnels; the lane ships return as points inside a tunnel).
+- 2026-11-27: note (issue #54, SDD 54): render tiers by pixels replace the 2 km / 200 km radii and the Demo radius rows (see section 3.2), ships under 1 px are not drawn, the far layer is dark in flight; the Demo option table below keeps its original rows as history.

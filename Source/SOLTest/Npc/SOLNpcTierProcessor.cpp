@@ -517,17 +517,23 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
         ship.RailDistanceM = static_cast<float>((state.PositionM - view.Deviations[entity].DeviationM
             - mInputs.ViewpointM).Size());
 
-        // Hull heading (hulls only): a Full ship's nose, else the rail heading plus deviation velocity (a lane ship
-        // faces its thrust, D21: SOLNpcRail::HullHeadingVelocityMps, the leg and cycle derived once by Motion). A
-        // promotion to Full starts from this heading (SOLNpcAi::HandoffOrientation) and the Full step steers the nose
-        // along the same rail heading (SOLNpcCombat), so neither hand-off turns the hull
+        // Hull heading (hulls, and dots with flame data): a Full ship's nose, else the rail heading plus deviation
+        // velocity (a lane ship faces its thrust, D21: SOLNpcRail::HullHeadingVelocityMps, the leg and cycle derived
+        // once by Motion). A promotion to Full starts from this heading (SOLNpcAi::HandoffOrientation) and the Full
+        // step steers the nose along the same rail heading (SOLNpcCombat), so neither hand-off turns the hull
         // Hull top (the drawn roll, SDD 50 section 16): a Full ship's attitude up (a lane ship's AI steers it toward
         // its lane top and is promoted with it, SOLNpcFullAiProcessor), else a Mid lane ship's LaneHullBasis top or
         // the radial up hint, so a lane ship's hand-offs keep its roll. Motion is evaluated only without an attitude
+        // Flame data (SDD 54 4.7, Q7): every live ship inside the plume gate gets its heading, top and thrust however
+        // its hull is drawn (mesh, instanced, dot or hidden), so its flame follows its own pixel rule; a Point-tier
+        // ship outside the gate skips the motion evaluation
+        const bool bFlameData = SOLThruster::NpcHasFlameData(FVector3d::DistSquared(state.PositionM,
+            mInputs.ViewpointM), mInputs.PlumeGateM, view.Combats[entity].bAlive != 0);
+        ship.bFlameData = bFlameData ? 1 : 0;
         ship.HeadingDirection = FVector3f::ZeroVector;
         ship.HeadingTop = FVector3f::ZeroVector;
         ship.ThrustLocalG = FVector3f::ZeroVector;
-        if (state.RenderTier != NPC_RENDER_POINT)
+        if (state.RenderTier != NPC_RENDER_POINT || bFlameData)
         {
             const FQuat4d* const orientation = view.Attitudes != nullptr ? &view.Attitudes[entity].Orientation
                 : nullptr;
@@ -547,11 +553,11 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
                 ship.HeadingTop = FVector3f(SOLNpcRail::HullUpHint(motion, upHint).GetSafeNormal());
             }
 
-            // Plume thrust (SDD 51 section 4.2, Q2 / Q3), hull-drawn ships inside the plume gate only: the lane rail's
-            // thrust (zero through Coast and the flip window; zero for non-lane rails, which have no thrust model),
-            // plus on a Full ship its AI's achieved deviation acceleration (the ship's whole achieved acceleration),
-            // projected on the drawn hull frame in Unreal axes (+Y right, as the hull is drawn)
-            if (FVector3d::DistSquared(state.PositionM, mInputs.ViewpointM) < FMath::Square(mInputs.PlumeGateM))
+            // Plume thrust (SDD 51 section 4.2, Q2 / Q3), ships with flame data only: the lane rail's thrust (zero
+            // through Coast and the flip window; zero for non-lane rails, which have no thrust model), plus on a Full
+            // ship its AI's achieved deviation acceleration (the ship's whole achieved acceleration), projected on the
+            // drawn hull frame in Unreal axes (+Y right, as the hull is drawn)
+            if (bFlameData)
             {
                 FVector3d thrustMps2 = SOLNpcRail::LaneThrustMps2(view.Rails[entity].Rail, frame, ship.NpcIndex);
                 if (bAttitude)

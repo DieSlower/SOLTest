@@ -393,4 +393,32 @@ bool FNpcStatsTextOverlayRampTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNpcStatsTextOverlayBudgetMarkTest, "SOLTest.NpcStatsText.OverlayBudgetMark",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #54 (part 54c), written after the code against SDD 54 Q6: a render tier whose fixed pool bound its pixel
+// radius this frame is marked "(budget)" on the render line; the other lines and the line count do not change
+bool FNpcStatsTextOverlayBudgetMarkTest::RunTest(const FString& /*parameters*/)
+{
+    SOLNpcStatsText::FOverlayInput in = NpcStatsTextFullInput();
+    in.bInstancedBudgetBound = true;
+    TArray<FString> lines = SOLNpcStatsText::FormatOverlayLines(in);
+    TestEqual(TEXT("eight lines"), lines.Num(), NPCSTATSTEXT_LINE_COUNT);
+    TestEqual(TEXT("hull pool bound"), NpcStatsTextLine(lines, 3),
+        FString(TEXT("render  point 980,000  instanced 19,968 (budget)  mesh 32")));
+    in.bMeshBudgetBound = true;
+    lines = SOLNpcStatsText::FormatOverlayLines(in);
+    TestEqual(TEXT("both pools bound"), NpcStatsTextLine(lines, 3),
+        FString(TEXT("render  point 980,000  instanced 19,968 (budget)  mesh 32 (budget)")));
+    in.bInstancedBudgetBound = false;
+    lines = SOLNpcStatsText::FormatOverlayLines(in);
+    TestEqual(TEXT("mesh pool bound"), NpcStatsTextLine(lines, 3),
+        FString(TEXT("render  point 980,000  instanced 19,968  mesh 32 (budget)")));
+    TestEqual(TEXT("AI tier line unchanged"), NpcStatsTextLine(lines, 2),
+        FString(TEXT("NPCs 1,000,000  far 900,000  mid 96,000  full 4,000")));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

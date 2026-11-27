@@ -27,8 +27,19 @@
 #       hidden by SOLNTR_LaneShipDrawn before the position is evaluated (a new call, so the material was rebuilt).
 #       Issue #53 part 53d: SOLNTR_LaneShipDrawn also reads the slot's active flag (row 6 .z), mirrored by
 #       SOLNpcTrafficMirror::LaneShipPointDrawn; the window test alone is SOLNTR_LaneShipWindowDrawn (mirror
-#       LaneShipWindowDrawn). Only the .ush body changed, so no rebuild; the comment inside VERTEX_HLSL below still
-#       names the 53c2b mirror and is left as baked into the asset (changing it would mean a rebuild for a comment).
+#       LaneShipWindowDrawn). Only the .ush body changed, so no rebuild.
+#       Issue #54 (SDD 54 4.3-4.4, 4.8, part 54d; rebuilt once, user-approved Q8): the vertex node also includes
+#       SOLNpcPoint.ush and calls SOLNP_PointDot after the far-depth compression (mirror SOLNpcPointMirror::PointDot):
+#       a ship at or under 1 px true size (1080p reference px of its bounding sphere) returns the hidden offset, its
+#       brightness ramps linearly from 0 at 1 px to full at 2 px, and the triangle is its true size with a 1 device px
+#       raster floor (the old 2 px floor is gone); the jump map keeps today's 2 px dot. New vector parameter NpcParams5
+#       (hide px, full px, reference height px, map flag); NpcParams2 became (raster floor device px, bounding radius m,
+#       brightness ref, brightness min). The size rule lives in the .ush, so later tuning needs no rebuild. The baked
+#       comment naming the 53c2b mirror was refreshed in the same rebuild.
+#       Issue #54 review (SDD 54 Q13, a second rebuild, user-approved 2026-11-27): new vector parameter NpcParams6 (dot
+#       cap in reference px, NPC_POINT_DOT_MAX_PX = the 4 px hull switch of the reference preset) passed to
+#       SOLNP_PointDot, which draws a dot at its true size capped there, so a lower quality preset (a later hull switch)
+#       never grows the dot; the faction colour nodes moved down so no node overlaps NpcParams5 / NpcParams6.
 #   /Game/SOL/Npc/M_SOLNpcHull
 #       Default-lit placeholder hull (vector parameter Tint), usable on ISMs.
 #   /Game/SOL/Npc/M_SOLNpcLanes
@@ -56,7 +67,7 @@
 # Parameter names must match SOLNpcVisuals.cpp, SOL::NpcLaneMaterialParams and SOL::NpcTunnelMaterialParams; asset
 # paths SOL::Paths::NPC_POINTS_MATERIAL / NPC_HULL_MATERIAL / NPC_LANES_MATERIAL / NPC_TUNNEL_MATERIAL. The lane and
 # tunnel materials and the point material's vertex node include SOLNpcLane.ush / SOLNpcTunnel.ush (the vertex node
-# also SOLNpcTraffic.ush), so a shader change
+# also SOLNpcTraffic.ush and SOLNpcPoint.ush), so a shader change
 # there needs no rebuild; a graph or parameter change does.
 # Run (editor closed):
 #   UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/Npc/create_npc_assets.py"
@@ -77,6 +88,7 @@ TUNNEL_INCLUDE = "/Project/SOLTest/Private/SOLNpcTunnel.ush"
 ORBIT_LINE_MPC = "/Game/SOL/OrbitLines/MPC_SOLOrbitLine"
 LANE_INCLUDE = "/Project/SOLTest/Private/SOLNpcLane.ush"   # SOL::SHADER_VIRTUAL_DIRECTORY + file
 TRAFFIC_INCLUDE = "/Project/SOLTest/Private/SOLNpcTraffic.ush"
+POINT_INCLUDE = "/Project/SOLTest/Private/SOLNpcPoint.ush"
 CONSTANTS_FILE = os.path.join(unreal.Paths.project_dir(), "Source", "SOLTest", "SOLConstants.h")
 DEFAULT_TEXTURE_NAME = "T_SOLNpcFloatDefault"
 COMMAND_LINE = unreal.SystemLibrary.get_command_line()
@@ -128,8 +140,9 @@ if (P0.w < 0.5)
     {
         // Lane (SDD 50): the closed-form keep-right traffic of SOLNpcTraffic.ush (double-float), from the group rows
         // 0-5 (rows 2-5 from SOLNpcRail::WriteLaneTrafficTexels, the wall speed in row 2 .w)
-        // Issue #53 (SDD 53 5.4): outside its slot's window (row 6) a ship is docked and a parked ship (railB.w < 0)
-        // is never drawn, SOLNTR_LaneShipDrawn (mirrored by SOLNpcTrafficMirror::LaneShipWindowDrawn)
+        // Issue #53 (SDD 53 5.4): outside its slot's window (row 6) or on an inactive lane (row 6 .z) a ship is not
+        // drawn, nor a parked ship (railB.w < 0): SOLNTR_LaneShipDrawn (mirrored by
+        // SOLNpcTrafficMirror::LaneShipPointDrawn)
         const float4 group4 = GroupTex.Load(int3(group, 4, 0));
         const float4 group5 = GroupTex.Load(int3(group, 5, 0));
         if (!SOLNTR_LaneShipDrawn(a, b, group4, group5, GroupTex.Load(int3(group, 6, 0)), t))
@@ -198,14 +211,23 @@ if (dCm > maxCm)
 const float3 placed = relM * scale;
 const float3 target = float3(placed.x, -placed.y, placed.z) + P1.xyz;
 
-// Camera-facing triangle: the ship's radius, never below the minimum pixel size
+// Sub-pixel rule (SDD 54): SOLNP_PointDot of SOLNpcPoint.ush (mirrored by SOLNpcPointMirror::PointDot) gives the dot
+// alpha from the ship's true size in reference px (hidden at and under P5.x, linear to full at P5.y; the jump map's
+// P5.w keeps today's dot) and the camera-facing triangle's radius (true size capped at P6.x reference px, P2.x
+// device px raster floor)
 const float placedCm = length(placed);
 const float pixelCm = 2.0 * placedCm / (ResolvedView.ViewToClip[1][1] * ResolvedView.ViewSizeAndInvSize.y);
-const float radiusCm = max(P2.y * scale, 0.5 * P2.x * pixelCm);
+float radiusCm = 0.0;
+const float dotAlpha = SOLNP_PointDot(dM, scale, pixelCm, ResolvedView.ViewToClip[0][0],
+    ResolvedView.ViewSizeAndInvSize.xy, P2, P5, P6, radiusCm);
+if (!(dotAlpha > 0.0))
+{
+    return hiddenOffset;
+}
 const float3 right = ResolvedView.ViewToTranslatedWorld[0].xyz;
 const float3 up = ResolvedView.ViewToTranslatedWorld[1].xyz;
 const float2 corner = Corner;
-Shade = float2(faction, clamp(pow(P2.z / dM, P3.x), P2.w, 1.0) * laneAlpha);
+Shade = float2(faction, clamp(pow(P2.z / dM, P3.x), P2.w, 1.0) * laneAlpha * dotAlpha);
 return target + (right * corner.x + up * corner.y) * radiusCm - LocalPos;"""
 
 LANE_VERTEX_HLSL = r"""// NPC lane ribbon vertex (SDD 38 4.8): the mesh vertices sit at zero and the component at
@@ -373,15 +395,22 @@ def build_points(material, default_texture):
     params = {}
     for index, name in enumerate(["NpcParams0", "NpcParams1", "NpcParams2", "NpcParams3", "NpcParams4"]):
         params[name] = add_vector(material, name, -1600, 300 + 100 * index)
-    colors = [add_vector(material, "NpcFaction0Color", -1600, 850, unreal.LinearColor(0.25, 0.6, 1.0, 1.0)),
-              add_vector(material, "NpcFaction1Color", -1600, 950, unreal.LinearColor(1.0, 0.4, 0.2, 1.0))]
+    # NpcParams5 (SDD 54 4.4): the sub-pixel rule's (hide px, full px, reference height px, map flag); ASOLNpcVisuals
+    # sets it (SOLNpcPixel::PointParams5), the default is the flight view's from SOLConstants.h
+    params["NpcParams5"] = add_vector(material, "NpcParams5", -1600, 800, unreal.LinearColor(
+        constant("NPC_SHIP_HIDE_PX"), constant("NPC_SHIP_DOT_FULL_PX"), constant("NPC_POINT_REFERENCE_HEIGHT_PX"), 0.0))
+    # NpcParams6 (SDD 54 Q13): the dot cap in reference px (SOLNpcPixel::PointParams6), default from SOLConstants.h
+    params["NpcParams6"] = add_vector(material, "NpcParams6", -1600, 900, unreal.LinearColor(
+        constant("NPC_POINT_DOT_MAX_PX"), 0.0, 0.0, 0.0))
+    colors = [add_vector(material, "NpcFaction0Color", -1600, 1000, unreal.LinearColor(0.25, 0.6, 1.0, 1.0)),
+              add_vector(material, "NpcFaction1Color", -1600, 1100, unreal.LinearColor(1.0, 0.4, 0.2, 1.0))]
 
     # Vertex stage: world position offset plus the interpolated (faction, brightness)
     vertex = add_lane_custom(material, -1100, -300, "SOLNpcPointVertex", VERTEX_HLSL,
         unreal.CustomMaterialOutputType.CMOT_FLOAT3,
         ["ShipBase", "ShipUv", "Corner", "RailTex", "GroupTex", "CpuTex", "TunnelTex", "P0", "P1", "P2", "P3",
-         "P4"])
-    vertex.set_editor_property("include_file_paths", [LANE_INCLUDE, TRAFFIC_INCLUDE])
+         "P4", "P5", "P6"])
+    vertex.set_editor_property("include_file_paths", [LANE_INCLUDE, TRAFFIC_INCLUDE, POINT_INCLUDE])
     extra = unreal.CustomOutput()
     extra.set_editor_property("output_name", "Shade")
     extra.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT2)
@@ -393,7 +422,7 @@ def build_points(material, default_texture):
     MEL.connect_material_expressions(textures["NpcGroupTex"], "", vertex, "GroupTex")
     MEL.connect_material_expressions(textures["NpcCpuTex"], "", vertex, "CpuTex")
     MEL.connect_material_expressions(textures["NpcTunnelTex"], "", vertex, "TunnelTex")
-    for index in range(5):
+    for index in range(7):
         MEL.connect_material_expressions(params["NpcParams%d" % index], "RGBA", vertex, "P%d" % index)
     MEL.connect_material_property(vertex, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
     interpolator = add(material, unreal.MaterialExpressionVertexInterpolator, -800, -200)

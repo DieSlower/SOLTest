@@ -3,7 +3,9 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Npc/SOLNpcPixelMath.h"
 #include "Npc/SOLNpcScaleMath.h"
+#include "Traffic/SOLLaneNetworkMath.h"
 
 #include "Tests/SOLTestHelpers.h"
 
@@ -14,7 +16,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 // Tests for the issue #11 (Part 10a) pure NPC scale logic, written against the 10a contract in
-// Docs/Plans/11-scale-and-performance-demo-plan.md before any production code existed.
+// Docs/Plans/11-scale-and-performance-demo-plan.md before any production code existed. Issue #54 (part 54c) changed
+// the Demo render options to pixel thresholds (SDD 54 Q6): the option, default, sanitize and SetOption cases that name
+// MeshMinPx / HullMinPx and the RenderTierRadii case were rewritten or added after the code, against SDD 54.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -171,9 +175,8 @@ namespace
     SOLNpcScale::EOptionIssue NpcScaleCorrectionFlags()
     {
         using SOLNpcScale::EOptionIssue;
-        return EOptionIssue::ValueClamped | EOptionIssue::MidRadiusRaised | EOptionIssue::InstancedRadiusLowered
-            | EOptionIssue::MeshRadiusLowered | EOptionIssue::BattleShipsLimited | EOptionIssue::BattleDistanceRaised
-            | EOptionIssue::MidBudgetRaised;
+        return EOptionIssue::ValueClamped | EOptionIssue::MidRadiusRaised | EOptionIssue::MeshPxRaised
+            | EOptionIssue::BattleShipsLimited | EOptionIssue::BattleDistanceRaised | EOptionIssue::MidBudgetRaised;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -1810,8 +1813,8 @@ bool FSOLNpcScaleDescriptorsTest::RunTest(const FString& /*parameters*/)
         { EDemoOption::FullAiBudget, 0.0, 20000.0 },
         { EDemoOption::MidAiBudget, 0.0, 500000.0 },
         { EDemoOption::AiHysteresis, 0.0, 0.5 },
-        { EDemoOption::MeshRadiusM, 500.0, 20000.0 },
-        { EDemoOption::InstancedRadiusM, 1000.0, 2000000.0 },
+        { EDemoOption::MeshMinPx, 3.0, 128.0 },     // SDD 54 Q6: pixel thresholds, the hull minimum 3 px
+        { EDemoOption::HullMinPx, 3.0, 64.0 },
         { EDemoOption::MeshBudget, 0.0, 256.0 },
         { EDemoOption::InstancedBudget, 0.0, 200000.0 },
         { EDemoOption::RenderHysteresis, 0.0, 0.5 },
@@ -1861,8 +1864,10 @@ bool FSOLNpcScaleDefaultOptionsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("Full AI budget 4,000"), defaults.FullAiBudget, 4000);
     TestEqual(TEXT("Mid AI budget 100,000"), defaults.MidAiBudget, 100000);
     TestEqual(TEXT("AI hysteresis 0.1"), defaults.AiHysteresis, 0.1);
-    TestEqual(TEXT("Mesh radius 2 km"), defaults.MeshRadiusM, 2000.0);
-    TestEqual(TEXT("Instanced radius 200 km"), defaults.InstancedRadiusM, 200000.0);
+    TestEqual(TEXT("Mesh from 16 px (SDD 54 Q1, Q6)"), defaults.MeshMinPx, 16.0);
+    TestEqual(TEXT("Hull from 4 px (SDD 54 Q2, Q6)"), defaults.HullMinPx, 4.0);
+    TestEqual(TEXT("Mesh default is NPC_MESH_MIN_PX"), defaults.MeshMinPx, SOL::NPC_MESH_MIN_PX);
+    TestEqual(TEXT("Hull default is NPC_HULL_DOT_PX"), defaults.HullMinPx, SOL::NPC_HULL_DOT_PX);
     TestEqual(TEXT("Mesh budget 32"), defaults.MeshBudget, 32);
     TestEqual(TEXT("Instanced budget 20,000"), defaults.InstancedBudget, 20000);
     TestEqual(TEXT("Render hysteresis 0.1"), defaults.RenderHysteresis, 0.1);
@@ -1938,14 +1943,24 @@ bool FSOLNpcScaleSetOptionTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Invalid id: unchanged"), NpcScaleOptionsEqual(SetOption(defaults, EDemoOption::Count, 5.0),
         defaults));
 
-    // Cross rules after a set: lowering Mid pulls Instanced down; raising Full pushes Mid up
+    // Cross rules after a set: lowering Mid leaves the pixel thresholds alone (the Mid cap is per frame, SDD 54);
+    // raising Full pushes Mid up; raising the hull threshold past the mesh one raises the mesh one
     const FDemoOptions lowMid = SetOption(defaults, EDemoOption::MidAiRadiusM, 100000.0);
     TestEqual(TEXT("Mid set to 100 km"), lowMid.MidAiRadiusM, 100000.0);
-    TestEqual(TEXT("Instanced pulled down to Mid"), lowMid.InstancedRadiusM, 100000.0);
+    TestEqual(TEXT("Hull threshold untouched by Mid"), lowMid.HullMinPx, 4.0);
+    TestEqual(TEXT("Mesh threshold untouched by Mid"), lowMid.MeshMinPx, 16.0);
     const FDemoOptions highFull = SetOption(lowMid, EDemoOption::FullAiRadiusM, 300000.0);
     TestEqual(TEXT("Full set to 300 km"), highFull.FullAiRadiusM, 300000.0);
     TestEqual(TEXT("Mid pushed up to Full"), highFull.MidAiRadiusM, 300000.0);
-    TestEqual(TEXT("Instanced unchanged"), highFull.InstancedRadiusM, 100000.0);
+    const FDemoOptions bigHull = SetOption(defaults, EDemoOption::HullMinPx, 20.0);
+    TestEqual(TEXT("Hull set to 20 px"), bigHull.HullMinPx, 20.0);
+    TestEqual(TEXT("Mesh raised to the hull threshold"), bigHull.MeshMinPx, 20.0);
+    const FDemoOptions lowMesh = SetOption(defaults, EDemoOption::MeshMinPx, 2.0);
+    TestEqual(TEXT("Mesh 2 px clamps to 3, then raised to the 4 px hull"), lowMesh.MeshMinPx, 4.0);
+    TestEqual(TEXT("Hull 1 px clamps to the 3 px minimum"),
+        SetOption(defaults, EDemoOption::HullMinPx, 1.0).HullMinPx, 3.0);
+    TestEqual(TEXT("Hull minimum is NPC_HULL_DOT_PX_MIN"), NpcScaleDesc(EDemoOption::HullMinPx).Min,
+        SOL::NPC_HULL_DOT_PX_MIN);
     const FDemoOptions fewShips = SetOption(defaults, EDemoOption::NpcCount, 1000.0);
     TestEqual(TEXT("Battle ships limited to the count"), fewShips.BattleShipCount, 1000);
 
@@ -1984,31 +1999,41 @@ bool FSOLNpcScaleSanitizeTest::RunTest(const FString& /*parameters*/)
     using namespace SOLNpcScale;
     const FDemoOptions defaults = DefaultOptions();
 
-    // Mid raised, then Instanced lowered to the new Mid, Mesh untouched
+    // Mid raised; the pixel thresholds are not tied to the Mid radius (SDD 54: the cap is per frame)
     {
         FDemoOptions options = defaults;
         options.FullAiRadiusM = 300000.0;
         options.MidAiRadiusM = 100000.0;
-        options.InstancedRadiusM = 1500000.0;
-        options.MeshRadiusM = 10000.0;
+        options.HullMinPx = 10.0;
+        options.MeshMinPx = 30.0;
         const FSanitizeResult result = SanitizeOptions(options);
         TestEqual(TEXT("Mid raised to Full"), result.Options.MidAiRadiusM, 300000.0);
-        TestEqual(TEXT("Instanced lowered to Mid"), result.Options.InstancedRadiusM, 300000.0);
-        TestEqual(TEXT("Mesh untouched"), result.Options.MeshRadiusM, 10000.0);
-        TestTrue(TEXT("MidRadiusRaised"), EnumHasAnyFlags(result.Issues, EOptionIssue::MidRadiusRaised));
-        TestTrue(TEXT("InstancedRadiusLowered"), EnumHasAnyFlags(result.Issues, EOptionIssue::InstancedRadiusLowered));
-        TestFalse(TEXT("No MeshRadiusLowered"), EnumHasAnyFlags(result.Issues, EOptionIssue::MeshRadiusLowered));
-        TestFalse(TEXT("No ValueClamped"), EnumHasAnyFlags(result.Issues, EOptionIssue::ValueClamped));
+        TestEqual(TEXT("Hull threshold untouched"), result.Options.HullMinPx, 10.0);
+        TestEqual(TEXT("Mesh threshold untouched"), result.Options.MeshMinPx, 30.0);
+        TestTrue(TEXT("Only MidRadiusRaised"), result.Issues == EOptionIssue::MidRadiusRaised);
     }
 
-    // Mesh lowered to Instanced
+    // Mesh threshold raised to the hull one (SDD 54 Q6: the mesh threshold never sits below the hull one)
     {
         FDemoOptions options = defaults;
-        options.MeshRadiusM = 10000.0;
-        options.InstancedRadiusM = 5000.0;
+        options.MeshMinPx = 5.0;
+        options.HullMinPx = 8.0;
         const FSanitizeResult result = SanitizeOptions(options);
-        TestEqual(TEXT("Mesh lowered to Instanced"), result.Options.MeshRadiusM, 5000.0);
-        TestTrue(TEXT("Only MeshRadiusLowered"), result.Issues == EOptionIssue::MeshRadiusLowered);
+        TestEqual(TEXT("Mesh raised to the hull threshold"), result.Options.MeshMinPx, 8.0);
+        TestEqual(TEXT("Hull kept"), result.Options.HullMinPx, 8.0);
+        TestTrue(TEXT("Only MeshPxRaised"), result.Issues == EOptionIssue::MeshPxRaised);
+    }
+
+    // Equal thresholds are allowed (no mesh band); a hull under 3 px is clamped up
+    {
+        FDemoOptions options = defaults;
+        options.MeshMinPx = 6.0;
+        options.HullMinPx = 6.0;
+        TestTrue(TEXT("Mesh == hull: no issue"), SanitizeOptions(options).Issues == EOptionIssue::None);
+        options.HullMinPx = 2.0;
+        const FSanitizeResult result = SanitizeOptions(options);
+        TestEqual(TEXT("Hull 2 px clamped to 3"), result.Options.HullMinPx, 3.0);
+        TestTrue(TEXT("Only ValueClamped"), result.Issues == EOptionIssue::ValueClamped);
     }
 
     // Battle ships limited by the count
@@ -2108,8 +2133,8 @@ bool FSOLNpcScaleSanitizeTest::RunTest(const FString& /*parameters*/)
         messy.BattleCount = 0;
         messy.FullAiRadiusM = 400000.0;
         messy.MidAiRadiusM = NpcScaleNaN();
-        messy.InstancedRadiusM = 3000000.0;
-        messy.MeshRadiusM = 50.0;
+        messy.HullMinPx = 300.0;
+        messy.MeshMinPx = 0.5;
         messy.BattleMinDistanceM = 150000.0;
         messy.BattleMaxDistanceM = 2000.0;
         const FSanitizeResult first = SanitizeOptions(messy);
@@ -2120,8 +2145,8 @@ bool FSOLNpcScaleSanitizeTest::RunTest(const FString& /*parameters*/)
             EnumHasAnyFlags(second.Issues, NpcScaleCorrectionFlags()));
         TestTrue(TEXT("First pass corrected something"), EnumHasAnyFlags(first.Issues, NpcScaleCorrectionFlags()));
         TestEqual(TEXT("NaN Mid reset to default 2,000 km, still >= Full"), first.Options.MidAiRadiusM, 2000000.0);
-        TestEqual(TEXT("Instanced clamped to 2,000 km, then <= Mid"), first.Options.InstancedRadiusM, 2000000.0);
-        TestEqual(TEXT("Mesh clamped to 500 m"), first.Options.MeshRadiusM, 500.0);
+        TestEqual(TEXT("Hull clamped to 64 px"), first.Options.HullMinPx, 64.0);
+        TestEqual(TEXT("Mesh clamped to 3 px, then raised to the 64 px hull"), first.Options.MeshMinPx, 64.0);
     }
 
     // Random garbage always ends inside the ranges with every cross rule holding
@@ -2142,8 +2167,8 @@ bool FSOLNpcScaleSanitizeTest::RunTest(const FString& /*parameters*/)
             const double got = GetOption(o, NpcScaleOptionId(index));
             bValid = bValid && got >= OptionDescriptors()[index].Min && got <= OptionDescriptors()[index].Max;
         }
-        bValid = bValid && o.MidAiRadiusM >= o.FullAiRadiusM && o.InstancedRadiusM <= o.MidAiRadiusM
-            && o.MeshRadiusM <= o.InstancedRadiusM && o.BattleShipCount <= o.NpcCount
+        bValid = bValid && o.MidAiRadiusM >= o.FullAiRadiusM && o.MeshMinPx >= o.HullMinPx
+            && o.HullMinPx >= SOL::NPC_HULL_DOT_PX_MIN && o.BattleShipCount <= o.NpcCount
             && o.BattleMaxDistanceM >= o.BattleMinDistanceM;
     }
     TestTrue(TEXT("Random options end valid"), bValid);
@@ -2353,6 +2378,77 @@ bool FSOLNpcScaleFarChunkCullTest::RunTest(const FString& /*parameters*/)
         IsFarChunkActive(nowCandidate[0] != 0, spawnDirty[0] != 0, true, 1.0e12, 0.0));
     ClearVisitedWakeDirty(spawnDirty, nowCandidate);
     TestTrue(TEXT("Cleared after that visit"), spawnDirty[0] == 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleRenderTierRadiiTest, "SOLTest.NpcScaleMath.RenderTierRadii",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #54 (part 54c), written after the code against SDD 54 section 4.5 and Q12: the render tier radii come from
+// pixel thresholds times the shared QualityPreset scale, capped by the Mid radius, and the lane hand-over ends at the
+// hull radius or the 1 px distance, whichever is farther
+bool FSOLNpcScaleRenderTierRadiiTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcPixel::HandOverStartM;
+    using SOLNpcPixel::PixelRadiusM;
+    using SOLNpcPixel::TierRadiusM;
+    const double d = SOL::NPC_HULL_BOUNDING_DIAMETER_M;
+    const double f = 960.0;
+    const double inf = NpcScaleInf();
+    const double nan = NpcScaleNaN();
+
+    // Epic: the distance where the ship is exactly 16 / 4 px across (about 2.07 km / 8.27 km)
+    TestNearlyEqual(TEXT("Mesh radius at Epic"), TierRadiusM(d, f, 16.0, 1.0, inf), d * f / 16.0, 1.0e-9);
+    TestNearlyEqual(TEXT("Hull radius at Epic"), TierRadiusM(d, f, 4.0, 1.0, inf), d * f / 4.0, 1.0e-9);
+
+    // Q12: Low x10, Medium x4.6, High x2.2, Epic and Cinematic x1 (the thresholds rise, the radii shrink)
+    const double expectedScale[] = { 10.0, 4.6, 2.2, 1.0, 1.0 };
+    for (int32 preset = 0; preset < static_cast<int32>(UE_ARRAY_COUNT(expectedScale)); ++preset)
+    {
+        const double scale = SOLLaneNetwork::LaneTunnelQualityScale(preset);
+        TestNearlyEqual(*FString::Printf(TEXT("Preset %d scale"), preset), scale, expectedScale[preset], 1.0e-9);
+        TestNearlyEqual(*FString::Printf(TEXT("Preset %d hull radius"), preset), TierRadiusM(d, f, 4.0, scale, inf),
+            PixelRadiusM(d, f, 4.0 * expectedScale[preset]), 1.0e-6);
+    }
+
+    // A scale only raises the thresholds: below 1, NaN or infinite reads as 1
+    for (const double badScale : { 0.5, 0.0, -2.0, nan, inf })
+    {
+        TestNearlyEqual(*FString::Printf(TEXT("Scale %f reads as 1"), badScale), TierRadiusM(d, f, 4.0, badScale, inf),
+            d * f / 4.0, 1.0e-9);
+    }
+
+    // The Mid radius caps it; a NaN or negative cap gives no tier, an infinite one no cap
+    TestEqual(TEXT("Capped by a 5 km Mid radius"), TierRadiusM(d, f, 4.0, 1.0, 5000.0), 5000.0);
+    TestNearlyEqual(TEXT("Under the cap: uncapped"), TierRadiusM(d, f, 4.0, 1.0, 2.0e6), d * f / 4.0, 1.0e-9);
+    TestEqual(TEXT("NaN cap gives 0"), TierRadiusM(d, f, 4.0, 1.0, nan), 0.0);
+    TestEqual(TEXT("Negative cap gives 0"), TierRadiusM(d, f, 4.0, 1.0, -1.0), 0.0);
+    TestEqual(TEXT("Zero cap gives 0"), TierRadiusM(d, f, 4.0, 1.0, 0.0), 0.0);
+
+    // Bad diameter, focal or threshold gives 0 (no ship qualifies)
+    TestEqual(TEXT("Zero focal"), TierRadiusM(d, 0.0, 4.0, 1.0, inf), 0.0);
+    TestEqual(TEXT("NaN threshold"), TierRadiusM(d, f, nan, 1.0, inf), 0.0);
+    TestEqual(TEXT("Negative diameter"), TierRadiusM(-d, f, 4.0, 1.0, inf), 0.0);
+
+    // Composition with SelectRenderTier at Low (hull from 40 px, mesh from 160 px): 20 px stays a dot, 50 px a hull
+    const double lowScale = SOLLaneNetwork::LaneTunnelQualityScale(0);
+    const double meshLowM = TierRadiusM(d, f, 16.0, lowScale, inf);
+    const double hullLowM = TierRadiusM(d, f, 4.0, lowScale, inf);
+    TestTrue(TEXT("Low: 20 px is a dot"), SOLNpcScale::SelectRenderTier(SOLNpcScale::ERenderTier::Point,
+        PixelRadiusM(d, f, 20.0), meshLowM, hullLowM, 0.1) == SOLNpcScale::ERenderTier::Point);
+    TestTrue(TEXT("Low: 50 px is a hull"), SOLNpcScale::SelectRenderTier(SOLNpcScale::ERenderTier::Point,
+        PixelRadiusM(d, f, 50.0), meshLowM, hullLowM, 0.1) == SOLNpcScale::ERenderTier::Instanced);
+
+    // Hand-over start: the 1 px distance (about 33 km) beyond a smaller hull radius, the hull radius beyond it
+    const double onePxM = d * f;
+    TestNearlyEqual(TEXT("1 px distance beyond an 8 km hull radius"), HandOverStartM(8270.0, d, f, 1.0), onePxM,
+        1.0e-9);
+    TestEqual(TEXT("A hull radius beyond the 1 px distance wins"), HandOverStartM(50000.0, d, f, 1.0), 50000.0);
+    TestNearlyEqual(TEXT("NaN hull radius reads as 0"), HandOverStartM(nan, d, f, 1.0), onePxM, 1.0e-9);
+    TestNearlyEqual(TEXT("Negative hull radius reads as 0"), HandOverStartM(-5.0, d, f, 1.0), onePxM, 1.0e-9);
+    TestEqual(TEXT("Bad focal: the hull radius alone"), HandOverStartM(8000.0, d, nan, 1.0), 8000.0);
     return true;
 }
 

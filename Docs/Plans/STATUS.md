@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-11-26.
+Last updated: 2026-11-27.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -56,7 +56,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| - | - | None (#53 finished 2026-11-26; its whole-ticket review and commit are the last steps; next tickets #54 and #55) | - | - |
+| 3b5c | #54 | Hide NPC ships under 1 px (the 1 px visibility rule on the bounding-sphere diameter in 1080p reference px, fixed on every preset: hidden under 1 px, a dot fading in linearly from 1 to 2 px, today's look from 2 px; the 2 px point and 3 px hull floors removed; render tiers by true pixel size, hulls become dots under about 4 px; flames keep their own pixel rule; radar, map markers and selection unchanged). **Implemented 2026-11-27, awaiting the README gallery shots and the commit**: SDD, plan and test contract (`SDDs/54-hide-subpixel-ships.md`), Q1-Q13 answered; render tiers by pixels (mesh above 16 px, hull above 4 px), dots capped at 4 px, far layer dark in flight, flames follow their own rule on dot ships, Demo rows "Mesh from (px)" / "Hull from (px)", new smoke `-SOLSmokeNpcPixel`; A/B against the #53 tree: all SDD 54 gates pass (points draw 0 ms, spawn-view GPU frame -0.8 ms, hulls drawn -78 %, flame gate 0.0493 / 0.0457 ms vs 0.0516 / 0.0539, 1M ramp equal or faster); no schema change (save 13, key layout 10) | M | #51 |
 
 ## To do (ordered)
 
@@ -65,7 +65,7 @@ Finished rows move to Done, started rows to In progress.
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
 | 3b5b2 | #55 | Thruster gas bursts (reverse, lateral and vertical thrust on the player and hull-drawn NPCs; ports, per-instance burst floats, look tuned to SDD 51 Q32): follow-up of #51, not built (SDD 51 section 4.6, plan part 51g) | M | #51 |
-| 3b5c | #54 | Hide NPC ships under 1 px (the 1 px visibility rule; first step of converting the legacy distance and count LODs to pixel rules, see TECH_DEBT) | M | #51 |
+| 3b5c2 | #56 | Target zoom overlay: makes NPC ships hidden by #54's 1 px rule findable (companion of #54); not designed yet, needs grill-me | M | #54 |
 | 3b6 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b7 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m), head-and-tail tracer shape, 5 per-ship bolt colours | M | none |
@@ -109,5 +109,5 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 ## How much is left
 
-About 12 tickets (#54, #55, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
+About 13 tickets (#54, #55, #56, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
 plus whatever #24 adopts. The ToDo list above is the backlog beyond that.

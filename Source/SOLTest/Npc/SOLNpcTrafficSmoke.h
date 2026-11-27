@@ -146,7 +146,9 @@ private:
         int32 Npc = INDEX_NONE;             // The tracked lane ship (rail index)
         uint8 PrevTier = 0xFF;              // Its AI tier last frame (0xFF: not a CPU ship)
         FVector3f PrevHeading = FVector3f::ZeroVector;
-        int32 Frames = 0;                   // Frames it was a CPU ship with a hull heading
+        int32 Frames = 0;                   // Frames it was a CPU ship with a hull heading (hull or flame-data dot)
+        int32 DotFrames = 0;                // ...of them drawn as a dot (SDD 54 4.7: its flame follows the heading)
+        double FirstHeadingM = 0.0;         // Its distance in the first frame with a heading (the flame-data gate)
         int32 Promotions = 0;
         int32 Demotions = 0;
         double PromoteDeg = 0.0;            // Worst nose change in a promotion / demotion frame
@@ -154,14 +156,16 @@ private:
         double FrameDeg = 0.0;              // ...and in any other frame
         double ClosestM = TNumericLimits<double>::Max();
         double RelativeSpeedMps = 0.0;      // Its speed relative to the viewpoint at the setup
-        int32 MidHulls = 0;                 // Mid / Full lane hulls drawn, summed over the frames
+        int32 MidShips = 0;                 // Mid / Full lane ships with a hull heading (hulls and flame-data dots),
+        int32 MidDots = 0;                  // summed over the frames, and the dots among them
         double MidWorstDeg = 0.0;
-        int32 FullHulls = 0;
+        int32 FullShips = 0;
         int32 FullAligned = 0;
         int32 FullReversed = 0;
         double FullWorstDeg = 0.0;
     };
     FFlyBy mFlyBy;
+    double mPinnedFullRadiusM = 0.0;        // V2: the Full AI radius pinned in memory at the start (0: not pinned)
     int32 mChecksRun = 0;
     int32 mChecksPassed = 0;
 };

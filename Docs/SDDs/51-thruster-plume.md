@@ -202,6 +202,7 @@ floored at 1 device px per point (R1) and the whole flame faded by its on-screen
 between `4 V` and `V` (R2, R3). The glow keeps its own rule below. Consequence at Low / Medium / High: open question
 R10-Q3.
 
+- **SUPERSEDED by SDD 54 Q7 (issue #54, 2026-11-27):** the flame (ribbon) of an NPC now follows its own pixel rule on every CPU ship with thrust data, including dot-drawn and not-drawn ones; the glow stays a hull section. The Q27 text below is the original rule, kept as history.
 - **The rule (Q27):** plumes and gas bursts appear **only on ships drawn with a hull mesh** (mesh tier or instanced
   hull). **Dot-drawn ships (CPU or GPU points) get none**; there is no plume on points. On hull-drawn ships, the plume's
   own on-screen pixel size decides the fade and visibility of cone and glow. A hull-drawn ship needs thrust data (Mid
@@ -722,7 +723,7 @@ from the existing `QualityPreset` (Q12).
 - **Q26 Test list:** `Tests/ThrusterMathTest.cpp`, `SOLTest.Thruster.*`, the section 7 cases, extended for the pixel
   rule, gas bursts, the clamp above `G_REF`, the colour ramp and the player light.
 
-- **Q27 Plumes vs dots (conflict resolved):** plumes **and gas bursts** appear only on ships drawn with a hull mesh
+- **Q27 Plumes vs dots (conflict resolved; flame part superseded by SDD 54 Q7, see 4.5):** plumes **and gas bursts** appear only on ships drawn with a hull mesh
   (mesh tier or instanced hull). Dot-drawn ships get none. The earlier "pixel rule for dots" is limited to: the plume's
   pixel size decides fade and visibility on hull-drawn ships; no plume on points. #54 may revisit.
 - **Q28 Player hull light:** on in VR, off at Low quality, on otherwise; on its own lighting channel.

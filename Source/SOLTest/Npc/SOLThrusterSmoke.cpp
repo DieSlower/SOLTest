@@ -62,8 +62,7 @@ namespace
     constexpr double THRSMOKE_PROFILE_VIEW_M = 1500.0;       // Ride distance in the profile's lane view
     constexpr double THRSMOKE_AIM_DROP = 0.35;               // The aim point this far (x distance) below the target, so
                                                              // it sits above the player hull on screen
-    constexpr double THRSMOKE_MID_BAND_LOW = 1.25;           // P2: the coast ride beyond 1.25 Full radii...
-    constexpr double THRSMOKE_MID_BAND_HIGH = 0.8;           // ...and within 0.8 of the hull radius and plume gate
+    constexpr double THRSMOKE_COAST_VIEW_FRACTION = 0.5;     // P2: the coast ride at half the hull radius / plume gate
     constexpr double THRSMOKE_STATE_STEP_S = 0.05;           // A ship whose thrust state changes within this is skipped
     constexpr double THRSMOKE_MIN_PX = 1.0;                  // P1: the rail G's plume at least this long (ref px)
     constexpr double THRSMOKE_MID_TOLERANCE = 0.02;          // P1: b against the rail G's brightness, Mid ships...
@@ -487,18 +486,14 @@ void FSOLThrusterSmoke::EnterPhase(const ESOLThrusterPhase phase)
         break;
     case ESOLThrusterPhase::CoastSettle:
     {
-        // A Mid-tier hull distance: beyond the Full radius, inside the hull radius and the glow's plume-float gate
+        // A hull-drawn distance inside the glow's plume-float gate (at the default radii the Full radius lies beyond
+        // both, so every hull checked here is a Full ship)
         const FSOLNpcStats& stats = mNpcs->GetStats();
         const double gateM = SOLThruster::PlumeMaxDistanceM(SOL::Thruster::GLOW_DIAMETER_NOZZLE_RADII
             * SOL::Thruster::NPC_NOZZLE_RADIUS_M, mVisuals->GetPlumeFocalRefPx(), SOL::Thruster::GLOW_FADE_LOW_PX);
-        const double lowM = THRSMOKE_MID_BAND_LOW * stats.FullRadiusM;
-        const double highM = THRSMOKE_MID_BAND_HIGH * FMath::Min(stats.InstancedRadiusM, gateM);
-        mIsMidBandEmpty = !(lowM < highM);
-        const double distanceM = mIsMidBandEmpty ? 0.5 * FMath::Min(stats.InstancedRadiusM, gateM)
-            : 0.5 * (lowM + highM);
+        const double distanceM = THRSMOKE_COAST_VIEW_FRACTION * FMath::Min(stats.InstancedRadiusM, gateM);
         UE_LOG(LogSOL, Log, TEXT("SmokeThruster: coast ride at %.0f m (Full radius %.0f m, hull radius %.0f m, plume "
-            "gate %.0f m%s)"), distanceM, stats.FullRadiusM, stats.InstancedRadiusM, gateM,
-            mIsMidBandEmpty ? TEXT(", no Mid band") : TEXT(""));
+            "gate %.0f m)"), distanceM, stats.FullRadiusM, stats.InstancedRadiusM, gateM);
         const int32 target = PickTarget(false, false, THRSMOKE_COAST_HOLD_S, THRSMOKE_COAST_FRACTION);
         if (target == INDEX_NONE)
         {
@@ -650,14 +645,18 @@ void FSOLThrusterSmoke::Finish(ASOLShipPawn& pawn)
             s.Turns, s.Transitions, s.Small, THRSMOKE_MIN_PX, s.Unreadable));
         const int32 coastSeen = s.CoastSeen[0] + s.CoastSeen[1];
         const int32 coastDark = coastSeen - s.CoastLit[0] - s.CoastLit[1];
+        // No Mid half: a Mid hull inside the glow gate needs the Full radius inside the hull radius and the gate (about
+        // 6-8 km), and the default 50 km is far beyond both (SDD 54 54f2 note); a Mid ship counted here still fails
         Check(TEXT("P2-coast-dark"), coastDark > 0 && s.CoastLit[1] == 0, FString::Printf(TEXT("%d coasting / "
-            "flipping ship-frames (%d ships), %d dark: Full %d (%d with b > 0, max b %.4f), Mid %d (%d with b > 0, max "
-            "b %.4f)%s"), coastSeen, s.CoastShips.Num(), coastDark, s.CoastSeen[0], s.CoastLit[0], s.CoastMaxB[0],
-            s.CoastSeen[1], s.CoastLit[1], s.CoastMaxB[1], s.CoastSeen[1] == 0 ? (mIsMidBandEmpty
-            ? TEXT("; Mid check vacuous: no Mid-tier hull distance") : TEXT("; Mid check vacuous: no Mid ship seen"))
-            : TEXT("")));
-        Check(TEXT("P3-dots-no-plume"), s.Dots > 0 && s.DotPlumes == 0, FString::Printf(TEXT("%d dot-drawn ship-frames,"
-            " %d with pushed floats or plume thrust; %d hull-drawn ship-frames"), s.Dots, s.DotPlumes, s.Hulls));
+            "flipping ship-frames (%d ships), %d dark: Full %d (%d with b > 0, max b %.4f; a Full ship adds its AI's "
+            "acceleration), Mid %d (%d with b > 0)"), coastSeen, s.CoastShips.Num(), coastDark, s.CoastSeen[0],
+            s.CoastLit[0], s.CoastMaxB[0], s.CoastSeen[1], s.CoastLit[1]));
+        // Only the thrust half can fail: a dot's pushed plume floats are never written (only the hull-drawn pass
+        // writes them), so that count is reported, not checked
+        Check(TEXT("P3-dot-thrust-gated"), s.Dots > 0 && s.DotThrustNoData == 0, FString::Printf(TEXT("%d dot-drawn "
+            "ship-frames, %d with a plume thrust but no flame data, %d burning with flame data (flames fed); %d with "
+            "pushed plume floats (none by construction, reported); %d hull-drawn ship-frames"), s.Dots,
+            s.DotThrustNoData, s.DotBurning, s.DotGlows, s.Hulls));
         Check(TEXT("P5-pushed-floats"), s.FloatChecked[1] > 0 && s.FloatLit[1] > 0 && s.FloatMismatch[0] == 0
             && s.FloatMismatch[1] == 0, FString::Printf(TEXT("hull ship-frames against PlumeInstance of their own "
             "thrust: pool %d (%d lit, %d mismatched), instanced %d (%d lit, %d mismatched); worst b error %.6f, worst "
@@ -864,8 +863,9 @@ int32 FSOLThrusterSmoke::FindCpuShip(const int32 npcIndex) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Scans every CPU ship this frame: dot-drawn ships carry no plume (P3); hull-drawn lane ships inside the plume gate,
-// off the U-turns and away from a state change, against their rail thrust (P1 burning, P2 coasting or flipping)
+// Scans every CPU ship this frame: dot-drawn ships carry no glow floats, and plume thrust only with flame data (P3);
+// hull-drawn lane ships inside the plume gate, off the U-turns and away from a state change, against their rail thrust
+// (P1 burning, P2 coasting or flipping)
 void FSOLThrusterSmoke::ScanFrame()
 {
     const FSOLNpcRailFrame& frame = mNpcs->GetRailFrame();
@@ -889,7 +889,9 @@ void FSOLThrusterSmoke::ScanFrame()
         if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point))
         {
             ++s.Dots;
-            s.DotPlumes += mVisuals->GetPushedPlume(index, plume) || !ship.ThrustLocalG.IsZero() ? 1 : 0;
+            s.DotGlows += mVisuals->GetPushedPlume(index, plume) ? 1 : 0;
+            s.DotThrustNoData += ship.bFlameData == 0 && !ship.ThrustLocalG.IsZero() ? 1 : 0;
+            s.DotBurning += ship.bFlameData != 0 && ship.ThrustLocalG.X > 0.0f ? 1 : 0;
             continue;
         }
         ++s.Hulls;

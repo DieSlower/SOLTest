@@ -65,7 +65,7 @@ slots; stays); the tunnel CPU cost has no headroom (0.016-0.022 ms on vs off, ab
 flame CPU gate miss "revisit with #53" (re-measured only, Q27); the D21 points cost inside a tunnel; the re-epoch hitch
 (9.85 ms at 1M under warp); the AUTO lane rules have no profiling scope; `UpdateCpuShips` re-derives float lane
 positions per CPU ship; the legacy distance and count NPC LODs (`MeshRadiusM`, `InstancedRadiusM`, the AI radii and
-budgets; already recorded, Q29).
+budgets; already recorded, Q29; the render tier radii were converted to pixels by #54, so only the AI radii and budgets remain).
 
 ## 3. Decisions (user, grill-me)
 

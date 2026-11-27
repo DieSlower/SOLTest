@@ -1,0 +1,134 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+// NPC point sub-pixel rule (SDD 54 sections 4.2-4.4): a ship's true size on screen in 1080p-reference px, the 1-2 px
+// dot fade (0 at and below the hide size, linear to 1 at the full size) and the drawn dot diameter with its
+// rasterization floor in device px. Source/SOLTest/Npc/SOLNpcPointMirror.h is the statement-for-statement float copy
+// the tests compare with the double Source/SOLTest/Npc/SOLNpcPixelMath.cpp. A change to one must change the others.
+// NaN and infinities are rejected by tests on the float's bits, never by saturate (saturate(NaN) is 0 here but the C++
+// clamp gives 1) and never by float comparisons alone: UE compiles materials without IEEE strictness (DXC emits every
+// float compare with the fast-math flag, so a later stage may assume no NaN or infinity and fold a test like
+// v <= FLT_MAX), while the integer bit tests cannot be folded. The thresholds (hide px, full px, reference height,
+// raster floor, dot cap) arrive as material parameters set from SOLConstants.h (SOLNpcPixel::PointParams2 /
+// PointParams5 / PointParams6), so this file has no copy of them. Included by the vertex node of M_SOLNpcPoints since
+// part 54d, which calls only SOLNP_PointDot, so a later change here that keeps its signature needs no material rebuild.
+
+#pragma once
+
+// The exponent bits of a float (all set: infinity or NaN) and its sign bit
+#define SOLNP_EXPONENT_MASK 0x7F800000u
+#define SOLNP_SIGN_MASK 0x80000000u
+
+// IsFinite: true for a finite value, false for NaN and infinities (exponent bits not all set)
+bool SOLNP_IsFinite(float value)
+{
+    return (asuint(value) & SOLNP_EXPONENT_MASK) != SOLNP_EXPONENT_MASK;
+}
+
+// IsNan: true for NaN (exponent bits all set and a non-zero mantissa)
+bool SOLNP_IsNan(float value)
+{
+    return (asuint(value) & ~SOLNP_SIGN_MASK) > SOLNP_EXPONENT_MASK;
+}
+
+// IsPositiveFinite: true for a value greater than 0 and finite
+bool SOLNP_IsPositiveFinite(float value)
+{
+    return SOLNP_IsFinite(value) && value > 0.0;
+}
+
+// FocalRefPx: (W / 2) / tan(fov / 2) x reference height / H, with ViewToClip[0][0] = 1 / tan(fov / 2); 0 without a
+// view size (the expression of SOLNT_FocalRefPx)
+float SOLNP_FocalRefPx(float projectionScaleX, float2 viewSize, float referenceHeightPx)
+{
+    if (!(viewSize.x > 0.0) || !(viewSize.y > 0.0))
+    {
+        return 0.0;
+    }
+    return 0.5 * viewSize.x * projectionScaleX * referenceHeightPx / viewSize.y;
+}
+
+// ShipSizePx: the true size in reference px, focal x diameter / max(distance, 1); 0 for any bad input
+float SOLNP_ShipSizePx(float diameterM, float distanceM, float focalRefPx)
+{
+    if (!SOLNP_IsPositiveFinite(diameterM) || !SOLNP_IsPositiveFinite(focalRefPx) || !SOLNP_IsFinite(distanceM)
+        || distanceM < 0.0)
+    {
+        return 0.0;
+    }
+    return focalRefPx * diameterM / max(distanceM, 1.0);
+}
+
+// DotAlpha: 0 at and below hidePx (and NaN), linear to 1 at fullPx, 1 at and above it (+infinity included); 0 for a
+// non-finite threshold
+float SOLNP_DotAlpha(float sizePx, float hidePx, float fullPx)
+{
+    if (!SOLNP_IsFinite(hidePx) || !SOLNP_IsFinite(fullPx) || SOLNP_IsNan(sizePx))
+    {
+        return 0.0;
+    }
+    if (!SOLNP_IsFinite(sizePx))
+    {
+        return (asuint(sizePx) & SOLNP_SIGN_MASK) == 0u ? 1.0 : 0.0;
+    }
+    if (!(sizePx > hidePx))
+    {
+        return 0.0;
+    }
+    if (sizePx >= fullPx)
+    {
+        return 1.0;
+    }
+    return (sizePx - hidePx) / (fullPx - hidePx);
+}
+
+// DrawnDiameterDevicePx: max(sizePx x viewHeightPx / referenceHeightPx, rasterMinDevicePx), for drawn dots only (alpha
+// > 0); the floor alone for a non-positive, infinite or NaN reference height
+float SOLNP_DrawnDiameterDevicePx(float sizePx, float viewHeightPx, float referenceHeightPx, float rasterMinDevicePx)
+{
+    if (!SOLNP_IsPositiveFinite(referenceHeightPx))
+    {
+        return rasterMinDevicePx;
+    }
+    return max(sizePx * viewHeightPx / referenceHeightPx, rasterMinDevicePx);
+}
+
+// CappedSizePx: the size the dot is drawn at in reference px, the true size capped at capPx (SDD 54 Q13: the quality
+// scale moves the switch to a hull, never the dot's size); the true size for a non-positive, infinite or NaN cap
+float SOLNP_CappedSizePx(float sizePx, float capPx)
+{
+    if (!SOLNP_IsPositiveFinite(capPx))
+    {
+        return sizePx;
+    }
+    return min(sizePx, capPx);
+}
+
+// PointDot: one NPC point's dot alpha (0: not drawn, the caller returns the hidden offset) and its billboard incircle
+// radius in render cm (SDD 54 4.3, 4.8). distanceM is the true distance (the vertex's dM), scale the far-depth
+// compression's cm per m, pixelCm one device px at the placed distance, params2 = (raster floor device px, D / 2 m,
+// brightness ref, brightness min), params5 = (hide px, full px, reference height px, map flag), params6 = (dot cap px,
+// 0, 0, 0). On the jump map (flag set, SDD 54 Q9) today's dot: alpha 1 and never under full px device px across; in
+// flight the true size, hidden at and under hide px, faded in linearly to full px, drawn at its true size capped at
+// the dot cap (Q13), with the raster floor
+float SOLNP_PointDot(float distanceM, float scale, float pixelCm, float projectionScaleX, float2 viewSize,
+    float4 params2, float4 params5, float4 params6, out float radiusCm)
+{
+    if (params5.w > 0.5)
+    {
+        radiusCm = max(params2.y * scale, 0.5 * params5.y * pixelCm);
+        return 1.0;
+    }
+    const float focalRefPx = SOLNP_FocalRefPx(projectionScaleX, viewSize, params5.z);
+    const float sizePx = SOLNP_ShipSizePx(2.0 * params2.y, distanceM, focalRefPx);
+    const float alpha = SOLNP_DotAlpha(sizePx, params5.x, params5.y);
+    radiusCm = 0.0;
+    if (alpha > 0.0)
+    {
+        radiusCm = 0.5 * SOLNP_DrawnDiameterDevicePx(SOLNP_CappedSizePx(sizePx, params6.x), viewSize.y, params5.z,
+            params2.x) * pixelCm;
+    }
+    return alpha;
+}

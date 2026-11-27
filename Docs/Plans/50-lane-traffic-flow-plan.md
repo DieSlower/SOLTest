@@ -508,7 +508,7 @@ turns back for the next leg (during the U-turn?) are open, so no contract was wr
   Earth - Mars at 0.3 L0 11.1; `GpuLaneSmoothness` mid-lane 0 of 7,200 frames repeat. ALU (DXC `-O3`, `cs_6_0`, the
   function alone): 213 DXIL ALU ops (158 float math) against 177 (134) for the same formula in single float, so about
   +36. Full suite 1940 / 1940. Smokes at 1280x720 and 1920x1080: `-SOLSmokeNpcTraffic` 14 / 14 (hand-over worst 7.1 /
-  7.7 km, 0 repeated of 6,000 frames; `V2-full-hull-heading` passes with no Full-tier lane hull near the view, so it is
+  7.7 km, 0 repeated of 6,000 frames; `V2-full-heading` passes with no Full-tier lane hull near the view, so it is
   not exercised), `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeNpcTunnel` 39 / 39; `GameUserSettings.ini` unchanged. The wake
   cost stays unmeasured.
 - 2026-11-16: fixes of the second 50b review (uncommitted). (1) `SOLNpcTraffic.ush`: `T_leg`'s rounding carry, the

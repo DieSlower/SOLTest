@@ -12,6 +12,9 @@ namespace
     // Lines of the overlay
     constexpr int32 STATS_TEXT_LINE_COUNT = 8;
 
+    // Suffix of a render tier count whose fixed pool bound its radius this frame (SDD 54 Q6)
+    constexpr const TCHAR* STATS_TEXT_BUDGET_MARK = TEXT(" (budget)");
+
     //////////////////////////////////////////////////////////////////////////
     // Returns the value, or 0 when it is NaN or infinite
     double StatsTextFinite(const double value)
@@ -87,8 +90,10 @@ TArray<FString> SOLNpcStatsText::FormatOverlayLines(const FOverlayInput& input)
         StatsTextFinite(input.RenderMs), StatsTextFinite(input.GpuMs), StatsTextFinite(input.NpcMs)));
     lines.Add(FString::Printf(TEXT("NPCs %s  far %s  mid %s  full %s"), *FormatGroupedInteger(input.Total),
         *FormatGroupedInteger(input.Far), *FormatGroupedInteger(input.Mid), *FormatGroupedInteger(input.Full)));
-    lines.Add(FString::Printf(TEXT("render  point %s  instanced %s  mesh %s"), *FormatGroupedInteger(input.Point),
-        *FormatGroupedInteger(input.Instanced), *FormatGroupedInteger(input.Mesh)));
+    // A tier whose fixed pool shrank its pixel radius this frame is marked: the pool is the limit, not the pixel rule
+    lines.Add(FString::Printf(TEXT("render  point %s  instanced %s%s  mesh %s%s"), *FormatGroupedInteger(input.Point),
+        *FormatGroupedInteger(input.Instanced), input.bInstancedBudgetBound ? STATS_TEXT_BUDGET_MARK : TEXT(""),
+        *FormatGroupedInteger(input.Mesh), input.bMeshBudgetBound ? STATS_TEXT_BUDGET_MARK : TEXT("")));
     lines.Add(FString::Printf(TEXT("awake %s  tier changes %s"), *FormatGroupedInteger(input.Awake),
         *FormatGroupedInteger(input.TierChanges)));
     lines.Add(input.bCombat
